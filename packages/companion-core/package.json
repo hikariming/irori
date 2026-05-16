@@ -1,0 +1,7 @@
+{
+  "name": "@cockapoo-pi-companion/companion-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared domain contracts for companion sessions."
+}

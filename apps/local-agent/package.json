@@ -1,0 +1,10 @@
+{
+  "name": "@cockapoo-pi-companion/local-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Node daemon that will embed the Pi coding-agent SDK.",
+  "scripts": {
+    "dev": "echo \"Local agent daemon will be wired in the next implementation phase.\""
+  }
+}

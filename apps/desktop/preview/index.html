@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cockapoo Pi Companion Preview</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Cockapoo Pi Companion</p>
+          <h1>陪伴空间</h1>
+        </div>
+        <nav class="mode-tabs" aria-label="模式">
+          <button class="active">陪伴</button>
+          <button>阅读</button>
+          <button>行动</button>
+          <button>专注</button>
+        </nav>
+      </header>
+
+      <section class="workspace" aria-label="桌面客户端预览">
+        <aside class="left-rail">
+          <div class="portrait" aria-label="角色头像">
+            <span>澄</span>
+          </div>
+          <div class="rail-list">
+            <button class="selected">今天</button>
+            <button>项目</button>
+            <button>夜间</button>
+          </div>
+        </aside>
+
+        <section class="conversation">
+          <div class="status-strip">
+            <span>陪伴模式</span>
+            <span>本地 Pi Session</span>
+            <span>模型审计开启</span>
+          </div>
+
+          <article class="message companion">
+            <p class="speaker">澄</p>
+            <p>我在。我们先把桌面客户端骨架跑起来，再把 Pi SDK、角色卡和工具确认接上。</p>
+          </article>
+
+          <article class="message user">
+            <p class="speaker">你</p>
+            <p>先按这个设计方向做一个能看的本地界面。</p>
+          </article>
+
+          <article class="action-card">
+            <div>
+              <p class="card-label">待确认操作</p>
+              <h2>读取项目结构并生成下一步计划</h2>
+            </div>
+            <dl>
+              <div>
+                <dt>命令</dt>
+                <dd>ls cockapoo-pi-companion</dd>
+              </div>
+              <div>
+                <dt>风险</dt>
+                <dd>低，只读操作</dd>
+              </div>
+              <div>
+                <dt>结果</dt>
+                <dd>生成模块清单和待办</dd>
+              </div>
+            </dl>
+            <div class="actions">
+              <button class="primary">批准</button>
+              <button>拒绝</button>
+            </div>
+          </article>
+
+          <form class="composer">
+            <input aria-label="消息" value="今天想从哪里开始？" />
+            <button type="button">发送</button>
+          </form>
+        </section>
+
+        <aside class="right-panel">
+          <section class="panel-card character-card">
+            <p class="card-label">角色卡</p>
+            <h2>澄</h2>
+            <p>冷静、可靠、不过度打扰的本地 AI 陪伴者。</p>
+            <div class="chips">
+              <span>简洁</span>
+              <span>温和</span>
+              <span>受限行动</span>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <p class="card-label">记忆摘要</p>
+            <ul class="memory-list">
+              <li>偏好中文界面</li>
+              <li>先规划，再实现</li>
+              <li>敏感操作需确认</li>
+            </ul>
+          </section>
+
+          <section class="panel-card">
+            <p class="card-label">工具时间线</p>
+            <ol class="timeline">
+              <li>读取设计文档</li>
+              <li>加载角色卡</li>
+              <li>等待确认</li>
+            </ol>
+          </section>
+        </aside>
+      </section>
+
+      <section class="concept">
+        <div>
+          <p class="eyebrow">视觉参考</p>
+          <h2>四个关键界面</h2>
+        </div>
+        <img src="/docs/assets/cockapoo-pi-companion-cn-concept.png" alt="Cockapoo Pi Companion 中文设计概念图" />
+      </section>
+    </main>
+  </body>
+</html>

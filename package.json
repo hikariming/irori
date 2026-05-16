@@ -1,0 +1,16 @@
+{
+  "name": "cockapoo-pi-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first desktop companion client built around the Pi coding-agent SDK.",
+  "type": "module",
+  "scripts": {
+    "desktop:dev": "pnpm --dir apps/desktop dev",
+    "desktop:vite": "pnpm --dir apps/desktop dev:vite",
+    "desktop:build": "pnpm --dir apps/desktop build",
+    "preview": "python3 -m http.server 4173 -d ..",
+    "test": "node --test packages/character-card/test/*.test.mjs",
+    "test:character": "node --test packages/character-card/test/*.test.mjs"
+  },
+  "devDependencies": {}
+}

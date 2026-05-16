@@ -1,0 +1,7 @@
+{
+  "name": "@cockapoo-pi-companion/pi-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Adapter layer for Pi SDK sessions and events."
+}

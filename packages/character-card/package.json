@@ -1,0 +1,11 @@
+{
+  "name": "@cockapoo-pi-companion/character-card",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Character-card schema and deterministic prompt composition.",
+  "main": "src/index.mjs",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

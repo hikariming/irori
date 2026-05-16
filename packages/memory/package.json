@@ -1,0 +1,7 @@
+{
+  "name": "@cockapoo-pi-companion/memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first companion memory contracts."
+}
