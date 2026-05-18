@@ -73,6 +73,78 @@ test("runCockapooPiPrompt reports the real OpenAI-compatible request route", asy
   );
 });
 
+test("runCockapooPiPrompt injects recalled memory and captures successful turns", async () => {
+  let promptSentToPi = "";
+  const capturedTurns = [];
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.2"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：继续做记忆",
+    memoryBackend: {
+      async recallForPrompt() {
+        return [
+          {
+            id: "memory-1",
+            scope: "user",
+            kind: "preference",
+            text: "用户偏好先给结论。"
+          }
+        ];
+      },
+      async captureConversationTurn(turn) {
+        capturedTurns.push(turn);
+      }
+    },
+    memoryRecallRequest: {
+      userId: "local-user",
+      characterId: "shili",
+      query: "继续做记忆",
+      mode: "companion"
+    },
+    memoryCaptureTurn: {
+      userId: "local-user",
+      characterId: "shili",
+      sessionId: "session-1",
+      userText: "继续做记忆"
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt(prompt) {
+            promptSentToPi = prompt;
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "好，我先接记忆上下文。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.match(promptSentToPi, /^<memory-context>/);
+  assert.match(promptSentToPi, /用户偏好先给结论/);
+  assert.match(promptSentToPi, /用户：继续做记忆$/);
+  assert.equal(result.text, "好，我先接记忆上下文。");
+  assert.equal(result.recalledMemories.length, 1);
+  assert.equal(capturedTurns.length, 1);
+  assert.equal(capturedTurns[0].assistantText, "好，我先接记忆上下文。");
+});
+
 test("collectAssistantText uses text_end content when deltas are missing", () => {
   const text = collectAssistantText([
     {

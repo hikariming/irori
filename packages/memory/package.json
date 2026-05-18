@@ -3,5 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local-first companion memory contracts."
+  "description": "Local-first companion memory contracts.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
 }

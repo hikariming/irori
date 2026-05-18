@@ -4,6 +4,7 @@ import {
   openAiCompatibleProviderId,
   resolvePiModel
 } from "./model-provider-resolver.mjs";
+import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
 import { createCockapooPiSession } from "./pi-session-adapter.mjs";
 
 export function collectAssistantText(events) {
@@ -55,7 +56,10 @@ export async function runCockapooPiPrompt({
   runtimeToken,
   authPath,
   dryRun = false,
-  createSession = createCockapooPiSession
+  createSession = createCockapooPiSession,
+  memoryBackend,
+  memoryRecallRequest,
+  memoryCaptureTurn
 }) {
   const model = resolvePiModel(modelSettings);
   const modelRoute = formatOpenAiCompatibleRoute(modelSettings);
@@ -72,6 +76,12 @@ export async function runCockapooPiPrompt({
     throw new Error("OpenAI-compatible token is required before sending a Pi prompt.");
   }
 
+  const memoryPrompt = await buildPromptWithMemory({
+    prompt,
+    memoryBackend,
+    recallRequest: memoryRecallRequest
+  });
+
   const { session } = await createSession({
     cwd,
     modelSettings,
@@ -86,11 +96,25 @@ export async function runCockapooPiPrompt({
   });
 
   try {
-    await session.prompt(prompt);
+    await session.prompt(memoryPrompt.prompt);
+    const text = collectAssistantText(events);
+
+    await captureMemoryTurn({
+      memoryBackend,
+      turn: memoryCaptureTurn
+        ? {
+            ...memoryCaptureTurn,
+            assistantText: text,
+            createdAt: memoryCaptureTurn.createdAt ?? new Date().toISOString()
+          }
+        : null
+    });
+
     return {
       providerId: openAiCompatibleProviderId,
       modelRoute,
-      text: collectAssistantText(events)
+      text,
+      recalledMemories: memoryPrompt.memories
     };
   } finally {
     unsubscribe();
