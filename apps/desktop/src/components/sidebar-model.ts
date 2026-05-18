@@ -10,6 +10,7 @@ export type CompanionCharacter = {
 };
 
 export type SessionItem = {
+  id: string;
   title: string;
   time: string;
   active: boolean;
@@ -49,17 +50,17 @@ export const sessionGroups: SessionGroup[] = [
   {
     group: "今天",
     items: [
-      { title: "角色卡聊天区设计", time: "10:42", active: true },
-      { title: "设计评审要点", time: "09:18", active: false }
+      { id: "fixture-character-card", title: "角色卡聊天区设计", time: "10:42", active: true },
+      { id: "fixture-design-review", title: "设计评审要点", time: "09:18", active: false }
     ]
   },
   {
     group: "昨天",
-    items: [{ title: "API 分页问题", time: "Mon", active: false }]
+    items: [{ id: "fixture-api-pagination", title: "API 分页问题", time: "Mon", active: false }]
   },
   {
     group: "更早",
-    items: [{ title: "项目启动", time: "5/12", active: false }]
+    items: [{ id: "fixture-project-start", title: "项目启动", time: "5/12", active: false }]
   }
 ];
 

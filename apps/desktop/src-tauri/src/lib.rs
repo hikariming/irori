@@ -2,7 +2,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
@@ -48,6 +50,58 @@ struct PiPromptResponse {
     text: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateChatSessionRequest {
+    character_id: String,
+    title: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppendChatMessageRequest {
+    session_id: String,
+    speaker: String,
+    author: String,
+    text: String,
+    mode: Option<String>,
+    sticker_id: Option<String>,
+    model_route: Option<String>,
+    provider_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatSessionSummary {
+    id: String,
+    character_id: String,
+    title: String,
+    updated_at: String,
+    last_message_preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatMessageRecord {
+    id: String,
+    session_id: String,
+    speaker: String,
+    author: String,
+    text: String,
+    mode: Option<String>,
+    sticker_id: Option<String>,
+    model_route: Option<String>,
+    provider_id: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatSessionDetail {
+    session: ChatSessionSummary,
+    messages: Vec<ChatMessageRecord>,
+}
+
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL_NAME: &str = "gpt-5.2";
 
@@ -87,6 +141,35 @@ fn test_model_connection(app: AppHandle) -> Result<PiPromptResponse, String> {
         app,
         "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
     )
+}
+
+#[tauri::command]
+fn list_chat_sessions(app: AppHandle) -> Result<Vec<ChatSessionSummary>, String> {
+    list_chat_sessions_from_path(&chat_history_path(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_chat_session(
+    app: AppHandle,
+    request: CreateChatSessionRequest,
+) -> Result<ChatSessionSummary, String> {
+    create_chat_session_at_path(&chat_history_path(&app)?, request, &current_timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_chat_session(app: AppHandle, session_id: String) -> Result<ChatSessionDetail, String> {
+    get_chat_session_from_path(&chat_history_path(&app)?, &session_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn append_chat_message(
+    app: AppHandle,
+    request: AppendChatMessageRequest,
+) -> Result<ChatMessageRecord, String> {
+    append_chat_message_to_path(&chat_history_path(&app)?, request, &current_timestamp())
+        .map_err(|error| error.to_string())
 }
 
 fn run_local_agent_prompt(app: AppHandle, prompt: String) -> Result<PiPromptResponse, String> {
@@ -152,6 +235,14 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?
         .join("model-settings.json"))
+}
+
+fn chat_history_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("chat-history.sqlite3"))
 }
 
 fn local_agent_dir() -> PathBuf {
@@ -247,12 +338,234 @@ fn normalize_openai_compatible_settings(base_url: &str, model_name: &str) -> (St
     (base_url, model_name)
 }
 
+fn current_timestamp() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+
+    format!("{millis}")
+}
+
+fn compact_id(prefix: &str, timestamp: &str) -> String {
+    let compact: String = timestamp
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect();
+    let suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+
+    format!("{prefix}-{compact}-{suffix}")
+}
+
+fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let connection = Connection::open(path)?;
+    connection.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          last_message_preview TEXT NOT NULL DEFAULT '',
+          pi_session_ref TEXT,
+          archived INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          speaker TEXT NOT NULL,
+          author TEXT NOT NULL,
+          text TEXT NOT NULL,
+          mode TEXT,
+          sticker_id TEXT,
+          model_route TEXT,
+          provider_id TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(session_id) REFERENCES chat_sessions(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
+          ON chat_sessions(updated_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created_at
+          ON chat_messages(session_id, created_at ASC);
+        "#,
+    )?;
+
+    Ok(())
+}
+
+fn open_chat_history(path: &Path) -> Result<Connection, Box<dyn std::error::Error>> {
+    init_chat_history_at_path(path)?;
+    Ok(Connection::open(path)?)
+}
+
+fn create_chat_session_at_path(
+    path: &Path,
+    request: CreateChatSessionRequest,
+    now: &str,
+) -> Result<ChatSessionSummary, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let id = compact_id("session", now);
+
+    connection.execute(
+        "INSERT INTO chat_sessions (id, character_id, title, created_at, updated_at, last_message_preview)
+         VALUES (?1, ?2, ?3, ?4, ?5, '')",
+        params![id, request.character_id, request.title, now, now],
+    )?;
+
+    get_chat_session_summary(&connection, &id)?
+        .ok_or_else(|| "created chat session could not be loaded".into())
+}
+
+fn list_chat_sessions_from_path(
+    path: &Path,
+) -> Result<Vec<ChatSessionSummary>, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let mut statement = connection.prepare(
+        "SELECT id, character_id, title, updated_at, last_message_preview
+         FROM chat_sessions
+         WHERE archived = 0
+         ORDER BY updated_at DESC",
+    )?;
+
+    let sessions = statement
+        .query_map([], row_to_chat_session_summary)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(sessions)
+}
+
+fn get_chat_session_from_path(
+    path: &Path,
+    session_id: &str,
+) -> Result<ChatSessionDetail, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let session = get_chat_session_summary(&connection, session_id)?
+        .ok_or_else(|| format!("chat session not found: {session_id}"))?;
+    let mut statement = connection.prepare(
+        "SELECT id, session_id, speaker, author, text, mode, sticker_id, model_route, provider_id, created_at
+         FROM chat_messages
+         WHERE session_id = ?1
+         ORDER BY created_at ASC, rowid ASC",
+    )?;
+    let messages = statement
+        .query_map(params![session_id], row_to_chat_message_record)?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ChatSessionDetail { session, messages })
+}
+
+fn append_chat_message_to_path(
+    path: &Path,
+    request: AppendChatMessageRequest,
+    now: &str,
+) -> Result<ChatMessageRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let id = compact_id("message", &format!("{}{}", now, request.speaker));
+
+    connection.execute(
+        "INSERT INTO chat_messages
+          (id, session_id, speaker, author, text, mode, sticker_id, model_route, provider_id, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            id,
+            request.session_id,
+            request.speaker,
+            request.author,
+            request.text,
+            request.mode,
+            request.sticker_id,
+            request.model_route,
+            request.provider_id,
+            now
+        ],
+    )?;
+    connection.execute(
+        "UPDATE chat_sessions
+         SET updated_at = ?1, last_message_preview = ?2
+         WHERE id = ?3",
+        params![now, request.text, request.session_id],
+    )?;
+
+    get_chat_message_record(&connection, &id)?
+        .ok_or_else(|| "stored chat message could not be loaded".into())
+}
+
+fn get_chat_session_summary(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<ChatSessionSummary>, rusqlite::Error> {
+    connection
+        .query_row(
+            "SELECT id, character_id, title, updated_at, last_message_preview
+             FROM chat_sessions
+             WHERE id = ?1 AND archived = 0",
+            params![id],
+            row_to_chat_session_summary,
+        )
+        .optional()
+}
+
+fn get_chat_message_record(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<ChatMessageRecord>, rusqlite::Error> {
+    connection
+        .query_row(
+            "SELECT id, session_id, speaker, author, text, mode, sticker_id, model_route, provider_id, created_at
+             FROM chat_messages
+             WHERE id = ?1",
+            params![id],
+            row_to_chat_message_record,
+        )
+        .optional()
+}
+
+fn row_to_chat_session_summary(row: &rusqlite::Row<'_>) -> Result<ChatSessionSummary, rusqlite::Error> {
+    Ok(ChatSessionSummary {
+        id: row.get(0)?,
+        character_id: row.get(1)?,
+        title: row.get(2)?,
+        updated_at: row.get(3)?,
+        last_message_preview: row.get(4)?,
+    })
+}
+
+fn row_to_chat_message_record(row: &rusqlite::Row<'_>) -> Result<ChatMessageRecord, rusqlite::Error> {
+    Ok(ChatMessageRecord {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        speaker: row.get(2)?,
+        author: row.get(3)?,
+        text: row.get(4)?,
+        mode: row.get(5)?,
+        sticker_id: row.get(6)?,
+        model_route: row.get(7)?,
+        provider_id: row.get(8)?,
+        created_at: row.get(9)?,
+    })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            append_chat_message,
             companion_status,
+            create_chat_session,
+            get_chat_session,
             get_model_settings,
+            list_chat_sessions,
             save_model_settings,
             send_pi_prompt,
             test_model_connection
@@ -264,20 +577,122 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
+        append_chat_message_to_path, create_chat_session_at_path, get_chat_session_from_path,
+        init_chat_history_at_path, list_chat_sessions_from_path, AppendChatMessageRequest,
+        CreateChatSessionRequest,
         normalize_openai_compatible_settings, read_model_settings_from_path,
         save_model_settings_to_path, ModelSettingsSnapshot, SaveModelSettingsRequest,
     };
 
-    fn temp_settings_path() -> std::path::PathBuf {
-        let nonce = SystemTime::now()
+    static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_path_nonce() -> String {
+        let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after epoch")
             .as_nanos();
+        let count = TEMP_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
 
-        std::env::temp_dir().join(format!("cockapoo-model-settings-{nonce}.json"))
+        format!("{timestamp}-{count}")
+    }
+
+    fn temp_settings_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("cockapoo-model-settings-{}.json", temp_path_nonce()))
+    }
+
+    fn temp_chat_history_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("cockapoo-chat-history-{}.sqlite3", temp_path_nonce()))
+    }
+
+    #[test]
+    fn chat_history_initializes_schema() {
+        let path = temp_chat_history_path();
+
+        init_chat_history_at_path(&path).expect("chat history schema should initialize");
+
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn chat_history_creates_session_and_lists_recent_sessions() {
+        let path = temp_chat_history_path();
+        let session = create_chat_session_at_path(
+            &path,
+            CreateChatSessionRequest {
+                character_id: "shili".to_string(),
+                title: "聊天历史设计".to_string(),
+            },
+            "2026-05-18T10:00:00.000+08:00",
+        )
+        .expect("session should be created");
+
+        let sessions = list_chat_sessions_from_path(&path).expect("sessions should load");
+
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].id, session.id);
+        assert_eq!(sessions[0].character_id, "shili");
+        assert_eq!(sessions[0].title, "聊天历史设计");
+        assert_eq!(sessions[0].last_message_preview, "");
+    }
+
+    #[test]
+    fn chat_history_appends_messages_and_updates_session_preview() {
+        let path = temp_chat_history_path();
+        let session = create_chat_session_at_path(
+            &path,
+            CreateChatSessionRequest {
+                character_id: "shili".to_string(),
+                title: "本地历史".to_string(),
+            },
+            "2026-05-18T10:00:00.000+08:00",
+        )
+        .expect("session should be created");
+
+        append_chat_message_to_path(
+            &path,
+            AppendChatMessageRequest {
+                session_id: session.id.clone(),
+                speaker: "user".to_string(),
+                author: "你".to_string(),
+                text: "先把聊天记录存起来".to_string(),
+                mode: Some("agent".to_string()),
+                sticker_id: None,
+                model_route: None,
+                provider_id: None,
+            },
+            "2026-05-18T10:01:00.000+08:00",
+        )
+        .expect("user message should be stored");
+        append_chat_message_to_path(
+            &path,
+            AppendChatMessageRequest {
+                session_id: session.id.clone(),
+                speaker: "character".to_string(),
+                author: "示璃".to_string(),
+                text: "好，我先把 SQLite 这层铺好。".to_string(),
+                mode: None,
+                sticker_id: Some("focused".to_string()),
+                model_route: Some("https://api.openai.com/v1/gpt-5.2".to_string()),
+                provider_id: Some("openai-compatible".to_string()),
+            },
+            "2026-05-18T10:02:00.000+08:00",
+        )
+        .expect("assistant message should be stored");
+
+        let detail = get_chat_session_from_path(&path, &session.id).expect("session should load");
+        let sessions = list_chat_sessions_from_path(&path).expect("sessions should load");
+
+        assert_eq!(detail.messages.len(), 2);
+        assert_eq!(detail.messages[0].speaker, "user");
+        assert_eq!(detail.messages[0].mode.as_deref(), Some("agent"));
+        assert_eq!(detail.messages[1].speaker, "character");
+        assert_eq!(detail.messages[1].sticker_id.as_deref(), Some("focused"));
+        assert_eq!(sessions[0].last_message_preview, "好，我先把 SQLite 这层铺好。");
+        assert_eq!(sessions[0].updated_at, "2026-05-18T10:02:00.000+08:00");
     }
 
     #[test]

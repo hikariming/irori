@@ -66,3 +66,40 @@ test("preview backend refuses to send before a token is saved", async () => {
     /请先在模型供应商里保存 Token/
   );
 });
+
+test("preview backend stores chat sessions and messages in memory", async () => {
+  const backend = createPreviewBackend();
+  const session = await backend.createChatSession({
+    characterId: "shili",
+    title: "本地历史"
+  });
+
+  await backend.appendChatMessage({
+    sessionId: session.id,
+    speaker: "user",
+    author: "你",
+    text: "先把聊天历史存起来",
+    mode: "agent"
+  });
+  await backend.appendChatMessage({
+    sessionId: session.id,
+    speaker: "character",
+    author: "示璃",
+    text: "好，我先处理 SQLite。",
+    stickerId: "focused",
+    modelRoute: "https://api.openai.com/v1/gpt-5.2",
+    providerId: "openai-compatible"
+  });
+
+  const sessions = await backend.listChatSessions();
+  const detail = await backend.getChatSession(session.id);
+
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0].id, session.id);
+  assert.equal(sessions[0].lastMessagePreview, "好，我先处理 SQLite。");
+  assert.equal(detail.messages.length, 2);
+  assert.equal(detail.messages[0].speaker, "user");
+  assert.equal(detail.messages[0].mode, "agent");
+  assert.equal(detail.messages[1].speaker, "character");
+  assert.equal(detail.messages[1].sticker?.id, "focused");
+});

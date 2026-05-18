@@ -6,6 +6,7 @@ type CompanionSidebarProps = {
   characters: CompanionCharacter[];
   sessions: SessionGroup[];
   onCharacterInspect?: (character: CompanionCharacter) => void;
+  onSessionSelect?: (sessionId: string) => void;
   onSettingsOpen?: () => void;
 };
 
@@ -28,6 +29,7 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
 export function CompanionSidebar({
   characters,
   onCharacterInspect,
+  onSessionSelect,
   onSettingsOpen,
   sessions
 }: CompanionSidebarProps) {
@@ -65,7 +67,8 @@ export function CompanionSidebar({
               {group.items.map((item) => (
                 <Button
                   className={`session-item ${item.active ? "active" : ""}`}
-                  key={`${group.group}-${item.title}`}
+                  key={item.id}
+                  onPress={() => onSessionSelect?.(item.id)}
                   type="button"
                 >
                   <span>{item.title}</span>
