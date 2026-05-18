@@ -5,6 +5,12 @@
   "type": "module",
   "description": "Local Node daemon that will embed the Pi coding-agent SDK.",
   "scripts": {
-    "dev": "echo \"Local agent daemon will be wired in the next implementation phase.\""
+    "dev": "echo \"Local agent daemon will be wired in the next implementation phase.\"",
+    "prompt": "node bin/pi-prompt.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0"
   }
 }

@@ -5,6 +5,8 @@ import type { CompanionCharacter, SessionGroup } from "./sidebar-model";
 type CompanionSidebarProps = {
   characters: CompanionCharacter[];
   sessions: SessionGroup[];
+  onCharacterInspect?: (character: CompanionCharacter) => void;
+  onSettingsOpen?: () => void;
 };
 
 function statusLabel(status: CompanionCharacter["status"]) {
@@ -15,6 +17,7 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
   return (
     <span className="avatar-wrap">
       <Avatar aria-label={`${character.name} ${statusLabel(character.status)}`} className={`character-avatar avatar-${index + 1}`}>
+        {character.avatarSrc ? <Avatar.Image alt={character.name} src={character.avatarSrc} /> : null}
         <Avatar.Fallback className="avatar-fallback">{character.name.slice(0, 1)}</Avatar.Fallback>
       </Avatar>
       <span className={`status-dot ${character.status}`} aria-label={statusLabel(character.status)} />
@@ -22,7 +25,12 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
   );
 }
 
-export function CompanionSidebar({ characters, sessions }: CompanionSidebarProps) {
+export function CompanionSidebar({
+  characters,
+  onCharacterInspect,
+  onSettingsOpen,
+  sessions
+}: CompanionSidebarProps) {
   return (
     <aside className="companion-sidebar" aria-label="角色与对话记录">
       <section className="character-switcher" aria-label="角色切换">
@@ -30,6 +38,7 @@ export function CompanionSidebar({ characters, sessions }: CompanionSidebarProps
           <Button
             className={`character-row ${character.active ? "active" : ""}`}
             key={character.id}
+            onPress={() => onCharacterInspect?.(character)}
             type="button"
           >
             <CharacterAvatar character={character} index={index} />
@@ -69,7 +78,7 @@ export function CompanionSidebar({ characters, sessions }: CompanionSidebarProps
       </ScrollShadow>
 
       <footer className="sidebar-footer" aria-label="设置">
-        <Button aria-label="设置" className="sidebar-icon-button" type="button">
+        <Button aria-label="设置" className="sidebar-icon-button" onPress={onSettingsOpen} type="button">
           ⚙
         </Button>
         <Button aria-label="外观" className="sidebar-icon-button" type="button">

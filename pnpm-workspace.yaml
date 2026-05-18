@@ -3,4 +3,7 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  '@google/genai': true
   esbuild: true
+  koffi: true
+  protobufjs: true

@@ -22,6 +22,22 @@ function joinChineseList(items, fallback = "无") {
   return items.join("；");
 }
 
+function optionalLine(label, value) {
+  if (!value) {
+    return [];
+  }
+
+  return [`${label}：${value}`];
+}
+
+function optionalListLine(label, items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return [];
+  }
+
+  return [`${label}：${joinChineseList(items)}`];
+}
+
 export function composePromptBundle(card, context) {
   const sections = [
     section("Base", context.basePrompt),
@@ -30,8 +46,12 @@ export function composePromptBundle(card, context) {
       [
         `名字：${card.name}`,
         `人设：${card.identity.persona}`,
+        ...optionalLine("背景", card.identity.background),
+        ...optionalLine("核心动机", card.identity.coreMotivation),
         `说话风格：${card.identity.speakingStyle}`,
-        `关系定位：${card.identity.relationship}`
+        `关系定位：${card.identity.relationship}`,
+        ...optionalListLine("互动原则", card.identity.interactionPrinciples),
+        ...optionalListLine("沉浸提示", card.identity.immersionCues)
       ].join("\n")
     ),
     section(

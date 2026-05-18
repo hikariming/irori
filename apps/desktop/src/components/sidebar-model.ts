@@ -6,6 +6,7 @@ export type CompanionCharacter = {
   status: CharacterStatus;
   tone: string;
   active: boolean;
+  avatarSrc?: string;
 };
 
 export type SessionItem = {
@@ -21,11 +22,12 @@ export type SessionGroup = {
 
 export const characters: CompanionCharacter[] = [
   {
-    id: "yuanjin",
-    name: "渊烬",
+    id: "shili",
+    name: "示璃",
     status: "online",
-    tone: "冷静陪伴",
-    active: true
+    tone: "安静陪伴",
+    active: true,
+    avatarSrc: "/characters/shili.card/assets/avatar/avatar-circle.png"
   },
   {
     id: "yanche",
@@ -47,7 +49,7 @@ export const sessionGroups: SessionGroup[] = [
   {
     group: "今天",
     items: [
-      { title: "重构认证控件视觉化", time: "10:42", active: true },
+      { title: "角色卡聊天区设计", time: "10:42", active: true },
       { title: "设计评审要点", time: "09:18", active: false }
     ]
   },
