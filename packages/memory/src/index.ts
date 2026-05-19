@@ -88,3 +88,5 @@ export { classifyMemoryCandidate } from "./memory-policy.ts";
 export type { MemoryCandidate, MemoryPolicyDecision } from "./memory-policy.ts";
 export { formatMemoryContext } from "./prompt-memory-context.ts";
 export { createInMemoryBackend } from "./in-memory-backend.ts";
+export { createTencentDbMemoryBackend } from "./tencentdb-memory-backend.ts";
+export type { TencentDbMemoryBackendOptions, TencentDbMemoryClient } from "./tencentdb-memory-backend.ts";
