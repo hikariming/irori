@@ -46,9 +46,34 @@ struct SendPiPromptRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PiPromptResponse {
+    memory_backend_source: Option<String>,
     model_route: String,
     provider_id: String,
+    recalled_memories: Option<Vec<RecalledMemorySnapshot>>,
     text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecalledMemorySnapshot {
+    id: String,
+    scope: String,
+    kind: String,
+    text: String,
+    confidence: Option<f64>,
+    source_ref: Option<String>,
+    approved: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MemoryStatus {
+    configured_backend: String,
+    fallback_backend: String,
+    memory_dir: String,
+    sqlite_vec_available: bool,
+    tencent_db_package_available: bool,
+    vectors_db_exists: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -172,6 +197,11 @@ fn create_chat_session(
 fn get_chat_session(app: AppHandle, session_id: String) -> Result<ChatSessionDetail, String> {
     get_chat_session_from_path(&chat_history_path(&app)?, &session_id)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_memory_status(app: AppHandle) -> Result<MemoryStatus, String> {
+    Ok(memory_status_from_paths(&memory_backend_dir(&app)?, &local_agent_dir()))
 }
 
 #[tauri::command]
@@ -314,6 +344,23 @@ fn build_memory_backend_config_payload(memory_dir: &Path) -> serde_json::Value {
             "dataDir": memory_dir.to_string_lossy()
         }
     })
+}
+
+fn memory_status_from_paths(memory_dir: &Path, agent_dir: &Path) -> MemoryStatus {
+    let tencentdb_package_dir = agent_dir
+        .join("node_modules")
+        .join("@tencentdb-agent-memory")
+        .join("memory-tencentdb");
+    let tencentdb_package_available = tencentdb_package_dir.exists();
+
+    MemoryStatus {
+        configured_backend: "tencentdb".to_string(),
+        fallback_backend: "chat-history".to_string(),
+        memory_dir: memory_dir.to_string_lossy().to_string(),
+        sqlite_vec_available: tencentdb_package_available,
+        tencent_db_package_available: tencentdb_package_available,
+        vectors_db_exists: memory_dir.join("vectors.db").exists(),
+    }
 }
 
 fn local_agent_dir() -> PathBuf {
@@ -666,6 +713,7 @@ pub fn run() {
             companion_status,
             create_chat_session,
             get_chat_session,
+            get_memory_status,
             get_model_settings,
             list_chat_sessions,
             save_model_settings,
@@ -686,10 +734,10 @@ mod tests {
     use super::{
         append_chat_message_to_path, create_chat_session_at_path, get_chat_session_from_path,
         init_chat_history_at_path, list_chat_sessions_from_path,
-        build_memory_backend_config_payload, recent_memory_messages_from_path,
-        AppendChatMessageRequest, CreateChatSessionRequest, normalize_openai_compatible_settings,
-        read_model_settings_from_path, save_model_settings_to_path, ModelSettingsSnapshot,
-        SaveModelSettingsRequest,
+        build_memory_backend_config_payload, memory_status_from_paths,
+        recent_memory_messages_from_path, AppendChatMessageRequest, CreateChatSessionRequest,
+        normalize_openai_compatible_settings, read_model_settings_from_path,
+        save_model_settings_to_path, ModelSettingsSnapshot, SaveModelSettingsRequest,
     };
 
     static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -855,6 +903,19 @@ mod tests {
             value["tencentdb"]["dataDir"],
             "/tmp/cockapoo-app-data/memory-tdai"
         );
+    }
+
+    #[test]
+    fn memory_status_reports_local_backend_paths() {
+        let status = memory_status_from_paths(
+            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+            PathBuf::from("/tmp/cockapoo-local-agent").as_path(),
+        );
+
+        assert_eq!(status.configured_backend, "tencentdb");
+        assert_eq!(status.fallback_backend, "chat-history");
+        assert_eq!(status.memory_dir, "/tmp/cockapoo-app-data/memory-tdai");
+        assert!(!status.vectors_db_exists);
     }
 
     #[test]

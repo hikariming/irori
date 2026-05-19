@@ -17,6 +17,7 @@ import {
 } from "./chat-history-model.ts";
 import { buildCharacterChatPreview, type ChatMessage } from "./chat-model.ts";
 import type { ComposerMode } from "./input-model.ts";
+import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "./memory-status-model.ts";
 
 export type SaveModelSettingsRequest = {
   baseUrl: string;
@@ -33,8 +34,10 @@ export type SendPiPromptRequest = {
 };
 
 export type PiPromptResponse = {
+  memoryBackendSource?: MemoryBackendSource;
   modelRoute: string;
   providerId: string;
+  recalledMemories?: RecalledMemorySnapshot[];
   text: string;
 };
 
@@ -44,6 +47,7 @@ export type DesktopBackend = {
   appendChatMessage: (request: AppendChatMessageRequest) => Promise<ChatMessage>;
   createChatSession: (request: CreateChatSessionRequest) => Promise<ChatSessionSummary>;
   getChatSession: (sessionId: string) => Promise<ChatSessionDetail>;
+  getMemoryStatus: () => Promise<MemoryStatus>;
   listChatSessions: () => Promise<ChatSessionSummary[]>;
   loadModelSettings: () => Promise<ModelSettingsState>;
   saveModelSettings: (request: SaveModelSettingsRequest) => Promise<ModelSettingsState>;
@@ -164,6 +168,16 @@ export function createPreviewBackend(): DesktopBackend {
         messages: (messagesBySession.get(sessionId) ?? []).map(chatMessageFromRecord)
       };
     },
+    async getMemoryStatus() {
+      return {
+        configuredBackend: "tencentdb",
+        fallbackBackend: "chat-history",
+        memoryDir: "浏览器预览 / memory-tdai",
+        sqliteVecAvailable: true,
+        tencentDbPackageAvailable: true,
+        vectorsDbExists: false
+      };
+    },
     async listChatSessions() {
       return [...sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     },
@@ -219,6 +233,9 @@ export function createTauriBackend(): DesktopBackend {
         session: detail.session,
         messages: detail.messages.map(chatMessageFromRecord)
       };
+    },
+    async getMemoryStatus() {
+      return invoke<MemoryStatus>("get_memory_status");
     },
     async listChatSessions() {
       return invoke<ChatSessionSummary[]>("list_chat_sessions");

@@ -12,6 +12,7 @@ import { buildCharacterCardViewModel } from "./components/character-card-view-mo
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
 import type { ComposerMode } from "./components/input-model";
 import { buildInitialModelSettings, isModelConfigured, type ModelSettingsState } from "./components/model-settings-controller";
+import type { MemoryRunSnapshot } from "./components/memory-status-model";
 import { characters } from "./components/sidebar-model";
 
 function messageTime() {
@@ -46,6 +47,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [isSending, setIsSending] = useState(false);
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
+  const [latestMemoryRun, setLatestMemoryRun] = useState<MemoryRunSnapshot | null>(null);
   const modelReady = isModelConfigured(modelSettings);
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
 
@@ -220,6 +222,10 @@ export function App() {
         sessionId,
         sessionPrompt
       });
+      setLatestMemoryRun({
+        memoryBackendSource: response.memoryBackendSource,
+        recalledMemories: response.recalledMemories
+      });
       if (!response.text.trim()) {
         throw new Error("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。");
       }
@@ -305,6 +311,7 @@ export function App() {
         />
         <SystemSettingsPanel
           isOpen={isSettingsOpen}
+          latestMemoryRun={latestMemoryRun}
           onClose={() => setIsSettingsOpen(false)}
           onModelSettingsChange={setModelSettings}
         />

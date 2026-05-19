@@ -744,6 +744,122 @@ button {
   color: #777b86;
 }
 
+.memory-dashboard {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.memory-summary-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.memory-summary-item span,
+.memory-storage-row dt,
+.memory-recall-item span {
+  color: rgba(48, 51, 59, 0.62);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.memory-summary-item strong {
+  overflow: hidden;
+  color: #30333b;
+  font-size: 14px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-storage-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.memory-storage-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 10px;
+  border: 1px solid rgba(42, 47, 58, 0.08);
+  border-radius: 8px;
+  background: rgba(246, 248, 250, 0.72);
+}
+
+.memory-storage-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: rgba(49, 53, 62, 0.82);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.memory-recall-list {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-recall-list h4 {
+  margin: 4px 0 0;
+  color: #30333b;
+  font-size: 13px;
+}
+
+.memory-recall-item {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.memory-recall-item div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.memory-recall-item small {
+  overflow: hidden;
+  color: rgba(76, 80, 91, 0.58);
+  font-size: 10px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-recall-item p,
+.memory-empty-state {
+  margin: 0;
+  color: rgba(49, 53, 62, 0.82);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.memory-empty-state {
+  padding: 12px;
+  border: 1px dashed rgba(42, 47, 58, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
 .settings-placeholder {
   min-height: 240px;
   padding: 18px;

@@ -86,6 +86,13 @@ export async function runCockapooPiPrompt({
     : await resolveMemoryBackend({ config: memoryBackendConfig });
   const effectiveMemoryBackend =
     memoryBackend ?? configuredMemoryBackend ?? (chatHistoryMemory ? createChatHistoryMemoryBackend(chatHistoryMemory) : null);
+  const memoryBackendSource = memoryBackend
+    ? "explicit"
+    : configuredMemoryBackend
+      ? "tencentdb"
+      : chatHistoryMemory
+        ? "chat-history"
+        : "none";
   const effectiveRecallRequest = memoryRecallRequest ?? (
     chatHistoryMemory
       ? {
@@ -149,6 +156,7 @@ export async function runCockapooPiPrompt({
       providerId: openAiCompatibleProviderId,
       modelRoute,
       text,
+      memoryBackendSource,
       recalledMemories: memoryPrompt.memories
     };
   } finally {

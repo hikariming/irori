@@ -87,6 +87,16 @@ test("preview backend accepts session id on Pi prompt requests", async () => {
   );
 });
 
+test("preview backend exposes memory status", async () => {
+  const backend = createPreviewBackend();
+  const status = await backend.getMemoryStatus();
+
+  assert.equal(status.configuredBackend, "tencentdb");
+  assert.equal(status.fallbackBackend, "chat-history");
+  assert.match(status.memoryDir, /memory-tdai/);
+  assert.equal(status.tencentDbPackageAvailable, true);
+});
+
 test("preview backend stores chat sessions and messages in memory", async () => {
   const backend = createPreviewBackend();
   const session = await backend.createChatSession({

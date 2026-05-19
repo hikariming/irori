@@ -5,6 +5,11 @@ import { CharacterCardSettings } from "./CharacterCardSettings";
 import { desktopBackend } from "./desktop-backend";
 import { formatUnknownError } from "./error-message";
 import {
+  buildMemoryDashboardViewModel,
+  type MemoryRunSnapshot,
+  type MemoryStatus
+} from "./memory-status-model";
+import {
   buildInitialModelSettings,
   formatOpenAiCompatibleRequestPreview,
   normalizeOpenAiCompatibleSettings,
@@ -14,18 +19,23 @@ import { buildSettingsTabs } from "./settings-model";
 
 type SystemSettingsPanelProps = {
   isOpen: boolean;
+  latestMemoryRun?: MemoryRunSnapshot | null;
   onClose: () => void;
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ isOpen, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ isOpen, latestMemoryRun, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
+  const memoryTab = tabs.find((tab) => tab.id === "memory");
+  const safetyTab = tabs.find((tab) => tab.id === "safety");
   const [baseUrl, setBaseUrl] = useState(buildInitialModelSettings().baseUrl);
   const [modelName, setModelName] = useState(buildInitialModelSettings().modelName);
   const [token, setToken] = useState("");
   const [tokenHint, setTokenHint] = useState<string | undefined>();
   const [hasToken, setHasToken] = useState(false);
+  const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null);
+  const [memoryStatusError, setMemoryStatusError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
@@ -44,6 +54,24 @@ export function SystemSettingsPanel({ isOpen, onClose, onModelSettingsChange }: 
       setTestState("idle");
       setTestMessage("");
     });
+
+    desktopBackend.getMemoryStatus()
+      .then((status) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setMemoryStatus(status);
+        setMemoryStatusError("");
+      })
+      .catch((error) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setMemoryStatus(null);
+        setMemoryStatusError(formatUnknownError(error, "记忆状态加载失败。"));
+      });
   }, [isOpen, onModelSettingsChange]);
 
   if (!isOpen) {
@@ -59,6 +87,10 @@ export function SystemSettingsPanel({ isOpen, onClose, onModelSettingsChange }: 
     hasToken,
     modelName,
     tokenHint
+  });
+  const memoryView = buildMemoryDashboardViewModel({
+    status: memoryStatus,
+    latestRun: latestMemoryRun
   });
   const didNormalizeBaseUrl = normalizedDraft.baseUrl !== baseUrl.trim().replace(/\/+$/, "");
 
@@ -212,14 +244,73 @@ export function SystemSettingsPanel({ isOpen, onClose, onModelSettingsChange }: 
           <CharacterCardSettings />
         </Tabs.Panel>
 
-        {tabs.slice(2).map((tab) => (
-          <Tabs.Panel className="settings-tab-panel" id={tab.id} key={tab.id}>
+        <Tabs.Panel className="settings-tab-panel" id="memory">
+          <section>
+            <header className="settings-section-header">
+              <div>
+                <h3>{memoryTab?.label ?? "记忆"}</h3>
+                <p>{memoryTab?.description}</p>
+              </div>
+              <Chip className="provider-status" size="sm" variant="soft">
+                {memoryView.latestSourceLabel}
+              </Chip>
+            </header>
+
+            <div className="memory-dashboard">
+              <div className="memory-summary-grid">
+                <div className="memory-summary-item">
+                  <span>配置后端</span>
+                  <strong>{memoryView.backendLabel}</strong>
+                </div>
+                <div className="memory-summary-item">
+                  <span>本轮来源</span>
+                  <strong>{memoryView.latestSourceLabel}</strong>
+                </div>
+                <div className="memory-summary-item">
+                  <span>召回数量</span>
+                  <strong>{memoryView.recalledCount}</strong>
+                </div>
+              </div>
+
+              {memoryStatusError ? <p className="settings-save-note error">{memoryStatusError}</p> : null}
+
+              <dl className="memory-storage-list">
+                {memoryView.storageRows.map((row) => (
+                  <div className="memory-storage-row" key={row.label}>
+                    <dt>{row.label}</dt>
+                    <dd>{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div className="memory-recall-list">
+                <h4>本轮召回</h4>
+                {memoryView.memories.length > 0 ? (
+                  memoryView.memories.map((memory) => (
+                    <article className="memory-recall-item" key={memory.id}>
+                      <div>
+                        <span>{memory.kindLabel}</span>
+                        <small>{memory.sourceLabel}</small>
+                      </div>
+                      <p>{memory.text}</p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="memory-empty-state">还没有召回记录。</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </Tabs.Panel>
+
+        {safetyTab ? (
+          <Tabs.Panel className="settings-tab-panel" id={safetyTab.id}>
             <section className="settings-placeholder">
-              <h3>{tab.label}</h3>
-              <p>{tab.description}</p>
+              <h3>{safetyTab.label}</h3>
+              <p>{safetyTab.description}</p>
             </section>
           </Tabs.Panel>
-        ))}
+        ) : null}
       </Tabs>
     </aside>
   );

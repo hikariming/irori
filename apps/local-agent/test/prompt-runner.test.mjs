@@ -198,6 +198,7 @@ test("runCockapooPiPrompt uses chat history memory when no backend is provided",
   assert.match(promptSentToPi, /<memory-context>/);
   assert.match(promptSentToPi, /先给结论/);
   assert.equal(result.recalledMemories.length, 1);
+  assert.equal(result.memoryBackendSource, "chat-history");
 });
 
 test("runCockapooPiPrompt uses configured memory backend before chat history fallback", async () => {
@@ -276,6 +277,7 @@ test("runCockapooPiPrompt uses configured memory backend before chat history fal
   assert.match(promptSentToPi, /TencentDB 记忆里说用户喜欢先给结论/);
   assert.doesNotMatch(promptSentToPi, /聊天历史里的旧偏好/);
   assert.equal(result.recalledMemories.length, 1);
+  assert.equal(result.memoryBackendSource, "tencentdb");
   assert.equal(capturedTurns.length, 1);
   assert.equal(capturedTurns[0].assistantText, "已经走配置记忆后端。");
 });
