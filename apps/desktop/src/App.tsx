@@ -217,6 +217,7 @@ export function App() {
         characterId: "shili",
         mode,
         prompt,
+        sessionId,
         sessionPrompt
       });
       if (!response.text.trim()) {

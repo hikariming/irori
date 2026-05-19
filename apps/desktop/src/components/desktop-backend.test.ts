@@ -67,6 +67,26 @@ test("preview backend refuses to send before a token is saved", async () => {
   );
 });
 
+test("preview backend accepts session id on Pi prompt requests", async () => {
+  const backend = createPreviewBackend();
+  await backend.saveModelSettings({
+    baseUrl: "http://localhost:11434/v1",
+    modelName: "qwen3-coder",
+    token: "sk-preview-123456"
+  });
+
+  await assert.rejects(
+    () =>
+      backend.sendPiPrompt({
+        characterId: "shili",
+        mode: "companion",
+        prompt: "继续做记忆",
+        sessionId: "session-1"
+      }),
+    /浏览器预览不会调用真实 LLM/
+  );
+});
+
 test("preview backend stores chat sessions and messages in memory", async () => {
   const backend = createPreviewBackend();
   const session = await backend.createChatSession({

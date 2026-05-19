@@ -145,6 +145,61 @@ test("runCockapooPiPrompt injects recalled memory and captures successful turns"
   assert.equal(capturedTurns[0].assistantText, "好，我先接记忆上下文。");
 });
 
+test("runCockapooPiPrompt uses chat history memory when no backend is provided", async () => {
+  let promptSentToPi = "";
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.2"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：怎么回答更适合我？",
+    chatHistoryMemory: {
+      userId: "local-user",
+      characterId: "shili",
+      sessionId: "session-1",
+      query: "回答更适合我",
+      mode: "companion",
+      messages: [
+        {
+          id: "m1",
+          speaker: "user",
+          text: "我喜欢你先给结论，再补充细节。",
+          createdAt: "2026-05-19T10:00:00.000+08:00"
+        }
+      ]
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt(prompt) {
+            promptSentToPi = prompt;
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "先给结论。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.match(promptSentToPi, /<memory-context>/);
+  assert.match(promptSentToPi, /先给结论/);
+  assert.equal(result.recalledMemories.length, 1);
+});
+
 test("collectAssistantText uses text_end content when deltas are missing", () => {
   const text = collectAssistantText([
     {

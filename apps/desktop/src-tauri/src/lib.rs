@@ -40,6 +40,7 @@ struct SendPiPromptRequest {
     mode: String,
     prompt: String,
     session_prompt: Option<String>,
+    session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,6 +103,15 @@ struct ChatSessionDetail {
     messages: Vec<ChatMessageRecord>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MemoryChatMessage {
+    id: String,
+    speaker: String,
+    text: String,
+    created_at: String,
+}
+
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL_NAME: &str = "gpt-5.2";
 
@@ -132,7 +142,7 @@ fn send_pi_prompt(app: AppHandle, request: SendPiPromptRequest) -> Result<PiProm
         )
     });
 
-    run_local_agent_prompt(app, prompt)
+    run_local_agent_prompt(app, prompt, Some(request))
 }
 
 #[tauri::command]
@@ -140,6 +150,7 @@ fn test_model_connection(app: AppHandle) -> Result<PiPromptResponse, String> {
     run_local_agent_prompt(
         app,
         "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
+        None,
     )
 }
 
@@ -172,7 +183,11 @@ fn append_chat_message(
         .map_err(|error| error.to_string())
 }
 
-fn run_local_agent_prompt(app: AppHandle, prompt: String) -> Result<PiPromptResponse, String> {
+fn run_local_agent_prompt(
+    app: AppHandle,
+    prompt: String,
+    request: Option<SendPiPromptRequest>,
+) -> Result<PiPromptResponse, String> {
     let settings_path = settings_path(&app)?;
     let stored = read_stored_model_settings(&settings_path).map_err(|error| error.to_string())?;
     let token = stored
@@ -181,7 +196,8 @@ fn run_local_agent_prompt(app: AppHandle, prompt: String) -> Result<PiPromptResp
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "请先在模型供应商里保存 Token。".to_string())?;
     let agent_dir = local_agent_dir();
-    let payload = serde_json::json!({
+    let chat_history_memory = build_chat_history_memory_payload(&app, request.as_ref())?;
+    let mut payload = serde_json::json!({
         "cwd": std::env::current_dir().map_err(|error| error.to_string())?,
         "modelSettings": {
             "baseUrl": stored.base_url,
@@ -190,6 +206,10 @@ fn run_local_agent_prompt(app: AppHandle, prompt: String) -> Result<PiPromptResp
         "runtimeToken": token,
         "prompt": prompt
     });
+
+    if let Some(memory) = chat_history_memory {
+        payload["chatHistoryMemory"] = memory;
+    }
     let mut child = Command::new("pnpm")
         .arg("--dir")
         .arg(agent_dir)
@@ -227,6 +247,35 @@ fn run_local_agent_prompt(app: AppHandle, prompt: String) -> Result<PiPromptResp
     }
 
     Ok(response)
+}
+
+fn build_chat_history_memory_payload(
+    app: &AppHandle,
+    request: Option<&SendPiPromptRequest>,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(request) = request else {
+        return Ok(None);
+    };
+    let Some(session_id) = request.session_id.as_deref() else {
+        return Ok(None);
+    };
+    let messages = recent_memory_messages_from_path(&chat_history_path(app)?, session_id, 8)
+        .map_err(|error| error.to_string())?;
+
+    if messages.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(serde_json::json!({
+        "userId": "local-user",
+        "characterId": request.character_id,
+        "sessionId": session_id,
+        "query": request.prompt,
+        "userText": request.prompt,
+        "mode": request.mode,
+        "maxResults": 5,
+        "messages": messages
+    })))
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -465,6 +514,37 @@ fn get_chat_session_from_path(
     Ok(ChatSessionDetail { session, messages })
 }
 
+fn recent_memory_messages_from_path(
+    path: &Path,
+    session_id: &str,
+    limit: usize,
+) -> Result<Vec<MemoryChatMessage>, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let mut statement = connection.prepare(
+        "SELECT id, speaker, text, created_at
+         FROM (
+           SELECT id, speaker, text, created_at, rowid
+           FROM chat_messages
+           WHERE session_id = ?1 AND speaker != 'system'
+           ORDER BY created_at DESC, rowid DESC
+           LIMIT ?2
+         )
+         ORDER BY created_at ASC, rowid ASC",
+    )?;
+    let messages = statement
+        .query_map(params![session_id, limit as i64], |row| {
+            Ok(MemoryChatMessage {
+                id: row.get(0)?,
+                speaker: row.get(1)?,
+                text: row.get(2)?,
+                created_at: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(messages)
+}
+
 fn append_chat_message_to_path(
     path: &Path,
     request: AppendChatMessageRequest,
@@ -582,8 +662,8 @@ mod tests {
 
     use super::{
         append_chat_message_to_path, create_chat_session_at_path, get_chat_session_from_path,
-        init_chat_history_at_path, list_chat_sessions_from_path, AppendChatMessageRequest,
-        CreateChatSessionRequest,
+        init_chat_history_at_path, list_chat_sessions_from_path,
+        recent_memory_messages_from_path, AppendChatMessageRequest, CreateChatSessionRequest,
         normalize_openai_compatible_settings, read_model_settings_from_path,
         save_model_settings_to_path, ModelSettingsSnapshot, SaveModelSettingsRequest,
     };
@@ -693,6 +773,51 @@ mod tests {
         assert_eq!(detail.messages[1].sticker_id.as_deref(), Some("focused"));
         assert_eq!(sessions[0].last_message_preview, "好，我先把 SQLite 这层铺好。");
         assert_eq!(sessions[0].updated_at, "2026-05-18T10:02:00.000+08:00");
+    }
+
+    #[test]
+    fn chat_history_collects_recent_memory_messages_without_system_events() {
+        let path = temp_chat_history_path();
+        let session = create_chat_session_at_path(
+            &path,
+            CreateChatSessionRequest {
+                character_id: "shili".to_string(),
+                title: "记忆上下文".to_string(),
+            },
+            "2026-05-19T10:00:00.000+08:00",
+        )
+        .expect("session should be created");
+
+        for (index, speaker, text) in [
+            ("01", "user", "我喜欢你先给结论。"),
+            ("02", "character", "好，我会先给结论。"),
+            ("03", "system", "模型供应商错误。"),
+            ("04", "user", "继续做记忆。"),
+        ] {
+            append_chat_message_to_path(
+                &path,
+                AppendChatMessageRequest {
+                    session_id: session.id.clone(),
+                    speaker: speaker.to_string(),
+                    author: "测试".to_string(),
+                    text: text.to_string(),
+                    mode: None,
+                    sticker_id: None,
+                    model_route: None,
+                    provider_id: None,
+                },
+                &format!("2026-05-19T10:{index}:00.000+08:00"),
+            )
+            .expect("message should be stored");
+        }
+
+        let messages = recent_memory_messages_from_path(&path, &session.id, 3)
+            .expect("recent memory messages should load");
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].text, "我喜欢你先给结论。");
+        assert_eq!(messages[2].text, "继续做记忆。");
+        assert!(messages.iter().all(|message| message.speaker != "system"));
     }
 
     #[test]

@@ -28,6 +28,7 @@ export type SendPiPromptRequest = {
   characterId: string;
   mode: ComposerMode;
   prompt: string;
+  sessionId?: string;
   sessionPrompt?: string;
 };
 

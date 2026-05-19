@@ -4,6 +4,7 @@ import {
   openAiCompatibleProviderId,
   resolvePiModel
 } from "./model-provider-resolver.mjs";
+import { createChatHistoryMemoryBackend } from "./chat-history-memory-backend.mjs";
 import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
 import { createCockapooPiSession } from "./pi-session-adapter.mjs";
 
@@ -59,7 +60,8 @@ export async function runCockapooPiPrompt({
   createSession = createCockapooPiSession,
   memoryBackend,
   memoryRecallRequest,
-  memoryCaptureTurn
+  memoryCaptureTurn,
+  chatHistoryMemory
 }) {
   const model = resolvePiModel(modelSettings);
   const modelRoute = formatOpenAiCompatibleRoute(modelSettings);
@@ -76,10 +78,37 @@ export async function runCockapooPiPrompt({
     throw new Error("OpenAI-compatible token is required before sending a Pi prompt.");
   }
 
+  const effectiveMemoryBackend =
+    memoryBackend ?? (chatHistoryMemory ? createChatHistoryMemoryBackend(chatHistoryMemory) : null);
+  const effectiveRecallRequest = memoryRecallRequest ?? (
+    chatHistoryMemory
+      ? {
+          userId: chatHistoryMemory.userId ?? "local-user",
+          characterId: chatHistoryMemory.characterId,
+          projectId: chatHistoryMemory.projectId,
+          sessionId: chatHistoryMemory.sessionId,
+          query: chatHistoryMemory.query ?? prompt,
+          mode: chatHistoryMemory.mode ?? "companion",
+          maxResults: chatHistoryMemory.maxResults
+        }
+      : null
+  );
+  const effectiveCaptureTurn = memoryCaptureTurn ?? (
+    chatHistoryMemory
+      ? {
+          userId: chatHistoryMemory.userId ?? "local-user",
+          characterId: chatHistoryMemory.characterId,
+          projectId: chatHistoryMemory.projectId,
+          sessionId: chatHistoryMemory.sessionId,
+          userText: chatHistoryMemory.userText ?? chatHistoryMemory.query ?? prompt
+        }
+      : null
+  );
+
   const memoryPrompt = await buildPromptWithMemory({
     prompt,
-    memoryBackend,
-    recallRequest: memoryRecallRequest
+    memoryBackend: effectiveMemoryBackend,
+    recallRequest: effectiveRecallRequest
   });
 
   const { session } = await createSession({
@@ -100,12 +129,12 @@ export async function runCockapooPiPrompt({
     const text = collectAssistantText(events);
 
     await captureMemoryTurn({
-      memoryBackend,
-      turn: memoryCaptureTurn
+      memoryBackend: effectiveMemoryBackend,
+      turn: effectiveCaptureTurn
         ? {
-            ...memoryCaptureTurn,
+            ...effectiveCaptureTurn,
             assistantText: text,
-            createdAt: memoryCaptureTurn.createdAt ?? new Date().toISOString()
+            createdAt: effectiveCaptureTurn.createdAt ?? new Date().toISOString()
           }
         : null
     });
