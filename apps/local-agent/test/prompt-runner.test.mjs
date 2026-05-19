@@ -200,6 +200,86 @@ test("runCockapooPiPrompt uses chat history memory when no backend is provided",
   assert.equal(result.recalledMemories.length, 1);
 });
 
+test("runCockapooPiPrompt uses configured memory backend before chat history fallback", async () => {
+  let promptSentToPi = "";
+  const capturedTurns = [];
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.2"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：继续接真实记忆",
+    memoryBackendConfig: {
+      backend: "tencentdb"
+    },
+    resolveMemoryBackend: async ({ config }) => {
+      assert.equal(config.backend, "tencentdb");
+
+      return {
+        async recallForPrompt() {
+          return [
+            {
+              id: "memory-1",
+              scope: "user",
+              kind: "preference",
+              text: "TencentDB 记忆里说用户喜欢先给结论。"
+            }
+          ];
+        },
+        async captureConversationTurn(turn) {
+          capturedTurns.push(turn);
+        }
+      };
+    },
+    chatHistoryMemory: {
+      userId: "local-user",
+      characterId: "shili",
+      sessionId: "session-1",
+      query: "真实记忆",
+      mode: "companion",
+      messages: [
+        {
+          id: "m1",
+          speaker: "user",
+          text: "聊天历史里的旧偏好不该优先出现。",
+          createdAt: "2026-05-19T10:00:00.000+08:00"
+        }
+      ]
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt(prompt) {
+            promptSentToPi = prompt;
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "已经走配置记忆后端。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.match(promptSentToPi, /TencentDB 记忆里说用户喜欢先给结论/);
+  assert.doesNotMatch(promptSentToPi, /聊天历史里的旧偏好/);
+  assert.equal(result.recalledMemories.length, 1);
+  assert.equal(capturedTurns.length, 1);
+  assert.equal(capturedTurns[0].assistantText, "已经走配置记忆后端。");
+});
+
 test("collectAssistantText uses text_end content when deltas are missing", () => {
   const text = collectAssistantText([
     {

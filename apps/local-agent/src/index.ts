@@ -11,4 +11,9 @@ export {
   openAiCompatibleProviderId,
   resolvePiModel
 } from "./model-provider-resolver.mjs";
+export {
+  buildMemoryRuntimeConfig,
+  loadTencentDbMemoryClient,
+  resolveConfiguredMemoryBackend
+} from "./configured-memory-backend.mjs";
 export { runCockapooPiPrompt } from "./prompt-runner.mjs";

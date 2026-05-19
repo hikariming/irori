@@ -5,6 +5,7 @@ import {
   resolvePiModel
 } from "./model-provider-resolver.mjs";
 import { createChatHistoryMemoryBackend } from "./chat-history-memory-backend.mjs";
+import { resolveConfiguredMemoryBackend } from "./configured-memory-backend.mjs";
 import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
 import { createCockapooPiSession } from "./pi-session-adapter.mjs";
 
@@ -59,9 +60,11 @@ export async function runCockapooPiPrompt({
   dryRun = false,
   createSession = createCockapooPiSession,
   memoryBackend,
+  memoryBackendConfig,
   memoryRecallRequest,
   memoryCaptureTurn,
-  chatHistoryMemory
+  chatHistoryMemory,
+  resolveMemoryBackend = resolveConfiguredMemoryBackend
 }) {
   const model = resolvePiModel(modelSettings);
   const modelRoute = formatOpenAiCompatibleRoute(modelSettings);
@@ -78,8 +81,11 @@ export async function runCockapooPiPrompt({
     throw new Error("OpenAI-compatible token is required before sending a Pi prompt.");
   }
 
+  const configuredMemoryBackend = memoryBackend
+    ? null
+    : await resolveMemoryBackend({ config: memoryBackendConfig });
   const effectiveMemoryBackend =
-    memoryBackend ?? (chatHistoryMemory ? createChatHistoryMemoryBackend(chatHistoryMemory) : null);
+    memoryBackend ?? configuredMemoryBackend ?? (chatHistoryMemory ? createChatHistoryMemoryBackend(chatHistoryMemory) : null);
   const effectiveRecallRequest = memoryRecallRequest ?? (
     chatHistoryMemory
       ? {

@@ -231,7 +231,7 @@ node --test packages/memory/test/*.test.mjs
 
 Expected: PASS for the new adapter test and the existing memory package tests.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 Run:
 
@@ -239,3 +239,72 @@ Run:
 git add packages/memory/src/tencentdb-memory-backend.ts packages/memory/src/index.ts packages/memory/test/tencentdb-memory-backend.test.mjs docs/superpowers/plans/2026-05-19-cockapoo-tencentdb-memory-adapter.md
 git commit -m "feat: add tencentdb memory adapter shell"
 ```
+
+## Task 2: Local Agent Runtime Selection
+
+**Files:**
+- Create: `apps/local-agent/src/configured-memory-backend.mjs`
+- Create: `apps/local-agent/test/configured-memory-backend.test.mjs`
+- Modify: `apps/local-agent/src/prompt-runner.mjs`
+- Modify: `apps/local-agent/src/index.ts`
+- Modify: `apps/local-agent/test/prompt-runner.test.mjs`
+
+- [x] **Step 1: Write failing tests for runtime configuration**
+
+Added tests proving:
+
+```js
+buildMemoryRuntimeConfig({ env: {} }).backend === "chat-history";
+await resolveConfiguredMemoryBackend({ config: { backend: "chat-history" }, env: {} }) === null;
+```
+
+and proving `backend: "tencentdb"` can wrap either an injected client or a module factory.
+
+- [x] **Step 2: Verify the tests fail**
+
+Run:
+
+```bash
+node --test apps/local-agent/test/configured-memory-backend.test.mjs
+node --test apps/local-agent/test/prompt-runner.test.mjs
+```
+
+Expected failure was observed because `configured-memory-backend.mjs` did not exist and `prompt-runner` still fell back directly to chat history.
+
+- [x] **Step 3: Implement runtime selection**
+
+Created `configured-memory-backend.mjs` with:
+
+```js
+export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env } = {}) {
+  return {
+    backend: requestConfig.backend ?? env.COCKAPOO_MEMORY_BACKEND ?? "chat-history",
+    tencentdb: {
+      moduleName: requestConfig.tencentdb?.moduleName ?? env.COCKAPOO_TENCENTDB_MEMORY_MODULE ?? "@tencentdb-agent-memory/memory-tencentdb",
+      dataDir: requestConfig.tencentdb?.dataDir ?? env.COCKAPOO_TENCENTDB_MEMORY_DATA_DIR,
+      client: requestConfig.tencentdb?.client
+    }
+  };
+}
+```
+
+`resolveConfiguredMemoryBackend()` returns `null` for `chat-history`, rejects unknown backend names, and creates a Cockapoo `MemoryBackend` for TencentDB-compatible clients.
+
+- [x] **Step 4: Wire prompt-runner**
+
+`runCockapooPiPrompt()` now resolves memory in this order:
+
+```txt
+explicit memoryBackend → configured backend → chatHistoryMemory fallback → no memory
+```
+
+- [x] **Step 5: Run tests**
+
+Run:
+
+```bash
+node --test apps/local-agent/test/configured-memory-backend.test.mjs
+node --test apps/local-agent/test/prompt-runner.test.mjs
+```
+
+Expected: PASS.
