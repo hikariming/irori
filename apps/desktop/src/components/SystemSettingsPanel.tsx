@@ -6,6 +6,7 @@ import { desktopBackend } from "./desktop-backend";
 import { formatUnknownError } from "./error-message";
 import {
   buildMemoryDashboardViewModel,
+  type MemoryDebugEvent,
   type MemoryRunSnapshot,
   type MemoryStatus
 } from "./memory-status-model";
@@ -20,11 +21,12 @@ import { buildSettingsTabs } from "./settings-model";
 type SystemSettingsPanelProps = {
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
+  memoryDebugEvents?: MemoryDebugEvent[];
   onClose: () => void;
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ isOpen, latestMemoryRun, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
   const memoryTab = tabs.find((tab) => tab.id === "memory");
@@ -89,6 +91,7 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, onClose, onModelS
     tokenHint
   });
   const memoryView = buildMemoryDashboardViewModel({
+    debugEvents: memoryDebugEvents,
     status: memoryStatus,
     latestRun: latestMemoryRun
   });
@@ -297,6 +300,23 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, onClose, onModelS
                   ))
                 ) : (
                   <p className="memory-empty-state">还没有召回记录。</p>
+                )}
+              </div>
+
+              <div className="memory-debug-log">
+                <h4>调试日志</h4>
+                {memoryView.debugEvents.length > 0 ? (
+                  <ol>
+                    {memoryView.debugEvents.map((event) => (
+                      <li className={`memory-debug-item ${event.kind}`} key={event.id}>
+                        <time>{event.timeLabel}</time>
+                        <span>{event.sourceLabel}</span>
+                        <p>{event.summary}</p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="memory-empty-state">还没有记忆事件。</p>
                 )}
               </div>
             </div>

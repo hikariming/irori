@@ -24,6 +24,16 @@ export type MemoryRunSnapshot = {
   recalledMemories?: RecalledMemorySnapshot[];
 };
 
+export type MemoryDebugEventKind = "recall" | "fallback" | "capture" | "skipped";
+
+export type MemoryDebugEvent = {
+  id: string;
+  kind: MemoryDebugEventKind;
+  sourceLabel: string;
+  summary: string;
+  timeLabel: string;
+};
+
 export const memoryKindLabels: Record<RecalledMemorySnapshot["kind"], string> = {
   profile_fact: "用户事实",
   preference: "偏好",
@@ -51,12 +61,62 @@ export function formatConfiguredMemoryBackend(backend: MemoryStatus["configuredB
   return backend === "tencentdb" ? "TencentDB 记忆" : "聊天历史";
 }
 
+function formatDebugTime(date: Date) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).format(date);
+}
+
+function debugKindForSource(source?: MemoryBackendSource): MemoryDebugEventKind {
+  if (source === "chat-history") {
+    return "fallback";
+  }
+
+  if (source === "none" || !source) {
+    return "skipped";
+  }
+
+  return "recall";
+}
+
+export function createMemoryDebugEventFromRun({
+  now = new Date(),
+  run
+}: {
+  now?: Date;
+  run: MemoryRunSnapshot;
+}): MemoryDebugEvent {
+  const sourceLabel = formatMemoryBackendSource(run.memoryBackendSource);
+  const recalledCount = run.recalledMemories?.length ?? 0;
+  const kind = debugKindForSource(run.memoryBackendSource);
+  const summary =
+    kind === "skipped"
+      ? "本轮没有注入记忆。"
+      : `召回 ${recalledCount} 条，使用${sourceLabel}。`;
+
+  return {
+    id: `${now.toISOString()}-${run.memoryBackendSource ?? "unknown"}-${recalledCount}`,
+    kind,
+    sourceLabel,
+    summary,
+    timeLabel: formatDebugTime(now)
+  };
+}
+
+export function appendMemoryDebugEvent(events: MemoryDebugEvent[], event: MemoryDebugEvent) {
+  return [event, ...events].slice(0, 10);
+}
+
 export function buildMemoryDashboardViewModel({
   status,
-  latestRun
+  latestRun,
+  debugEvents = []
 }: {
   status: MemoryStatus | null;
   latestRun?: MemoryRunSnapshot | null;
+  debugEvents?: MemoryDebugEvent[];
 }) {
   const memories = latestRun?.recalledMemories ?? [];
 
@@ -76,6 +136,7 @@ export function buildMemoryDashboardViewModel({
       ...memory,
       kindLabel: memoryKindLabels[memory.kind],
       sourceLabel: memory.sourceRef ?? memory.scope
-    }))
+    })),
+    debugEvents
   };
 }

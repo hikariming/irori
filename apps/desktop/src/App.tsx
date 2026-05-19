@@ -12,7 +12,12 @@ import { buildCharacterCardViewModel } from "./components/character-card-view-mo
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
 import type { ComposerMode } from "./components/input-model";
 import { buildInitialModelSettings, isModelConfigured, type ModelSettingsState } from "./components/model-settings-controller";
-import type { MemoryRunSnapshot } from "./components/memory-status-model";
+import {
+  appendMemoryDebugEvent,
+  createMemoryDebugEventFromRun,
+  type MemoryDebugEvent,
+  type MemoryRunSnapshot
+} from "./components/memory-status-model";
 import { characters } from "./components/sidebar-model";
 
 function messageTime() {
@@ -47,6 +52,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [isSending, setIsSending] = useState(false);
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
+  const [memoryDebugEvents, setMemoryDebugEvents] = useState<MemoryDebugEvent[]>([]);
   const [latestMemoryRun, setLatestMemoryRun] = useState<MemoryRunSnapshot | null>(null);
   const modelReady = isModelConfigured(modelSettings);
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
@@ -222,10 +228,14 @@ export function App() {
         sessionId,
         sessionPrompt
       });
-      setLatestMemoryRun({
+      const memoryRun = {
         memoryBackendSource: response.memoryBackendSource,
         recalledMemories: response.recalledMemories
-      });
+      };
+      setLatestMemoryRun(memoryRun);
+      setMemoryDebugEvents((current) =>
+        appendMemoryDebugEvent(current, createMemoryDebugEventFromRun({ run: memoryRun }))
+      );
       if (!response.text.trim()) {
         throw new Error("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。");
       }
@@ -311,6 +321,7 @@ export function App() {
         />
         <SystemSettingsPanel
           isOpen={isSettingsOpen}
+          memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}
           onClose={() => setIsSettingsOpen(false)}
           onModelSettingsChange={setModelSettings}

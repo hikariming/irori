@@ -809,12 +809,14 @@ button {
   line-height: 1.45;
 }
 
-.memory-recall-list {
+.memory-recall-list,
+.memory-debug-log {
   display: grid;
   gap: 8px;
 }
 
-.memory-recall-list h4 {
+.memory-recall-list h4,
+.memory-debug-log h4 {
   margin: 4px 0 0;
   color: #30333b;
   font-size: 13px;
@@ -858,6 +860,69 @@ button {
   border: 1px dashed rgba(42, 47, 58, 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.5);
+}
+
+.memory-debug-log ol {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.memory-debug-item {
+  display: grid;
+  grid-template-columns: 42px 104px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(42, 47, 58, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.memory-debug-item time,
+.memory-debug-item span {
+  color: rgba(48, 51, 59, 0.62);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.memory-debug-item span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 20px;
+  padding: 0 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(47, 111, 104, 0.09);
+  color: #2f6f68;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-debug-item.fallback span {
+  background: rgba(145, 107, 34, 0.1);
+  color: #916b22;
+}
+
+.memory-debug-item.skipped span {
+  background: rgba(95, 99, 112, 0.1);
+  color: #777b86;
+}
+
+.memory-debug-item p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(49, 53, 62, 0.78);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-placeholder {

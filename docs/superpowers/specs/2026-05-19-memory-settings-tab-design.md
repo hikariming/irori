@@ -15,6 +15,7 @@ The existing settings tabs remain the shell. The `记忆` tab becomes a real pan
 - Backend status: configured backend, actual latest run source, and fallback state.
 - Local storage status: `memory-tdai` directory, whether `vectors.db` exists, and whether the TencentDB package path is present.
 - Latest recall: count and cards for memories returned by the last `send_pi_prompt` call.
+- Debug log: the latest 10 in-memory events, newest first, with time, source, and a short summary such as fallback or recall count.
 
 ## Data Flow
 
@@ -30,5 +31,6 @@ Use model and backend tests for the stable logic:
 
 - local-agent prompt runner reports `memoryBackendSource`.
 - desktop preview backend returns memory status and preserves recalled memory snapshots.
+- memory status model formats debug events and keeps only the newest 10 events.
 - Rust unit tests cover the memory status payload shape.
 - Existing desktop and local-agent tests continue passing.
