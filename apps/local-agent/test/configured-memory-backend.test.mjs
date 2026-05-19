@@ -32,6 +32,26 @@ test("buildMemoryRuntimeConfig reads tencentdb settings from request and env", (
   assert.equal(config.tencentdb.dataDir, "/tmp/request-memory");
 });
 
+test("buildMemoryRuntimeConfig can enable tencentdb from desktop payload", () => {
+  const config = buildMemoryRuntimeConfig({
+    requestConfig: {
+      memoryBackendConfig: {
+        backend: "tencentdb",
+        tencentdb: {
+          dataDir: "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+        }
+      }
+    },
+    env: {}
+  });
+
+  assert.equal(config.backend, "tencentdb");
+  assert.equal(
+    config.tencentdb.dataDir,
+    "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+  );
+});
+
 test("resolveConfiguredMemoryBackend returns null when configured for chat history", async () => {
   const backend = await resolveConfiguredMemoryBackend({
     config: { backend: "chat-history" },
@@ -132,6 +152,25 @@ test("resolveConfiguredMemoryBackend loads a tencentdb client factory from a mod
   ]);
   assert.equal(recalled[0].kind, "session_summary");
   assert.equal(recalled[0].text, "这次在接真实记忆后端。");
+});
+
+test("resolveConfiguredMemoryBackend skips plugin-only tencentdb modules", async () => {
+  const backend = await resolveConfiguredMemoryBackend({
+    config: {
+      backend: "tencentdb",
+      tencentdb: {
+        moduleName: "plugin-only-memory-module"
+      }
+    },
+    env: {},
+    importModule: async () => ({
+      default() {
+        throw new Error("OpenClaw plugin register should not be called as a client factory");
+      }
+    })
+  });
+
+  assert.equal(backend, null);
 });
 
 test("resolveConfiguredMemoryBackend rejects unsupported backends", async () => {

@@ -210,6 +210,11 @@ fn run_local_agent_prompt(
     if let Some(memory) = chat_history_memory {
         payload["chatHistoryMemory"] = memory;
     }
+    if request.is_some() {
+        let memory_dir = memory_backend_dir(&app)?;
+        fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
+        payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
+    }
     let mut child = Command::new("pnpm")
         .arg("--dir")
         .arg(agent_dir)
@@ -292,6 +297,23 @@ fn chat_history_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?
         .join("chat-history.sqlite3"))
+}
+
+fn memory_backend_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("memory-tdai"))
+}
+
+fn build_memory_backend_config_payload(memory_dir: &Path) -> serde_json::Value {
+    serde_json::json!({
+        "backend": "tencentdb",
+        "tencentdb": {
+            "dataDir": memory_dir.to_string_lossy()
+        }
+    })
 }
 
 fn local_agent_dir() -> PathBuf {
@@ -657,15 +679,17 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
         append_chat_message_to_path, create_chat_session_at_path, get_chat_session_from_path,
         init_chat_history_at_path, list_chat_sessions_from_path,
-        recent_memory_messages_from_path, AppendChatMessageRequest, CreateChatSessionRequest,
-        normalize_openai_compatible_settings, read_model_settings_from_path,
-        save_model_settings_to_path, ModelSettingsSnapshot, SaveModelSettingsRequest,
+        build_memory_backend_config_payload, recent_memory_messages_from_path,
+        AppendChatMessageRequest, CreateChatSessionRequest, normalize_openai_compatible_settings,
+        read_model_settings_from_path, save_model_settings_to_path, ModelSettingsSnapshot,
+        SaveModelSettingsRequest,
     };
 
     static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -818,6 +842,19 @@ mod tests {
         assert_eq!(messages[0].text, "我喜欢你先给结论。");
         assert_eq!(messages[2].text, "继续做记忆。");
         assert!(messages.iter().all(|message| message.speaker != "system"));
+    }
+
+    #[test]
+    fn memory_backend_config_points_to_local_tencentdb_directory() {
+        let value = build_memory_backend_config_payload(
+            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+        );
+
+        assert_eq!(value["backend"], "tencentdb");
+        assert_eq!(
+            value["tencentdb"]["dataDir"],
+            "/tmp/cockapoo-app-data/memory-tdai"
+        );
     }
 
     #[test]

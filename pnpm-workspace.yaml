@@ -4,6 +4,7 @@ packages:
 
 allowBuilds:
   '@google/genai': true
+  '@tencentdb-agent-memory/memory-tencentdb': true
   esbuild: true
   koffi: true
   protobufjs: true

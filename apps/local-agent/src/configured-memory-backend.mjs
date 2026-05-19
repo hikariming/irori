@@ -29,7 +29,6 @@ function factoryFromModule(memoryModule) {
     memoryModule.createTencentDbMemoryClient ??
     memoryModule.createTencentDBMemoryClient ??
     memoryModule.createTdaiMemoryClient ??
-    memoryModule.default ??
     null
   );
 }
@@ -45,7 +44,7 @@ function tencentDbFactoryOptions(config) {
 }
 
 export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env } = {}) {
-  requestConfig = requestConfig ?? {};
+  requestConfig = requestConfig?.memoryBackendConfig ?? requestConfig ?? {};
   const requestTencentDb = requestConfig.tencentdb ?? {};
   const backend =
     nonEmptyString(requestConfig.backend) ??
@@ -111,10 +110,16 @@ export async function resolveConfiguredMemoryBackend({
     throw new Error(`Unsupported memory backend: ${runtimeConfig.backend}`);
   }
 
-  const client = await loadTencentDbMemoryClient({
-    config: runtimeConfig.tencentdb,
-    importModule
-  });
+  let client;
+
+  try {
+    client = await loadTencentDbMemoryClient({
+      config: runtimeConfig.tencentdb,
+      importModule
+    });
+  } catch {
+    return null;
+  }
 
   return createTencentDbMemoryBackend({ client });
 }

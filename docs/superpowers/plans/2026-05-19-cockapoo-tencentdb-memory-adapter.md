@@ -308,3 +308,76 @@ node --test apps/local-agent/test/prompt-runner.test.mjs
 ```
 
 Expected: PASS.
+
+## Task 3: TencentDB Package And Local Memory Directory
+
+**Files:**
+- Modify: `apps/local-agent/package.json`
+- Modify: `pnpm-lock.yaml`
+- Modify: `pnpm-workspace.yaml`
+- Modify: `apps/local-agent/src/configured-memory-backend.mjs`
+- Modify: `apps/local-agent/test/configured-memory-backend.test.mjs`
+- Modify: `apps/desktop/src-tauri/src/lib.rs`
+
+- [x] **Step 1: Add failing tests for desktop payload and nested config**
+
+Added tests proving desktop can send:
+
+```json
+{
+  "memoryBackendConfig": {
+    "backend": "tencentdb",
+    "tencentdb": {
+      "dataDir": "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+    }
+  }
+}
+```
+
+and local-agent can read that nested payload.
+
+- [x] **Step 2: Install TencentDB Agent Memory**
+
+Run:
+
+```bash
+pnpm --dir apps/local-agent add @tencentdb-agent-memory/memory-tencentdb
+```
+
+Installed `@tencentdb-agent-memory/memory-tencentdb@0.3.5`, which brings `sqlite-vec@0.1.7-alpha.2`.
+
+- [x] **Step 3: Allow package build scripts**
+
+Updated `pnpm-workspace.yaml`:
+
+```yaml
+allowBuilds:
+  '@tencentdb-agent-memory/memory-tencentdb': true
+```
+
+`pnpm install` then ran the package postinstall. The postinstall OpenClaw patch reported no OpenClaw directory, which is expected for Cockapoo.
+
+- [x] **Step 4: Wire desktop memory directory**
+
+`send_pi_prompt` now creates and sends:
+
+```txt
+<app_data_dir>/memory-tdai
+```
+
+as `memoryBackendConfig.tencentdb.dataDir`.
+
+- [x] **Step 5: Guard plugin-only exports**
+
+The current package public export is an OpenClaw plugin register function, not a direct client factory. The local-agent loader now skips plugin-only modules and falls back to chat-history memory instead of calling the plugin register function incorrectly.
+
+- [x] **Step 6: Run tests**
+
+Run:
+
+```bash
+node --test apps/local-agent/test/configured-memory-backend.test.mjs
+cargo test memory_backend_config_points_to_local_tencentdb_directory
+```
+
+Expected: PASS.
