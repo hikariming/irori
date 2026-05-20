@@ -29,6 +29,10 @@ export type RecalledMemory = {
   scope: MemoryScope;
   kind: MemoryKind;
   text: string;
+  userId?: string;
+  characterId?: string;
+  projectId?: string;
+  sessionId?: string;
   confidence?: number;
   sourceRef?: string;
   approved?: boolean;

@@ -14,6 +14,10 @@ export type RecalledMemorySnapshot = {
   scope: "user" | "character" | "project" | "session";
   kind: "profile_fact" | "preference" | "relationship_note" | "project_note" | "session_summary";
   text: string;
+  userId?: string;
+  characterId?: string;
+  projectId?: string;
+  sessionId?: string;
   confidence?: number;
   sourceRef?: string;
   approved?: boolean;
@@ -22,6 +26,12 @@ export type RecalledMemorySnapshot = {
 export type MemoryRunSnapshot = {
   memoryBackendSource?: MemoryBackendSource;
   recalledMemories?: RecalledMemorySnapshot[];
+};
+
+export const memoryCharacterLabels: Record<string, string> = {
+  shili: "示璃",
+  lulin: "陆临",
+  shenyanzhou: "沈砚洲"
 };
 
 export type MemoryDebugEventKind = "recall" | "fallback" | "capture" | "skipped";
@@ -109,21 +119,67 @@ export function appendMemoryDebugEvent(events: MemoryDebugEvent[], event: Memory
   return [event, ...events].slice(0, 10);
 }
 
+function sourceMatches(sourceRef: string | undefined, expected: string | undefined, prefix: string) {
+  if (!sourceRef || !expected) {
+    return false;
+  }
+
+  return sourceRef === expected || sourceRef === `${prefix}:${expected}` || sourceRef.startsWith(`${expected}/`);
+}
+
+function isVisibleForCharacter(memory: RecalledMemorySnapshot, characterId: string) {
+  if (memory.scope === "user" || memory.scope === "project") {
+    return true;
+  }
+
+  if (memory.scope === "character") {
+    return memory.characterId === characterId || sourceMatches(memory.sourceRef, characterId, "character");
+  }
+
+  if (memory.scope === "session") {
+    return !memory.characterId || memory.characterId === characterId;
+  }
+
+  return false;
+}
+
+function ownerLabel(memory: RecalledMemorySnapshot) {
+  if (memory.scope === "user") {
+    return "共享";
+  }
+
+  if (memory.scope === "project") {
+    return "项目";
+  }
+
+  if (memory.characterId) {
+    return memoryCharacterLabels[memory.characterId] ?? memory.characterId;
+  }
+
+  return memory.scope;
+}
+
 export function buildMemoryDashboardViewModel({
   status,
   latestRun,
-  debugEvents = []
+  debugEvents = [],
+  selectedCharacterId = "shili"
 }: {
   status: MemoryStatus | null;
   latestRun?: MemoryRunSnapshot | null;
   debugEvents?: MemoryDebugEvent[];
+  selectedCharacterId?: string;
 }) {
-  const memories = latestRun?.recalledMemories ?? [];
+  const allMemories = latestRun?.recalledMemories ?? [];
+  const memories = allMemories.filter((memory) => isVisibleForCharacter(memory, selectedCharacterId));
 
   return {
     backendLabel: status ? formatConfiguredMemoryBackend(status.configuredBackend) : "加载中",
     latestSourceLabel: formatMemoryBackendSource(latestRun?.memoryBackendSource),
     recalledCount: memories.length,
+    totalRecalledCount: allMemories.length,
+    selectedCharacterId,
+    selectedCharacterLabel: memoryCharacterLabels[selectedCharacterId] ?? selectedCharacterId,
     storageRows: status
       ? [
           { label: "记忆目录", value: status.memoryDir },
@@ -135,6 +191,7 @@ export function buildMemoryDashboardViewModel({
     memories: memories.map((memory) => ({
       ...memory,
       kindLabel: memoryKindLabels[memory.kind],
+      ownerLabel: ownerLabel(memory),
       sourceLabel: memory.sourceRef ?? memory.scope
     })),
     debugEvents

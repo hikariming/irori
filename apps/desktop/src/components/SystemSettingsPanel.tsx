@@ -1,5 +1,5 @@
 import { Button, Chip, Tabs } from "@heroui/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CharacterCardSettings } from "./CharacterCardSettings";
 import { desktopBackend } from "./desktop-backend";
@@ -11,14 +11,27 @@ import {
   type MemoryStatus
 } from "./memory-status-model";
 import {
+  buildDraftModelProfile,
   buildInitialModelSettings,
   formatOpenAiCompatibleRequestPreview,
+  getActiveModelProfile,
   normalizeOpenAiCompatibleSettings,
-  type ModelSettingsState
+  type ModelSettingsState,
+  type SavedModelProfile
 } from "./model-settings-controller";
 import { buildSettingsTabs } from "./settings-model";
+import { characters } from "./sidebar-model";
+import {
+  buildToolPolicySettingsViewModel,
+  defaultToolPolicySettings,
+  toggleToolPolicyItem,
+  type ToolId,
+  type ToolPolicySettings,
+  type ToolPolicyToggleGroup
+} from "./tool-policy-model";
 
 type SystemSettingsPanelProps = {
+  activeCharacterId?: string;
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
   memoryDebugEvents?: MemoryDebugEvent[];
@@ -26,32 +39,71 @@ type SystemSettingsPanelProps = {
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
   const memoryTab = tabs.find((tab) => tab.id === "memory");
   const safetyTab = tabs.find((tab) => tab.id === "safety");
-  const [baseUrl, setBaseUrl] = useState(buildInitialModelSettings().baseUrl);
-  const [modelName, setModelName] = useState(buildInitialModelSettings().modelName);
+  const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
+  const [selectedProfileId, setSelectedProfileId] = useState(getActiveModelProfile(buildInitialModelSettings()).id);
+  const [draftProfile, setDraftProfile] = useState<SavedModelProfile>(() => getActiveModelProfile(buildInitialModelSettings()));
   const [token, setToken] = useState("");
-  const [tokenHint, setTokenHint] = useState<string | undefined>();
-  const [hasToken, setHasToken] = useState(false);
+  const [selectedMemoryCharacterId, setSelectedMemoryCharacterId] = useState(activeCharacterId);
   const [memoryStatus, setMemoryStatus] = useState<MemoryStatus | null>(null);
   const [memoryStatusError, setMemoryStatusError] = useState("");
+  const [toolPolicySettings, setToolPolicySettings] = useState<ToolPolicySettings>(defaultToolPolicySettings);
+  const [toolPolicySaveState, setToolPolicySaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [toolPolicyError, setToolPolicyError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
+  const modelOperationIdRef = useRef(0);
+
+  function selectDraftProfile(settings: ModelSettingsState, profileId: string) {
+    return settings.profiles.find((profile) => profile.id === profileId)
+      ?? getActiveModelProfile(settings)
+      ?? buildDraftModelProfile(profileId);
+  }
+
+  function updateDraftProfile(patch: Partial<SavedModelProfile>) {
+    modelOperationIdRef.current += 1;
+    setDraftProfile((current) => ({ ...current, ...patch }));
+    setSaveState("idle");
+    setTestState("idle");
+    setTestMessage("");
+  }
+
+  function updateToken(value: string) {
+    modelOperationIdRef.current += 1;
+    setToken(value);
+    setSaveState("idle");
+    setTestState("idle");
+    setTestMessage("");
+  }
 
   useEffect(() => {
     if (!isOpen) {
+      modelOperationIdRef.current += 1;
       return;
     }
 
+    setSelectedMemoryCharacterId(activeCharacterId);
+
+    const loadOperationId = modelOperationIdRef.current + 1;
+    modelOperationIdRef.current = loadOperationId;
+
     desktopBackend.loadModelSettings().then((settings) => {
-      setBaseUrl(settings.baseUrl);
-      setModelName(settings.modelName);
-      setTokenHint(settings.tokenHint);
-      setHasToken(settings.hasToken);
+      if (modelOperationIdRef.current !== loadOperationId) {
+        return;
+      }
+
+      const active = getActiveModelProfile(settings) ?? buildDraftModelProfile("default");
+
+      setModelSettings(settings);
+      setSelectedProfileId(active.id);
+      setDraftProfile(active);
+      setToken("");
+      setSaveState("idle");
       onModelSettingsChange?.(settings);
       setTestState("idle");
       setTestMessage("");
@@ -74,76 +126,250 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
         setMemoryStatus(null);
         setMemoryStatusError(formatUnknownError(error, "记忆状态加载失败。"));
       });
-  }, [isOpen, onModelSettingsChange]);
+
+    desktopBackend.getToolPolicySettings()
+      .then((settings) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setToolPolicySettings(settings);
+        setToolPolicySaveState("idle");
+        setToolPolicyError("");
+      })
+      .catch((error) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setToolPolicySettings(defaultToolPolicySettings);
+        setToolPolicyError(formatUnknownError(error, "权限设置加载失败。"));
+      });
+  }, [activeCharacterId, isOpen, onModelSettingsChange]);
 
   if (!isOpen) {
     return null;
   }
 
-  const normalizedDraft = normalizeOpenAiCompatibleSettings({
-    baseUrl,
-    modelName
-  });
-  const routePreview = formatOpenAiCompatibleRequestPreview({
-    baseUrl,
-    hasToken,
-    modelName,
-    tokenHint
-  });
+  const activeProfile = getActiveModelProfile(modelSettings);
+  const selectedSavedProfile = modelSettings.profiles.find((profile) => profile.id === selectedProfileId);
+  const isUnsavedProfileDraft = !selectedSavedProfile;
+  const normalizedDraft = normalizeOpenAiCompatibleSettings(draftProfile);
+  const routePreview = formatOpenAiCompatibleRequestPreview(draftProfile);
   const memoryView = buildMemoryDashboardViewModel({
     debugEvents: memoryDebugEvents,
     status: memoryStatus,
-    latestRun: latestMemoryRun
+    latestRun: latestMemoryRun,
+    selectedCharacterId: selectedMemoryCharacterId
   });
-  const didNormalizeBaseUrl = normalizedDraft.baseUrl !== baseUrl.trim().replace(/\/+$/, "");
+  const toolPolicyView = buildToolPolicySettingsViewModel(toolPolicySettings);
+  const didNormalizeBaseUrl = normalizedDraft.baseUrl !== draftProfile.baseUrl.trim().replace(/\/+$/, "");
+  const canUseDraft = Boolean(draftProfile.baseUrl.trim() && draftProfile.modelName.trim() && (draftProfile.hasToken || token.trim()));
+  const isModelActionBusy = saveState === "saving" || testState === "testing";
+  const hasUnsavedModelDraft = selectedSavedProfile
+    ? Boolean(token.trim())
+      || selectedSavedProfile.name !== draftProfile.name
+      || selectedSavedProfile.baseUrl !== draftProfile.baseUrl
+      || selectedSavedProfile.modelName !== draftProfile.modelName
+    : true;
+  const canChangeModelProfile = !hasUnsavedModelDraft && !isModelActionBusy;
 
-  async function saveModelSettings() {
+  async function saveModelSettings(options: { makeActive?: boolean } = {}) {
+    if (isModelActionBusy) {
+      return;
+    }
+
+    const saveOperationId = modelOperationIdRef.current + 1;
+    modelOperationIdRef.current = saveOperationId;
     setSaveState("saving");
 
     try {
       const settings = await desktopBackend.saveModelSettings({
         baseUrl: normalizedDraft.baseUrl,
+        makeActive: options.makeActive,
         modelName: normalizedDraft.modelName,
+        name: draftProfile.name,
+        profileId: draftProfile.id,
         token: token.trim() || undefined
       });
-      setBaseUrl(settings.baseUrl);
-      setModelName(settings.modelName);
-      setTokenHint(settings.tokenHint);
-      setHasToken(settings.hasToken);
+      if (modelOperationIdRef.current !== saveOperationId) {
+        setModelSettings(settings);
+        onModelSettingsChange?.(settings);
+        return;
+      }
+
+      const nextDraft = selectDraftProfile(settings, draftProfile.id);
+
+      setModelSettings(settings);
+      setSelectedProfileId(nextDraft.id);
+      setDraftProfile(nextDraft);
       setToken("");
       setSaveState("saved");
       setTestState("idle");
       setTestMessage("");
       onModelSettingsChange?.(settings);
     } catch {
+      if (modelOperationIdRef.current !== saveOperationId) {
+        return;
+      }
+
       setSaveState("error");
     }
   }
 
+  async function deleteSelectedProfile() {
+    if (isModelActionBusy) {
+      return;
+    }
+
+    if (isUnsavedProfileDraft) {
+      const nextDraft = getActiveModelProfile(modelSettings) ?? buildDraftModelProfile("default");
+
+      modelOperationIdRef.current += 1;
+      setSelectedProfileId(nextDraft.id);
+      setDraftProfile(nextDraft);
+      setToken("");
+      setSaveState("idle");
+      setTestState("idle");
+      setTestMessage("");
+      return;
+    }
+
+    const deleteOperationId = modelOperationIdRef.current + 1;
+    modelOperationIdRef.current = deleteOperationId;
+    setSaveState("saving");
+
+    try {
+      const settings = await desktopBackend.deleteModelProfile(draftProfile.id);
+      if (modelOperationIdRef.current !== deleteOperationId) {
+        setModelSettings(settings);
+        onModelSettingsChange?.(settings);
+        return;
+      }
+
+      const nextDraft = getActiveModelProfile(settings) ?? buildDraftModelProfile("default");
+
+      setModelSettings(settings);
+      setSelectedProfileId(nextDraft.id);
+      setDraftProfile(nextDraft);
+      setToken("");
+      setSaveState("saved");
+      setTestState("idle");
+      setTestMessage("");
+      onModelSettingsChange?.(settings);
+    } catch {
+      if (modelOperationIdRef.current !== deleteOperationId) {
+        return;
+      }
+
+      setSaveState("error");
+    }
+  }
+
+  function addModelProfile() {
+    if (!canChangeModelProfile) {
+      return;
+    }
+
+    const id = `profile-${Date.now()}`;
+    const draft = buildDraftModelProfile(id);
+
+    modelOperationIdRef.current += 1;
+    setSelectedProfileId(id);
+    setDraftProfile(draft);
+    setToken("");
+    setSaveState("idle");
+    setTestState("idle");
+    setTestMessage("");
+  }
+
+  function selectModelProfile(profileId: string) {
+    if (!canChangeModelProfile || profileId === selectedProfileId) {
+      return;
+    }
+
+    const profile = selectDraftProfile(modelSettings, profileId);
+
+    modelOperationIdRef.current += 1;
+    setSelectedProfileId(profile.id);
+    setDraftProfile(profile);
+    setToken("");
+    setSaveState("idle");
+    setTestState("idle");
+    setTestMessage("");
+  }
+
   async function testModelConnection() {
+    if (isModelActionBusy) {
+      return;
+    }
+
+    const testOperationId = modelOperationIdRef.current + 1;
+    modelOperationIdRef.current = testOperationId;
     setTestState("testing");
     setTestMessage("");
 
     try {
-      const settings = await desktopBackend.saveModelSettings({
+      const result = await desktopBackend.testModelConnection({
         baseUrl: normalizedDraft.baseUrl,
+        name: draftProfile.name,
         modelName: normalizedDraft.modelName,
+        profileId: draftProfile.id,
         token: token.trim() || undefined
       });
-      setBaseUrl(settings.baseUrl);
-      setModelName(settings.modelName);
-      setTokenHint(settings.tokenHint);
-      setHasToken(settings.hasToken);
-      setToken("");
-      onModelSettingsChange?.(settings);
-
-      const result = await desktopBackend.testModelConnection();
-      setTestState("passed");
-      setTestMessage(`模型测试通过：${result.text}`);
+      if (modelOperationIdRef.current === testOperationId) {
+        setTestState("passed");
+        setTestMessage(`模型测试通过：${result.text}`);
+      }
     } catch (error) {
-      setTestState("error");
-      setTestMessage(formatUnknownError(error, "模型测试失败。"));
+      if (modelOperationIdRef.current === testOperationId) {
+        setTestState("error");
+        setTestMessage(formatUnknownError(error, "模型测试失败。"));
+      }
     }
+  }
+
+  function toggleToolPolicy(group: ToolPolicyToggleGroup, toolId: ToolId) {
+    setToolPolicySettings((settings) => toggleToolPolicyItem({ settings, group, toolId }));
+    setToolPolicySaveState("idle");
+  }
+
+  async function saveToolPolicySettings() {
+    setToolPolicySaveState("saving");
+
+    try {
+      const saved = await desktopBackend.saveToolPolicySettings(toolPolicySettings);
+      setToolPolicySettings(saved);
+      setToolPolicySaveState("saved");
+      setToolPolicyError("");
+    } catch (error) {
+      setToolPolicySaveState("error");
+      setToolPolicyError(formatUnknownError(error, "权限设置保存失败。"));
+    }
+  }
+
+  function isToolEnabled(group: ToolPolicyToggleGroup, toolId: ToolId) {
+    const groupSettings = toolPolicySettings[group] as Partial<Record<ToolId, boolean>>;
+    return groupSettings[toolId] === true;
+  }
+
+  function renderToolGroup(group: ToolPolicyToggleGroup, title: string, tools: typeof toolPolicyView.toolOrder) {
+    return (
+      <div className="tool-policy-group">
+        <h5>{title}</h5>
+        <div className="tool-policy-toggle-grid">
+          {tools.map((tool) => (
+            <label className="tool-policy-toggle" key={`${group}-${tool.id}`}>
+              <input checked={isToolEnabled(group, tool.id)} onChange={() => toggleToolPolicy(group, tool.id)} type="checkbox" />
+              <span>
+                <strong>{tool.label}</strong>
+                <small>{tool.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -153,7 +379,7 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
           <span>系统设置</span>
           <h2>角色与本地模型</h2>
         </div>
-        <Button aria-label="关闭系统设置" className="settings-close" onPress={onClose} type="button">
+        <Button aria-label="关闭系统设置" className="settings-close" isDisabled={isModelActionBusy} onPress={onClose} type="button">
           ×
         </Button>
       </div>
@@ -175,70 +401,130 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
                 <p>{modelProviderTab.description}</p>
               </div>
               <Chip className="provider-status" size="sm" variant="soft">
-                {hasToken ? `Token ${tokenHint ?? "已保存"}` : "未保存 Token"}
+                {activeProfile ? `当前：${activeProfile.name}` : "未选择模型"}
               </Chip>
             </header>
 
-            <div className="openai-compatible-form">
-              <label className="settings-input">
-                <span>Base URL</span>
-                <input
-                  aria-label="OpenAI 兼容接口 Base URL"
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                  placeholder="https://open.bigmodel.cn/api/coding/paas/v4"
-                  value={baseUrl}
-                />
-              </label>
-              <label className="settings-input">
-                <span>Token</span>
-                <input
-                  aria-label="OpenAI 兼容接口 Token"
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder={hasToken ? "留空则继续使用已保存 Token" : "sk-..."}
-                  type="password"
-                  value={token}
-                />
-              </label>
-              <label className="settings-input">
-                <span>模型名</span>
-                <input
-                  aria-label="OpenAI 兼容接口模型名"
-                  onChange={(event) => setModelName(event.target.value)}
-                  placeholder="glm-5.1 / gpt-5.2 / qwen3-coder"
-                  value={modelName}
-                />
-              </label>
+            <div className="model-profile-layout">
+              <div className="model-profile-list" aria-label="模型配置档案">
+                {modelSettings.profiles.map((profile) => (
+                  <button
+                    className={`model-profile-item ${selectedProfileId === profile.id ? "selected" : ""}`}
+                    disabled={isModelActionBusy || (hasUnsavedModelDraft && selectedProfileId !== profile.id)}
+                    key={profile.id}
+                    onClick={() => selectModelProfile(profile.id)}
+                    type="button"
+                  >
+                    <span>{profile.name}</span>
+                    <small>{profile.modelName || "未填写模型名"}</small>
+                    {modelSettings.activeModelId === profile.id ? <strong>当前</strong> : null}
+                  </button>
+                ))}
+                <Button className="settings-secondary-action" isDisabled={!canChangeModelProfile} onPress={addModelProfile} type="button">
+                  新增模型
+                </Button>
+              </div>
 
-              <div className="provider-route-row">
-                <code className="provider-route">{routePreview}</code>
+              <div className="openai-compatible-form">
+                <label className="settings-input">
+                  <span>配置名称</span>
+                  <input
+                    aria-label="模型配置名称"
+                    disabled={isModelActionBusy}
+                    onChange={(event) => updateDraftProfile({ name: event.target.value })}
+                    placeholder="OpenAI GPT-5.2 / 智谱 GLM"
+                    value={draftProfile.name}
+                  />
+                </label>
+                <label className="settings-input">
+                  <span>Base URL</span>
+                  <input
+                    aria-label="OpenAI 兼容接口 Base URL"
+                    disabled={isModelActionBusy}
+                    onChange={(event) => updateDraftProfile({ baseUrl: event.target.value })}
+                    placeholder="https://open.bigmodel.cn/api/coding/paas/v4"
+                    value={draftProfile.baseUrl}
+                  />
+                </label>
+                <label className="settings-input">
+                  <span>Token</span>
+                  <input
+                    aria-label="OpenAI 兼容接口 Token"
+                    disabled={isModelActionBusy}
+                    onChange={(event) => updateToken(event.target.value)}
+                    placeholder={draftProfile.hasToken ? "留空则继续使用已保存 Token" : "sk-..."}
+                    type="password"
+                    value={token}
+                  />
+                </label>
+                <label className="settings-input">
+                  <span>模型名</span>
+                  <input
+                    aria-label="OpenAI 兼容接口模型名"
+                    disabled={isModelActionBusy}
+                    onChange={(event) => updateDraftProfile({ modelName: event.target.value })}
+                    placeholder="glm-5.1 / gpt-5.2 / qwen3-coder"
+                    value={draftProfile.modelName}
+                  />
+                </label>
+
+                <div className="provider-route-row">
+                  <code className="provider-route">{routePreview}</code>
+                  <div className="provider-actions">
+                    <Button
+                      className="settings-secondary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy}
+                      onPress={testModelConnection}
+                      type="button"
+                    >
+                      {testState === "testing" ? "测试中" : "测试模型"}
+                    </Button>
+                    <Button
+                      className="settings-secondary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy || modelSettings.activeModelId === draftProfile.id}
+                      onPress={() => saveModelSettings({ makeActive: true })}
+                      type="button"
+                    >
+                      设为当前
+                    </Button>
+                    <Button
+                      className="settings-primary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy}
+                      onPress={() => saveModelSettings({ makeActive: modelSettings.activeModelId === draftProfile.id })}
+                      type="button"
+                    >
+                      {saveState === "saving" ? "保存中" : "保存配置"}
+                    </Button>
+                  </div>
+                </div>
                 <div className="provider-actions">
                   <Button
                     className="settings-secondary-action"
-                    isDisabled={!baseUrl.trim() || !modelName.trim() || (!hasToken && !token.trim()) || testState === "testing" || saveState === "saving"}
-                    onPress={testModelConnection}
+                    isDisabled={isModelActionBusy || (!isUnsavedProfileDraft && modelSettings.profiles.length <= 1)}
+                    onPress={deleteSelectedProfile}
                     type="button"
                   >
-                    {testState === "testing" ? "测试中" : "测试模型"}
+                    {isUnsavedProfileDraft ? "放弃新增" : "删除配置"}
                   </Button>
-                  <Button
-                    className="settings-primary-action"
-                    isDisabled={!baseUrl.trim() || !modelName.trim() || (!hasToken && !token.trim()) || saveState === "saving"}
-                    onPress={saveModelSettings}
-                    type="button"
-                  >
-                    {saveState === "saving" ? "保存中" : "保存配置"}
-                  </Button>
+                  <Chip className="provider-status" size="sm" variant="soft">
+                    {draftProfile.hasToken ? `Token ${draftProfile.tokenHint ?? "已保存"}` : "未保存 Token"}
+                  </Chip>
                 </div>
+                {saveState === "saved" ? <p className="settings-save-note">已保存，下一次发送会使用当前模型配置。</p> : null}
+                {saveState === "error" ? <p className="settings-save-note error">保存失败，稍后再试。</p> : null}
+                {testState === "passed" ? <p className="settings-save-note">{testMessage}</p> : null}
+                {testState === "error" ? <p className="settings-save-note error">{testMessage}</p> : null}
+                {hasUnsavedModelDraft && !isModelActionBusy ? (
+                  <p className="settings-save-note">
+                    {isUnsavedProfileDraft ? "请先保存这个新模型，或放弃新增后再切换。" : "请先保存配置后再切换或新增模型。"}
+                  </p>
+                ) : null}
+                {didNormalizeBaseUrl ? (
+                  <p className="settings-save-note">
+                    已识别到 Base URL 里带了模型名或 /chat/completions，保存/测试时会自动改为 {normalizedDraft.baseUrl}。
+                  </p>
+                ) : null}
               </div>
-              {saveState === "saved" ? <p className="settings-save-note">已保存，下一次发送会使用这组接口。</p> : null}
-              {saveState === "error" ? <p className="settings-save-note error">保存失败，稍后再试。</p> : null}
-              {testState === "passed" ? <p className="settings-save-note">{testMessage}</p> : null}
-              {testState === "error" ? <p className="settings-save-note error">{testMessage}</p> : null}
-              {didNormalizeBaseUrl ? (
-                <p className="settings-save-note">
-                  已识别到 Base URL 里带了模型名或 /chat/completions，保存/测试时会自动改为 {normalizedDraft.baseUrl}。
-                </p>
-              ) : null}
             </div>
           </section>
         </Tabs.Panel>
@@ -269,13 +555,27 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
                   <span>本轮来源</span>
                   <strong>{memoryView.latestSourceLabel}</strong>
                 </div>
-                <div className="memory-summary-item">
-                  <span>召回数量</span>
-                  <strong>{memoryView.recalledCount}</strong>
+              <div className="memory-summary-item">
+                  <span>{memoryView.selectedCharacterLabel}可见</span>
+                  <strong>{memoryView.recalledCount}/{memoryView.totalRecalledCount}</strong>
                 </div>
               </div>
 
               {memoryStatusError ? <p className="settings-save-note error">{memoryStatusError}</p> : null}
+
+              <div className="memory-character-switcher" aria-label="按角色查看记忆">
+                {characters.map((character) => (
+                  <button
+                    className={`memory-character-button ${character.id === selectedMemoryCharacterId ? "selected" : ""}`}
+                    key={character.id}
+                    onClick={() => setSelectedMemoryCharacterId(character.id)}
+                    type="button"
+                  >
+                    <img alt="" aria-hidden="true" src={character.avatarSrc} />
+                    <span>{character.name}</span>
+                  </button>
+                ))}
+              </div>
 
               <dl className="memory-storage-list">
                 {memoryView.storageRows.map((row) => (
@@ -287,13 +587,13 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
               </dl>
 
               <div className="memory-recall-list">
-                <h4>本轮召回</h4>
+                <h4>{memoryView.selectedCharacterLabel}可见记忆</h4>
                 {memoryView.memories.length > 0 ? (
                   memoryView.memories.map((memory) => (
                     <article className="memory-recall-item" key={memory.id}>
                       <div>
                         <span>{memory.kindLabel}</span>
-                        <small>{memory.sourceLabel}</small>
+                        <small>{memory.ownerLabel} · {memory.sourceLabel}</small>
                       </div>
                       <p>{memory.text}</p>
                     </article>
@@ -325,9 +625,48 @@ export function SystemSettingsPanel({ isOpen, latestMemoryRun, memoryDebugEvents
 
         {safetyTab ? (
           <Tabs.Panel className="settings-tab-panel" id={safetyTab.id}>
-            <section className="settings-placeholder">
-              <h3>{safetyTab.label}</h3>
-              <p>{safetyTab.description}</p>
+            <section>
+              <header className="settings-section-header">
+                <div>
+                  <h3>{safetyTab.label}</h3>
+                  <p>{safetyTab.description}</p>
+                </div>
+                <Button
+                  className="settings-primary-action"
+                  isDisabled={toolPolicySaveState === "saving"}
+                  onPress={saveToolPolicySettings}
+                  type="button"
+                >
+                  {toolPolicySaveState === "saving" ? "保存中" : "保存权限"}
+                </Button>
+              </header>
+
+              <div className="tool-policy-dashboard">
+                <div className="tool-policy-protected">
+                  <span>保护路径</span>
+                  <code>{toolPolicyView.protectedPathsPreview}</code>
+                </div>
+
+                {toolPolicyError ? <p className="settings-save-note error">{toolPolicyError}</p> : null}
+                {toolPolicySaveState === "saved" ? <p className="settings-save-note">权限设置已保存。</p> : null}
+                {toolPolicySaveState === "error" ? <p className="settings-save-note error">权限设置保存失败。</p> : null}
+
+                <article className="tool-policy-mode-card">
+                  <header>
+                    <div>
+                      <h4>全局工具权限</h4>
+                      <p>默认让工具都可用，写入、Shell 和浏览器操作保留确认。</p>
+                    </div>
+                    <Chip className="provider-status" size="sm" variant="soft">
+                      {toolPolicyView.enabledTools.length} 项启用
+                    </Chip>
+                  </header>
+
+                  {renderToolGroup("builtinTools", "Pi 内置工具", toolPolicyView.toolOrder.filter((tool) => !tool.id.includes(".")))}
+                  {renderToolGroup("customTools", "Cockapoo 工具", toolPolicyView.toolOrder.filter((tool) => tool.id.includes(".")))}
+                  {renderToolGroup("confirmTools", "需要确认", toolPolicyView.toolOrder)}
+                </article>
+              </div>
             </section>
           </Tabs.Panel>
         ) : null}

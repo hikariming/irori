@@ -6,6 +6,7 @@ type CompanionSidebarProps = {
   characters: CompanionCharacter[];
   sessions: SessionGroup[];
   onCharacterInspect?: (character: CompanionCharacter) => void;
+  onNewSession?: () => void;
   onSessionSelect?: (sessionId: string) => void;
   onSettingsOpen?: () => void;
 };
@@ -29,6 +30,7 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
 export function CompanionSidebar({
   characters,
   onCharacterInspect,
+  onNewSession,
   onSessionSelect,
   onSettingsOpen,
   sessions
@@ -60,7 +62,12 @@ export function CompanionSidebar({
 
       <ScrollShadow className="session-list" hideScrollBar orientation="vertical">
         <section aria-label="对话记录">
-          <h2>对话记录</h2>
+          <header className="session-list-header">
+            <h2>对话记录</h2>
+            <Button aria-label="新建会话" className="new-session-button" onPress={onNewSession} type="button">
+              +
+            </Button>
+          </header>
           {sessions.map((group) => (
             <div className="session-group" key={group.group}>
               <p>{group.group}</p>

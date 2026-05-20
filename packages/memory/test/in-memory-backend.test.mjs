@@ -30,6 +30,62 @@ test("in-memory backend recalls seeded memories by query text", async () => {
   assert.equal(recalled[0].id, "memory-1");
 });
 
+test("in-memory backend recalls only memories owned by the active character and session", async () => {
+  const backend = createInMemoryBackend([
+    {
+      id: "shili-relationship",
+      scope: "character",
+      kind: "relationship_note",
+      text: "用户希望开场白轻一点，不要审问。",
+      characterId: "shili"
+    },
+    {
+      id: "lulin-relationship",
+      scope: "character",
+      kind: "relationship_note",
+      text: "用户希望开场白轻一点，不要审问。",
+      characterId: "lulin"
+    },
+    {
+      id: "current-session",
+      scope: "session",
+      kind: "session_summary",
+      text: "用户希望开场白轻一点，不要审问。",
+      sessionId: "session-shili",
+      characterId: "shili"
+    },
+    {
+      id: "other-session",
+      scope: "session",
+      kind: "session_summary",
+      text: "用户希望开场白轻一点，不要审问。",
+      sessionId: "session-lulin",
+      characterId: "lulin"
+    },
+    {
+      id: "global-user-preference",
+      scope: "user",
+      kind: "preference",
+      text: "用户希望开场白轻一点，不要审问。",
+      userId: "local-user"
+    }
+  ]);
+
+  const recalled = await backend.recallForPrompt({
+    userId: "local-user",
+    characterId: "shili",
+    sessionId: "session-shili",
+    query: "开场白不要审问",
+    mode: "companion",
+    maxResults: 10
+  });
+
+  assert.deepEqual(
+    recalled.map((memory) => memory.id),
+    ["shili-relationship", "current-session", "global-user-preference"]
+  );
+});
+
 test("in-memory backend captures turns as session summaries and can delete memories", async () => {
   const backend = createInMemoryBackend();
 

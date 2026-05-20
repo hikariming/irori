@@ -11,6 +11,19 @@ use tauri::{AppHandle, Manager};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SaveModelSettingsRequest {
+    profile_id: String,
+    name: String,
+    base_url: String,
+    model_name: String,
+    token: Option<String>,
+    make_active: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TestModelConnectionRequest {
+    profile_id: String,
+    name: String,
     base_url: String,
     model_name: String,
     token: Option<String>,
@@ -18,16 +31,42 @@ struct SaveModelSettingsRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ModelSettingsSnapshot {
+struct ModelProfileSnapshot {
+    id: String,
+    name: String,
     base_url: String,
-    has_token: bool,
     model_name: String,
+    has_token: bool,
     token_hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct StoredModelSettings {
+struct ModelSettingsSnapshot {
+    active_model_id: String,
+    profiles: Vec<ModelProfileSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredModelProfile {
+    id: String,
+    name: String,
+    base_url: String,
+    model_name: String,
+    token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredModelRegistry {
+    active_model_id: String,
+    profiles: Vec<StoredModelProfile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyStoredModelSettings {
     base_url: String,
     model_name: String,
     token: Option<String>,
@@ -37,9 +76,16 @@ struct StoredModelSettings {
 #[serde(rename_all = "camelCase")]
 struct SendPiPromptRequest {
     character_id: String,
-    mode: String,
     prompt: String,
     session_prompt: Option<String>,
+    session_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GenerateOpeningMessageRequest {
+    character_id: String,
+    prompt: String,
     session_id: Option<String>,
 }
 
@@ -51,6 +97,7 @@ struct PiPromptResponse {
     provider_id: String,
     recalled_memories: Option<Vec<RecalledMemorySnapshot>>,
     text: String,
+    tool_policy: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +107,10 @@ struct RecalledMemorySnapshot {
     scope: String,
     kind: String,
     text: String,
+    user_id: Option<String>,
+    character_id: Option<String>,
+    project_id: Option<String>,
+    session_id: Option<String>,
     confidence: Option<f64>,
     source_ref: Option<String>,
     approved: Option<bool>,
@@ -90,7 +141,6 @@ struct AppendChatMessageRequest {
     speaker: String,
     author: String,
     text: String,
-    mode: Option<String>,
     sticker_id: Option<String>,
     model_route: Option<String>,
     provider_id: Option<String>,
@@ -114,7 +164,6 @@ struct ChatMessageRecord {
     speaker: String,
     author: String,
     text: String,
-    mode: Option<String>,
     sticker_id: Option<String>,
     model_route: Option<String>,
     provider_id: Option<String>,
@@ -159,23 +208,54 @@ fn save_model_settings(
 }
 
 #[tauri::command]
-fn send_pi_prompt(app: AppHandle, request: SendPiPromptRequest) -> Result<PiPromptResponse, String> {
-    let prompt = request.session_prompt.clone().unwrap_or_else(|| {
-        format!(
-            "[character:{}][mode:{}]\n{}",
-            request.character_id, request.mode, request.prompt
-        )
-    });
-
-    run_local_agent_prompt(app, prompt, Some(request))
+fn set_active_model_profile(
+    app: AppHandle,
+    profile_id: String,
+) -> Result<ModelSettingsSnapshot, String> {
+    set_active_model_profile_at_path(&settings_path(&app)?, &profile_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
-fn test_model_connection(app: AppHandle) -> Result<PiPromptResponse, String> {
+fn delete_model_profile(
+    app: AppHandle,
+    profile_id: String,
+) -> Result<ModelSettingsSnapshot, String> {
+    delete_model_profile_at_path(&settings_path(&app)?, &profile_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn send_pi_prompt(
+    app: AppHandle,
+    request: SendPiPromptRequest,
+) -> Result<PiPromptResponse, String> {
+    let prompt = request
+        .session_prompt
+        .clone()
+        .unwrap_or_else(|| format!("[character:{}]\n{}", request.character_id, request.prompt));
+
+    run_local_agent_prompt(app, prompt, Some(request), None)
+}
+
+#[tauri::command]
+fn generate_opening_message(
+    app: AppHandle,
+    request: GenerateOpeningMessageRequest,
+) -> Result<PiPromptResponse, String> {
+    run_local_agent_opening_prompt(app, request)
+}
+
+#[tauri::command]
+fn test_model_connection(
+    app: AppHandle,
+    request: Option<TestModelConnectionRequest>,
+) -> Result<PiPromptResponse, String> {
     run_local_agent_prompt(
         app,
         "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
         None,
+        request,
     )
 }
 
@@ -201,7 +281,25 @@ fn get_chat_session(app: AppHandle, session_id: String) -> Result<ChatSessionDet
 
 #[tauri::command]
 fn get_memory_status(app: AppHandle) -> Result<MemoryStatus, String> {
-    Ok(memory_status_from_paths(&memory_backend_dir(&app)?, &local_agent_dir()))
+    Ok(memory_status_from_paths(
+        &memory_backend_dir(&app)?,
+        &local_agent_dir(),
+    ))
+}
+
+#[tauri::command]
+fn get_tool_policy_settings(app: AppHandle) -> Result<serde_json::Value, String> {
+    read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_tool_policy_settings(
+    app: AppHandle,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    save_tool_policy_settings_to_path(&tool_policy_settings_path(&app)?, settings)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -217,34 +315,87 @@ fn run_local_agent_prompt(
     app: AppHandle,
     prompt: String,
     request: Option<SendPiPromptRequest>,
+    draft_model: Option<TestModelConnectionRequest>,
 ) -> Result<PiPromptResponse, String> {
     let settings_path = settings_path(&app)?;
-    let stored = read_stored_model_settings(&settings_path).map_err(|error| error.to_string())?;
+    let registry = read_stored_model_registry(&settings_path).map_err(|error| error.to_string())?;
+    let stored = if let Some(draft) = draft_model {
+        draft_to_stored_profile(draft, &registry)
+    } else {
+        active_stored_model_profile(&registry)?
+    };
     let token = stored
         .token
         .clone()
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "请先在模型供应商里保存 Token。".to_string())?;
+        .ok_or_else(|| "请先在模型接入里保存或填写 Token。".to_string())?;
     let agent_dir = local_agent_dir();
     let chat_history_memory = build_chat_history_memory_payload(&app, request.as_ref())?;
-    let mut payload = serde_json::json!({
-        "cwd": std::env::current_dir().map_err(|error| error.to_string())?,
-        "modelSettings": {
-            "baseUrl": stored.base_url,
-            "modelName": stored.model_name
+    let tool_policy_settings =
+        read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
+            .map_err(|error| error.to_string())?;
+    let mut payload = build_local_agent_prompt_payload(
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .to_string_lossy()
+            .to_string(),
+        &StoredModelProfile {
+            token: Some(token),
+            ..stored
         },
-        "runtimeToken": token,
-        "prompt": prompt
-    });
-
-    if let Some(memory) = chat_history_memory {
-        payload["chatHistoryMemory"] = memory;
-    }
+        prompt,
+        chat_history_memory,
+        tool_policy_settings,
+    );
     if request.is_some() {
         let memory_dir = memory_backend_dir(&app)?;
         fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
         payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
     }
+    execute_local_agent_prompt(agent_dir, payload)
+}
+
+fn run_local_agent_opening_prompt(
+    app: AppHandle,
+    request: GenerateOpeningMessageRequest,
+) -> Result<PiPromptResponse, String> {
+    let settings_path = settings_path(&app)?;
+    let registry = read_stored_model_registry(&settings_path).map_err(|error| error.to_string())?;
+    let stored = active_stored_model_profile(&registry)?;
+    let token = stored
+        .token
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "请先在模型接入里保存或填写 Token。".to_string())?;
+    let agent_dir = local_agent_dir();
+    let tool_policy_settings =
+        read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
+            .map_err(|error| error.to_string())?;
+    let memory_dir = memory_backend_dir(&app)?;
+    fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
+    let mut payload = build_local_agent_prompt_payload(
+        std::env::current_dir()
+            .map_err(|error| error.to_string())?
+            .to_string_lossy()
+            .to_string(),
+        &StoredModelProfile {
+            token: Some(token),
+            ..stored
+        },
+        request.prompt.clone(),
+        None,
+        tool_policy_settings,
+    );
+    payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
+    payload["memoryRecallRequest"] = build_opening_memory_recall_payload(&request);
+
+    execute_local_agent_prompt(agent_dir, payload)
+}
+
+fn execute_local_agent_prompt(
+    agent_dir: PathBuf,
+    payload: serde_json::Value,
+) -> Result<PiPromptResponse, String> {
     let mut child = Command::new("pnpm")
         .arg("--dir")
         .arg(agent_dir)
@@ -274,14 +425,39 @@ fn run_local_agent_prompt(
         });
     }
 
-    let response: PiPromptResponse =
-        serde_json::from_slice(&output.stdout).map_err(|error| format!("解析 local-agent 响应失败：{error}"))?;
+    let response: PiPromptResponse = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("解析 local-agent 响应失败：{error}"))?;
 
     if response.text.trim().is_empty() {
         return Err("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。".to_string());
     }
 
     Ok(response)
+}
+
+fn build_local_agent_prompt_payload(
+    cwd: String,
+    stored: &StoredModelProfile,
+    prompt: String,
+    chat_history_memory: Option<serde_json::Value>,
+    tool_policy_settings: serde_json::Value,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "cwd": cwd,
+        "modelSettings": {
+            "baseUrl": stored.base_url,
+            "modelName": stored.model_name
+        },
+        "runtimeToken": stored.token.clone().unwrap_or_default(),
+        "prompt": prompt,
+        "toolPolicySettings": tool_policy_settings
+    });
+
+    if let Some(memory) = chat_history_memory {
+        payload["chatHistoryMemory"] = memory;
+    }
+
+    payload
 }
 
 fn build_chat_history_memory_payload(
@@ -307,10 +483,28 @@ fn build_chat_history_memory_payload(
         "sessionId": session_id,
         "query": request.prompt,
         "userText": request.prompt,
-        "mode": request.mode,
+        "mode": "companion",
         "maxResults": 5,
         "messages": messages
     })))
+}
+
+fn build_opening_memory_recall_payload(
+    request: &GenerateOpeningMessageRequest,
+) -> serde_json::Value {
+    let mut payload = serde_json::json!({
+        "userId": "local-user",
+        "characterId": request.character_id,
+        "query": "开场白 自然 问候 用户偏好",
+        "mode": "companion",
+        "maxResults": 5
+    });
+
+    if let Some(session_id) = request.session_id.as_deref() {
+        payload["sessionId"] = serde_json::Value::String(session_id.to_string());
+    }
+
+    payload
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -335,6 +529,14 @@ fn memory_backend_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?
         .join("memory-tdai"))
+}
+
+fn tool_policy_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("tool-policy-settings.json"))
 }
 
 fn build_memory_backend_config_payload(memory_dir: &Path) -> serde_json::Value {
@@ -372,11 +574,22 @@ fn local_agent_dir() -> PathBuf {
         .join("local-agent")
 }
 
-fn default_stored_model_settings() -> StoredModelSettings {
-    StoredModelSettings {
+fn default_stored_model_profile() -> StoredModelProfile {
+    StoredModelProfile {
+        id: "default".to_string(),
+        name: "OpenAI GPT-5.2".to_string(),
         base_url: DEFAULT_BASE_URL.to_string(),
         model_name: DEFAULT_MODEL_NAME.to_string(),
         token: None,
+    }
+}
+
+fn default_stored_model_registry() -> StoredModelRegistry {
+    let profile = default_stored_model_profile();
+
+    StoredModelRegistry {
+        active_model_id: profile.id.clone(),
+        profiles: vec![profile],
     }
 }
 
@@ -388,29 +601,103 @@ fn token_hint(token: &str) -> String {
     }
 }
 
-fn snapshot_from_stored(stored: &StoredModelSettings) -> ModelSettingsSnapshot {
+fn snapshot_from_stored_profile(stored: &StoredModelProfile) -> ModelProfileSnapshot {
     let token = stored.token.as_deref().filter(|value| !value.is_empty());
 
-    ModelSettingsSnapshot {
+    ModelProfileSnapshot {
+        id: stored.id.clone(),
+        name: stored.name.clone(),
         base_url: stored.base_url.clone(),
-        has_token: token.is_some(),
         model_name: stored.model_name.clone(),
+        has_token: token.is_some(),
         token_hint: token.map(token_hint),
     }
 }
 
-fn read_stored_model_settings(path: &Path) -> Result<StoredModelSettings, Box<dyn std::error::Error>> {
+fn snapshot_from_stored_registry(stored: &StoredModelRegistry) -> ModelSettingsSnapshot {
+    let profiles: Vec<ModelProfileSnapshot> = stored
+        .profiles
+        .iter()
+        .map(snapshot_from_stored_profile)
+        .collect();
+    let active_model_id = if profiles
+        .iter()
+        .any(|profile| profile.id == stored.active_model_id)
+    {
+        stored.active_model_id.clone()
+    } else {
+        profiles
+            .first()
+            .map(|profile| profile.id.clone())
+            .unwrap_or_else(|| "default".to_string())
+    };
+
+    ModelSettingsSnapshot {
+        active_model_id,
+        profiles,
+    }
+}
+
+fn profile_name_for(model_name: &str) -> String {
+    let trimmed = model_name.trim();
+
+    if trimmed.is_empty() {
+        "默认模型".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn legacy_to_registry(legacy: LegacyStoredModelSettings) -> StoredModelRegistry {
+    let normalized = normalize_openai_compatible_settings(&legacy.base_url, &legacy.model_name);
+    let profile = StoredModelProfile {
+        id: "default".to_string(),
+        name: profile_name_for(&normalized.1),
+        base_url: normalized.0,
+        model_name: normalized.1,
+        token: legacy.token,
+    };
+
+    StoredModelRegistry {
+        active_model_id: profile.id.clone(),
+        profiles: vec![profile],
+    }
+}
+
+fn read_stored_model_registry(
+    path: &Path,
+) -> Result<StoredModelRegistry, Box<dyn std::error::Error>> {
     if !path.exists() {
-        return Ok(default_stored_model_settings());
+        return Ok(default_stored_model_registry());
     }
 
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+
+    if value.get("profiles").is_some() {
+        let mut registry: StoredModelRegistry = serde_json::from_value(value)?;
+        if registry.profiles.is_empty() {
+            registry = default_stored_model_registry();
+        }
+        if !registry
+            .profiles
+            .iter()
+            .any(|profile| profile.id == registry.active_model_id)
+        {
+            registry.active_model_id = registry.profiles[0].id.clone();
+        }
+        return Ok(registry);
+    }
+
+    let legacy: LegacyStoredModelSettings = serde_json::from_value(value)?;
+    Ok(legacy_to_registry(legacy))
 }
 
 fn read_model_settings_from_path(
     path: &Path,
 ) -> Result<ModelSettingsSnapshot, Box<dyn std::error::Error>> {
-    Ok(snapshot_from_stored(&read_stored_model_settings(path)?))
+    Ok(snapshot_from_stored_registry(&read_stored_model_registry(
+        path,
+    )?))
 }
 
 fn save_model_settings_to_path(
@@ -421,20 +708,200 @@ fn save_model_settings_to_path(
         fs::create_dir_all(parent)?;
     }
 
-    let previous = read_stored_model_settings(path)?;
-    let normalized = normalize_openai_compatible_settings(
-        request.base_url.trim(),
-        request.model_name.trim(),
-    );
-    let stored = StoredModelSettings {
+    let mut registry = read_stored_model_registry(path)?;
+    let normalized =
+        normalize_openai_compatible_settings(request.base_url.trim(), request.model_name.trim());
+    let existing_token = registry
+        .profiles
+        .iter()
+        .find(|profile| profile.id == request.profile_id)
+        .and_then(|profile| profile.token.clone());
+    let token = request
+        .token
+        .filter(|value| !value.trim().is_empty())
+        .or(existing_token);
+    let profile = StoredModelProfile {
+        id: request.profile_id,
+        name: if request.name.trim().is_empty() {
+            profile_name_for(&normalized.1)
+        } else {
+            request.name.trim().to_string()
+        },
         base_url: normalized.0,
         model_name: normalized.1,
-        token: request.token.filter(|value| !value.trim().is_empty()).or(previous.token),
+        token,
     };
 
-    fs::write(path, serde_json::to_string_pretty(&stored)?)?;
+    if let Some(index) = registry
+        .profiles
+        .iter()
+        .position(|item| item.id == profile.id)
+    {
+        registry.profiles[index] = profile.clone();
+    } else {
+        registry.profiles.push(profile.clone());
+    }
 
-    Ok(snapshot_from_stored(&stored))
+    if request.make_active.unwrap_or(false)
+        || !registry
+            .profiles
+            .iter()
+            .any(|item| item.id == registry.active_model_id)
+    {
+        registry.active_model_id = profile.id;
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&registry)?)?;
+
+    Ok(snapshot_from_stored_registry(&registry))
+}
+
+fn active_stored_model_profile(
+    registry: &StoredModelRegistry,
+) -> Result<StoredModelProfile, String> {
+    registry
+        .profiles
+        .iter()
+        .find(|profile| profile.id == registry.active_model_id)
+        .or_else(|| registry.profiles.first())
+        .cloned()
+        .ok_or_else(|| "请先在模型接入里添加模型配置。".to_string())
+}
+
+fn draft_to_stored_profile(
+    request: TestModelConnectionRequest,
+    registry: &StoredModelRegistry,
+) -> StoredModelProfile {
+    let normalized = normalize_openai_compatible_settings(&request.base_url, &request.model_name);
+    let existing_token = registry
+        .profiles
+        .iter()
+        .find(|profile| profile.id == request.profile_id)
+        .and_then(|profile| profile.token.clone());
+
+    StoredModelProfile {
+        id: request.profile_id,
+        name: if request.name.trim().is_empty() {
+            profile_name_for(&normalized.1)
+        } else {
+            request.name.trim().to_string()
+        },
+        base_url: normalized.0,
+        model_name: normalized.1,
+        token: request
+            .token
+            .filter(|value| !value.trim().is_empty())
+            .or(existing_token),
+    }
+}
+
+fn set_active_model_profile_at_path(
+    path: &Path,
+    profile_id: &str,
+) -> Result<ModelSettingsSnapshot, Box<dyn std::error::Error>> {
+    let mut registry = read_stored_model_registry(path)?;
+
+    if registry
+        .profiles
+        .iter()
+        .any(|profile| profile.id == profile_id)
+    {
+        registry.active_model_id = profile_id.to_string();
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(&registry)?)?;
+
+    Ok(snapshot_from_stored_registry(&registry))
+}
+
+fn delete_model_profile_at_path(
+    path: &Path,
+    profile_id: &str,
+) -> Result<ModelSettingsSnapshot, Box<dyn std::error::Error>> {
+    let mut registry = read_stored_model_registry(path)?;
+
+    if registry.profiles.len() > 1 {
+        registry.profiles.retain(|profile| profile.id != profile_id);
+        if !registry
+            .profiles
+            .iter()
+            .any(|profile| profile.id == registry.active_model_id)
+        {
+            registry.active_model_id = registry.profiles[0].id.clone();
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(&registry)?)?;
+
+    Ok(snapshot_from_stored_registry(&registry))
+}
+
+fn default_tool_policy_settings() -> serde_json::Value {
+    serde_json::json!({
+        "builtinTools": {
+            "read": true,
+            "grep": true,
+            "find": true,
+            "ls": true,
+            "bash": true,
+            "edit": true,
+            "write": true
+        },
+        "customTools": {
+            "memory.read": true,
+            "memory.write": true,
+            "web.fetch": true,
+            "web.search": true,
+            "browser.view": true,
+            "browser.action": true
+        },
+        "confirmTools": {
+            "bash": true,
+            "edit": true,
+            "write": true,
+            "memory.write": true,
+            "browser.action": true
+        },
+        "protectedPaths": [
+            ".env",
+            ".env.*",
+            "secrets.*",
+            "credentials.*",
+            ".ssh",
+            ".aws",
+            ".gnupg",
+            "node_modules"
+        ]
+    })
+}
+
+fn read_tool_policy_settings_from_path(
+    path: &Path,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Ok(default_tool_policy_settings());
+    }
+
+    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+}
+
+fn save_tool_policy_settings_to_path(
+    path: &Path,
+    settings: serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&settings)?)?;
+
+    Ok(settings)
 }
 
 fn normalize_openai_compatible_settings(base_url: &str, model_name: &str) -> (String, String) {
@@ -632,7 +1099,7 @@ fn append_chat_message_to_path(
             request.speaker,
             request.author,
             request.text,
-            request.mode,
+            Option::<String>::None,
             request.sticker_id,
             request.model_route,
             request.provider_id,
@@ -680,7 +1147,9 @@ fn get_chat_message_record(
         .optional()
 }
 
-fn row_to_chat_session_summary(row: &rusqlite::Row<'_>) -> Result<ChatSessionSummary, rusqlite::Error> {
+fn row_to_chat_session_summary(
+    row: &rusqlite::Row<'_>,
+) -> Result<ChatSessionSummary, rusqlite::Error> {
     Ok(ChatSessionSummary {
         id: row.get(0)?,
         character_id: row.get(1)?,
@@ -690,14 +1159,15 @@ fn row_to_chat_session_summary(row: &rusqlite::Row<'_>) -> Result<ChatSessionSum
     })
 }
 
-fn row_to_chat_message_record(row: &rusqlite::Row<'_>) -> Result<ChatMessageRecord, rusqlite::Error> {
+fn row_to_chat_message_record(
+    row: &rusqlite::Row<'_>,
+) -> Result<ChatMessageRecord, rusqlite::Error> {
     Ok(ChatMessageRecord {
         id: row.get(0)?,
         session_id: row.get(1)?,
         speaker: row.get(2)?,
         author: row.get(3)?,
         text: row.get(4)?,
-        mode: row.get(5)?,
         sticker_id: row.get(6)?,
         model_route: row.get(7)?,
         provider_id: row.get(8)?,
@@ -712,11 +1182,16 @@ pub fn run() {
             append_chat_message,
             companion_status,
             create_chat_session,
+            delete_model_profile,
+            generate_opening_message,
             get_chat_session,
             get_memory_status,
             get_model_settings,
+            get_tool_policy_settings,
             list_chat_sessions,
             save_model_settings,
+            save_tool_policy_settings,
+            set_active_model_profile,
             send_pi_prompt,
             test_model_connection
         ])
@@ -732,12 +1207,16 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        append_chat_message_to_path, create_chat_session_at_path, get_chat_session_from_path,
-        init_chat_history_at_path, list_chat_sessions_from_path,
-        build_memory_backend_config_payload, memory_status_from_paths,
-        recent_memory_messages_from_path, AppendChatMessageRequest, CreateChatSessionRequest,
+        append_chat_message_to_path, build_local_agent_prompt_payload,
+        build_memory_backend_config_payload, build_opening_memory_recall_payload,
+        create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
+        init_chat_history_at_path, list_chat_sessions_from_path, memory_status_from_paths,
         normalize_openai_compatible_settings, read_model_settings_from_path,
-        save_model_settings_to_path, ModelSettingsSnapshot, SaveModelSettingsRequest,
+        read_stored_model_registry, read_tool_policy_settings_from_path,
+        recent_memory_messages_from_path, save_model_settings_to_path,
+        save_tool_policy_settings_to_path, set_active_model_profile_at_path,
+        AppendChatMessageRequest, CreateChatSessionRequest, GenerateOpeningMessageRequest,
+        ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
     };
 
     static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -753,11 +1232,21 @@ mod tests {
     }
 
     fn temp_settings_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cockapoo-model-settings-{}.json", temp_path_nonce()))
+        std::env::temp_dir().join(format!(
+            "cockapoo-model-settings-{}.json",
+            temp_path_nonce()
+        ))
     }
 
     fn temp_chat_history_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cockapoo-chat-history-{}.sqlite3", temp_path_nonce()))
+        std::env::temp_dir().join(format!(
+            "cockapoo-chat-history-{}.sqlite3",
+            temp_path_nonce()
+        ))
+    }
+
+    fn temp_tool_policy_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("cockapoo-tool-policy-{}.json", temp_path_nonce()))
     }
 
     #[test]
@@ -811,7 +1300,6 @@ mod tests {
                 speaker: "user".to_string(),
                 author: "你".to_string(),
                 text: "先把聊天记录存起来".to_string(),
-                mode: Some("agent".to_string()),
                 sticker_id: None,
                 model_route: None,
                 provider_id: None,
@@ -826,7 +1314,6 @@ mod tests {
                 speaker: "character".to_string(),
                 author: "示璃".to_string(),
                 text: "好，我先把 SQLite 这层铺好。".to_string(),
-                mode: None,
                 sticker_id: Some("focused".to_string()),
                 model_route: Some("https://api.openai.com/v1/gpt-5.2".to_string()),
                 provider_id: Some("openai-compatible".to_string()),
@@ -840,10 +1327,12 @@ mod tests {
 
         assert_eq!(detail.messages.len(), 2);
         assert_eq!(detail.messages[0].speaker, "user");
-        assert_eq!(detail.messages[0].mode.as_deref(), Some("agent"));
         assert_eq!(detail.messages[1].speaker, "character");
         assert_eq!(detail.messages[1].sticker_id.as_deref(), Some("focused"));
-        assert_eq!(sessions[0].last_message_preview, "好，我先把 SQLite 这层铺好。");
+        assert_eq!(
+            sessions[0].last_message_preview,
+            "好，我先把 SQLite 这层铺好。"
+        );
         assert_eq!(sessions[0].updated_at, "2026-05-18T10:02:00.000+08:00");
     }
 
@@ -873,7 +1362,6 @@ mod tests {
                     speaker: speaker.to_string(),
                     author: "测试".to_string(),
                     text: text.to_string(),
-                    mode: None,
                     sticker_id: None,
                     model_route: None,
                     provider_id: None,
@@ -906,6 +1394,22 @@ mod tests {
     }
 
     #[test]
+    fn opening_memory_recall_payload_scopes_to_active_character_without_capture() {
+        let value = build_opening_memory_recall_payload(&GenerateOpeningMessageRequest {
+            character_id: "shili".to_string(),
+            prompt: "请生成开场白。".to_string(),
+            session_id: Some("session-1".to_string()),
+        });
+
+        assert_eq!(value["userId"], "local-user");
+        assert_eq!(value["characterId"], "shili");
+        assert_eq!(value["sessionId"], "session-1");
+        assert_eq!(value["mode"], "companion");
+        assert_eq!(value["maxResults"], 5);
+        assert!(value.get("memoryCaptureTurn").is_none());
+    }
+
+    #[test]
     fn memory_status_reports_local_backend_paths() {
         let status = memory_status_from_paths(
             PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
@@ -919,50 +1423,249 @@ mod tests {
     }
 
     #[test]
-    fn save_model_settings_redacts_token_and_tracks_endpoint() {
+    fn tool_policy_settings_fall_back_to_defaults() {
+        let path = temp_tool_policy_path();
+
+        let settings =
+            read_tool_policy_settings_from_path(&path).expect("default policy should load");
+
+        assert_eq!(settings["customTools"]["memory.read"], true);
+        assert_eq!(settings["builtinTools"]["bash"], true);
+        assert_eq!(settings["confirmTools"]["bash"], true);
+        assert!(settings["protectedPaths"]
+            .as_array()
+            .unwrap()
+            .contains(&serde_json::json!(".env")));
+    }
+
+    #[test]
+    fn tool_policy_settings_round_trip_json() {
+        let path = temp_tool_policy_path();
+        let settings = serde_json::json!({
+            "builtinTools": { "read": true, "grep": true, "find": true, "ls": true, "bash": true },
+            "customTools": { "memory.read": true, "memory.write": true, "web.fetch": true },
+            "confirmTools": { "bash": true, "memory.write": true },
+            "protectedPaths": [".env", ".ssh"]
+        });
+
+        save_tool_policy_settings_to_path(&path, settings.clone()).expect("policy should save");
+        let stored = read_tool_policy_settings_from_path(&path).expect("saved policy should load");
+
+        assert_eq!(stored, settings);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn local_agent_prompt_payload_includes_tool_policy_settings() {
+        let stored = StoredModelProfile {
+            id: "default".to_string(),
+            name: "OpenAI".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model_name: "gpt-5.2".to_string(),
+            token: Some("sk-test".to_string()),
+        };
+        let tool_policy_settings = serde_json::json!({
+            "builtinTools": { "read": true, "grep": true, "bash": false },
+            "customTools": { "memory.read": true },
+            "confirmTools": { "bash": true },
+            "protectedPaths": [".env"]
+        });
+
+        let payload = build_local_agent_prompt_payload(
+            "/tmp/cockapoo-workspace".into(),
+            &stored,
+            "你好".to_string(),
+            Some(serde_json::json!({ "sessionId": "session-1" })),
+            tool_policy_settings.clone(),
+        );
+
+        assert_eq!(payload["cwd"], "/tmp/cockapoo-workspace");
+        assert_eq!(payload["toolPolicySettings"], tool_policy_settings);
+        assert_eq!(payload["runtimeToken"], "sk-test");
+    }
+
+    #[test]
+    fn model_profile_reads_legacy_model_settings_as_one_active_profile() {
         let path = temp_settings_path();
-        let snapshot = save_model_settings_to_path(
+        fs::write(
+            &path,
+            r#"{"baseUrl":"http://localhost:11434/v1","modelName":"qwen3-coder","token":"ollama-token"}"#,
+        )
+        .expect("legacy settings should be written");
+
+        let snapshot = read_model_settings_from_path(&path).expect("legacy settings should load");
+
+        assert_eq!(snapshot.active_model_id, "default");
+        assert_eq!(snapshot.profiles.len(), 1);
+        assert_eq!(snapshot.profiles[0].id, "default");
+        assert_eq!(snapshot.profiles[0].base_url, "http://localhost:11434/v1");
+        assert_eq!(snapshot.profiles[0].model_name, "qwen3-coder");
+        assert_eq!(snapshot.profiles[0].name, "qwen3-coder");
+        assert!(snapshot.profiles[0].has_token);
+        assert_eq!(snapshot.profiles[0].token_hint.as_deref(), Some("••••oken"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn model_profile_saves_profile_and_preserves_existing_token_when_blank() {
+        let path = temp_settings_path();
+        save_model_settings_to_path(
             &path,
             SaveModelSettingsRequest {
-                base_url: "http://localhost:11434/v1".to_string(),
-                model_name: "qwen3-coder".to_string(),
-                token: Some("sk-test-123456".to_string()),
+                profile_id: "glm".to_string(),
+                name: "智谱 GLM".to_string(),
+                base_url: "https://open.bigmodel.cn/api/coding/paas/v4/GLM-5.1".to_string(),
+                model_name: "glm-5.1".to_string(),
+                token: Some("sk-glm-123456".to_string()),
+                make_active: Some(true),
             },
         )
         .expect("settings should save");
 
-        assert_eq!(snapshot.base_url, "http://localhost:11434/v1");
-        assert_eq!(snapshot.model_name, "qwen3-coder");
-        assert!(snapshot.has_token);
-        assert_eq!(snapshot.token_hint.as_deref(), Some("••••3456"));
+        let snapshot = save_model_settings_to_path(
+            &path,
+            SaveModelSettingsRequest {
+                profile_id: "glm".to_string(),
+                name: "智谱 GLM".to_string(),
+                base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+                model_name: "glm-5.1".to_string(),
+                token: Some("   ".to_string()),
+                make_active: Some(true),
+            },
+        )
+        .expect("settings should update");
+
+        assert_eq!(snapshot.active_model_id, "glm");
+        let profile = snapshot
+            .profiles
+            .iter()
+            .find(|profile| profile.id == "glm")
+            .expect("saved profile should be present");
+        assert_eq!(
+            profile.base_url,
+            "https://open.bigmodel.cn/api/coding/paas/v4"
+        );
+        assert_eq!(profile.model_name, "glm-5.1");
+        assert!(profile.has_token);
+        assert_eq!(profile.token_hint.as_deref(), Some("••••3456"));
 
         let raw = fs::read_to_string(&path).expect("settings file should exist");
-        assert!(raw.contains("sk-test-123456"));
+        assert!(raw.contains("activeModelId"));
+        assert!(raw.contains("profiles"));
+        assert!(raw.contains("sk-glm-123456"));
+
+        let stored = read_stored_model_registry(&path).expect("stored registry should load");
+        let stored_profile = stored
+            .profiles
+            .iter()
+            .find(|profile| profile.id == "glm")
+            .expect("stored profile should be present");
+        assert_eq!(stored_profile.token.as_deref(), Some("sk-glm-123456"));
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn read_model_settings_uses_defaults_when_file_is_missing() {
+    fn model_profile_switches_active_profile() {
         let path = temp_settings_path();
-        let snapshot = read_model_settings_from_path(&path).expect("default settings should load");
+        save_model_settings_to_path(
+            &path,
+            SaveModelSettingsRequest {
+                profile_id: "glm".to_string(),
+                name: "智谱 GLM".to_string(),
+                base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+                model_name: "glm-5.1".to_string(),
+                token: Some("sk-glm-123456".to_string()),
+                make_active: Some(false),
+            },
+        )
+        .expect("settings should save");
 
-        assert_eq!(snapshot.base_url, "https://api.openai.com/v1");
-        assert_eq!(snapshot.model_name, "gpt-5.2");
-        assert!(!snapshot.has_token);
+        let snapshot = set_active_model_profile_at_path(&path, "glm")
+            .expect("existing profile should become active");
+
+        assert_eq!(snapshot.active_model_id, "glm");
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn model_settings_snapshot_serializes_for_frontend() {
+    fn model_profile_deletes_active_profile_and_selects_remaining_profile() {
+        let path = temp_settings_path();
+        save_model_settings_to_path(
+            &path,
+            SaveModelSettingsRequest {
+                profile_id: "glm".to_string(),
+                name: "智谱 GLM".to_string(),
+                base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+                model_name: "glm-5.1".to_string(),
+                token: Some("sk-glm-123456".to_string()),
+                make_active: Some(true),
+            },
+        )
+        .expect("settings should save");
+
+        let snapshot =
+            delete_model_profile_at_path(&path, "glm").expect("active profile should delete");
+
+        assert_eq!(snapshot.active_model_id, "default");
+        assert!(snapshot.profiles.iter().all(|profile| profile.id != "glm"));
+        assert_eq!(snapshot.profiles.len(), 1);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn model_profile_keeps_local_agent_prompt_payload_single_active_shape() {
+        let stored = StoredModelProfile {
+            id: "glm".to_string(),
+            name: "智谱 GLM".to_string(),
+            base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+            model_name: "glm-5.1".to_string(),
+            token: Some("sk-glm-123456".to_string()),
+        };
+
+        let payload = build_local_agent_prompt_payload(
+            "/tmp/cockapoo-workspace".into(),
+            &stored,
+            "请只回复 OK".to_string(),
+            None,
+            serde_json::json!({}),
+        );
+
+        assert_eq!(payload["modelSettings"]["baseUrl"], stored.base_url);
+        assert_eq!(payload["modelSettings"]["modelName"], stored.model_name);
+        assert_eq!(payload["runtimeToken"], "sk-glm-123456");
+        assert!(payload["modelSettings"].get("token").is_none());
+        assert!(payload.get("profiles").is_none());
+    }
+
+    #[test]
+    fn model_profile_settings_snapshot_serializes_camel_case_for_frontend() {
         let snapshot = ModelSettingsSnapshot {
-            base_url: "http://localhost:11434/v1".to_string(),
-            has_token: true,
-            model_name: "qwen3-coder".to_string(),
-            token_hint: Some("••••3456".to_string()),
+            active_model_id: "glm".to_string(),
+            profiles: vec![ModelProfileSnapshot {
+                id: "glm".to_string(),
+                name: "智谱 GLM".to_string(),
+                base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+                model_name: "glm-5.1".to_string(),
+                has_token: true,
+                token_hint: Some("••••3456".to_string()),
+            }],
         };
 
         let value = serde_json::to_value(snapshot).expect("snapshot should serialize");
-        assert_eq!(value["baseUrl"], "http://localhost:11434/v1");
-        assert_eq!(value["modelName"], "qwen3-coder");
-        assert_eq!(value["hasToken"], true);
+        assert_eq!(value["activeModelId"], "glm");
+        assert_eq!(value["profiles"][0]["id"], "glm");
+        assert_eq!(
+            value["profiles"][0]["baseUrl"],
+            "https://open.bigmodel.cn/api/coding/paas/v4"
+        );
+        assert_eq!(value["profiles"][0]["modelName"], "glm-5.1");
+        assert_eq!(value["profiles"][0]["hasToken"], true);
+        assert_eq!(value["profiles"][0]["tokenHint"], "••••3456");
     }
 
     #[test]

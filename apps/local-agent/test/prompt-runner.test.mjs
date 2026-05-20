@@ -145,6 +145,72 @@ test("runCockapooPiPrompt injects recalled memory and captures successful turns"
   assert.equal(capturedTurns[0].assistantText, "好，我先接记忆上下文。");
 });
 
+test("runCockapooPiPrompt can recall memory for opening messages without capturing a turn", async () => {
+  let promptSentToPi = "";
+  let captureCount = 0;
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.2"
+    },
+    runtimeToken: "sk-test",
+    prompt: "请生成一句自然开场白。",
+    memoryBackend: {
+      async recallForPrompt(request) {
+        assert.equal(request.characterId, "shili");
+        return [
+          {
+            id: "memory-1",
+            scope: "character",
+            kind: "relationship_note",
+            text: "用户不喜欢一上来被连续追问。",
+            characterId: "shili"
+          }
+        ];
+      },
+      async captureConversationTurn() {
+        captureCount += 1;
+      }
+    },
+    memoryRecallRequest: {
+      userId: "local-user",
+      characterId: "shili",
+      query: "开场白",
+      mode: "companion",
+      maxResults: 5
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt(prompt) {
+            promptSentToPi = prompt;
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "我在。今天我们轻一点开始。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.match(promptSentToPi, /用户不喜欢一上来被连续追问/);
+  assert.equal(result.text, "我在。今天我们轻一点开始。");
+  assert.equal(result.recalledMemories.length, 1);
+  assert.equal(captureCount, 0);
+});
+
 test("runCockapooPiPrompt uses chat history memory when no backend is provided", async () => {
   let promptSentToPi = "";
   const result = await runCockapooPiPrompt({
@@ -280,6 +346,96 @@ test("runCockapooPiPrompt uses configured memory backend before chat history fal
   assert.equal(result.memoryBackendSource, "tencentdb");
   assert.equal(capturedTurns.length, 1);
   assert.equal(capturedTurns[0].assistantText, "已经走配置记忆后端。");
+});
+
+test("runCockapooPiPrompt applies tool policy settings to the Pi session", async () => {
+  let sessionOptions;
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.2"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：可以读取记忆，但不要写文件",
+    toolPolicySettings: {
+      builtinTools: {
+        read: true,
+        grep: true,
+        find: false,
+        ls: true,
+        bash: false,
+        edit: false,
+        write: false
+      },
+      customTools: {
+        "memory.read": true,
+        "memory.write": true,
+        "web.fetch": true,
+        "web.search": true,
+        "browser.view": true,
+        "browser.action": true
+      },
+      confirmTools: {
+        bash: true,
+        edit: true,
+        write: true,
+        "memory.write": true
+      },
+      protectedPaths: [".env"]
+    },
+    memoryBackend: {
+      async recallForPrompt() {
+        return [
+          {
+            id: "memory-1",
+            scope: "user",
+            kind: "preference",
+            text: "用户喜欢先给结论。"
+          }
+        ];
+      },
+      async captureConversationTurn() {}
+    },
+    memoryRecallRequest: {
+      userId: "local-user",
+      characterId: "shili",
+      query: "读取记忆",
+      mode: "companion"
+    },
+    createSession: async (options) => {
+      sessionOptions = options;
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "我会只读。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(sessionOptions.tools, ["read", "grep", "ls", "memory_read", "memory_write"]);
+  assert.deepEqual(sessionOptions.toolPolicy.builtinTools, ["read", "grep", "ls"]);
+  assert.deepEqual(sessionOptions.toolPolicy.customTools, ["memory.read", "memory.write"]);
+  assert.equal(sessionOptions.customTools.length, 2);
+  assert.equal(sessionOptions.customTools[0].name, "memory_read");
+  assert.equal(sessionOptions.customTools[1].name, "memory_write");
+  assert.deepEqual(result.toolPolicy.enabledTools, ["read", "grep", "ls", "memory.read", "memory.write"]);
+  assert.deepEqual(result.toolPolicy.registeredCustomTools, ["memory.read", "memory.write"]);
 });
 
 test("collectAssistantText uses text_end content when deltas are missing", () => {

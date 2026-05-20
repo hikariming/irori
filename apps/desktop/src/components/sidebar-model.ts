@@ -31,18 +31,20 @@ export const characters: CompanionCharacter[] = [
     avatarSrc: "/characters/shili.card/assets/avatar/avatar-circle.png"
   },
   {
-    id: "yanche",
-    name: "言澈",
+    id: "lulin",
+    name: "陆临",
     status: "idle",
-    tone: "理性搭档",
-    active: false
+    tone: "深夜护短",
+    active: false,
+    avatarSrc: "/characters/lulin.card/assets/avatar/avatar-circle.png"
   },
   {
-    id: "xingye",
-    name: "星野",
+    id: "shenyanzhou",
+    name: "沈砚洲",
     status: "online",
-    tone: "轻快提醒",
-    active: false
+    tone: "犀利反问",
+    active: false,
+    avatarSrc: "/characters/shenyanzhou.card/assets/avatar/avatar-circle.png"
   }
 ];
 
@@ -66,4 +68,17 @@ export const sessionGroups: SessionGroup[] = [
 
 export function getActiveCharacter(items: CompanionCharacter[]) {
   return items.find((item) => item.active) ?? null;
+}
+
+export function activateCharacter(items: CompanionCharacter[], characterId: string) {
+  const hasCharacter = items.some((item) => item.id === characterId);
+
+  if (!hasCharacter) {
+    return items;
+  }
+
+  return items.map((item) => ({
+    ...item,
+    active: item.id === characterId
+  }));
 }

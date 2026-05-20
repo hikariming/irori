@@ -202,10 +202,32 @@ button {
   padding: 0 2px;
 }
 
-.session-list h2 {
+.session-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin: 0 0 11px 2px;
+}
+
+.session-list h2 {
+  margin: 0;
   color: #343640;
   font-size: 13px;
+}
+
+.new-session-button {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  color: #555864;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .session-group {
@@ -306,54 +328,6 @@ button {
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(246, 247, 249, 0.94));
 }
 
-.chat-presence-bar {
-  position: absolute;
-  top: 24px;
-  left: 50%;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  width: min(520px, calc(100% - 64px));
-  padding: 8px 10px;
-  transform: translateX(-50%);
-  border: 1px solid rgba(38, 44, 57, 0.1);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.64);
-  box-shadow: 0 16px 54px rgba(35, 39, 49, 0.1);
-  backdrop-filter: blur(18px);
-}
-
-.presence-bar-avatar {
-  width: 30px;
-  height: 30px;
-}
-
-.chat-presence-bar div {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.chat-presence-bar strong,
-.chat-presence-bar span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-presence-bar strong {
-  color: #30323a;
-  font-size: 12px;
-}
-
-.chat-presence-bar span {
-  color: rgba(86, 89, 99, 0.68);
-  font-size: 10px;
-  font-weight: 700;
-}
-
 .presence-chip {
   border: 1px solid rgba(47, 174, 145, 0.22);
   color: #2e7c70;
@@ -436,8 +410,7 @@ button {
   line-height: 1.15;
 }
 
-.inspector-copy p,
-.inspector-copy span {
+.inspector-copy p {
   display: block;
   margin: 0;
   color: rgba(75, 78, 88, 0.74);
@@ -604,6 +577,57 @@ button {
   gap: 12px;
 }
 
+.model-profile-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(180px, 0.38fr) minmax(0, 1fr);
+}
+
+.model-profile-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.model-profile-item {
+  display: grid;
+  gap: 4px;
+  min-height: 72px;
+  padding: 12px;
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.model-profile-item.selected {
+  border-color: rgba(47, 111, 104, 0.38);
+  background: rgba(47, 111, 104, 0.1);
+}
+
+.model-profile-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.model-profile-item.selected:disabled {
+  opacity: 0.82;
+}
+
+.model-profile-item span {
+  color: #30333b;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.model-profile-item small,
+.model-profile-item strong {
+  color: rgba(76, 80, 91, 0.72);
+  font-size: 0.76rem;
+}
+
 .settings-input {
   display: grid;
   gap: 6px;
@@ -631,6 +655,11 @@ button {
 .settings-input input:focus {
   border-color: rgba(47, 111, 104, 0.38);
   box-shadow: 0 0 0 3px rgba(47, 111, 104, 0.08);
+}
+
+.settings-input input:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .provider-route-row {
@@ -782,6 +811,48 @@ button {
   white-space: nowrap;
 }
 
+.memory-character-switcher {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.memory-character-button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  height: 38px;
+  padding: 6px 9px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  color: #555965;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.memory-character-button img {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.memory-character-button span {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-character-button.selected {
+  border-color: rgba(47, 174, 145, 0.24);
+  background: rgba(47, 174, 145, 0.1);
+  color: #267f6d;
+}
+
 .memory-storage-list {
   display: grid;
   gap: 7px;
@@ -931,6 +1002,123 @@ button {
   border: 1px dashed rgba(42, 47, 58, 0.14);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.52);
+}
+
+.tool-policy-dashboard {
+  display: grid;
+  gap: 12px;
+}
+
+.tool-policy-protected {
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(246, 248, 250, 0.72);
+}
+
+.tool-policy-protected span,
+.tool-policy-group h5 {
+  margin: 0;
+  color: rgba(48, 51, 59, 0.62);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.tool-policy-protected code {
+  overflow-wrap: anywhere;
+  color: rgba(49, 53, 62, 0.82);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.tool-policy-mode-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tool-policy-mode-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.tool-policy-mode-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tool-policy-mode-card h4 {
+  margin: 0 0 4px;
+  color: #30333b;
+  font-size: 14px;
+}
+
+.tool-policy-mode-card p {
+  margin: 0;
+  color: rgba(76, 80, 91, 0.68);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.tool-policy-group {
+  display: grid;
+  gap: 7px;
+}
+
+.tool-policy-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.tool-policy-toggle {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid rgba(42, 47, 58, 0.08);
+  border-radius: 8px;
+  background: rgba(246, 248, 250, 0.64);
+}
+
+.tool-policy-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  accent-color: #2f6f68;
+}
+
+.tool-policy-toggle span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.tool-policy-toggle strong {
+  overflow: hidden;
+  color: #30333b;
+  font-size: 11px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-policy-toggle small {
+  color: rgba(76, 80, 91, 0.64);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
 }
 
 .character-card-settings {
@@ -1143,7 +1331,7 @@ button {
   flex-direction: column;
   min-height: 0;
   height: 100%;
-  padding: 82px max(34px, 5vw) 24px;
+  padding: 34px max(34px, 5vw) 24px;
   overflow: auto;
 }
 
@@ -1282,24 +1470,6 @@ button {
   margin: 0 auto 24px;
 }
 
-.composer-context {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 24px;
-  margin: 0 8px 8px;
-  color: rgba(78, 80, 90, 0.72);
-  font-size: 11px;
-}
-
-.composer-chip {
-  border: 1px solid rgba(47, 174, 145, 0.2);
-  background: rgba(47, 174, 145, 0.1);
-  color: #277d6b;
-  font-size: 10px;
-  font-weight: 800;
-}
-
 .composer-card {
   overflow: hidden;
   border: 1px solid rgba(35, 40, 54, 0.12);
@@ -1309,34 +1479,11 @@ button {
   backdrop-filter: blur(24px);
 }
 
-.composer-mode-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 10px 10px 0;
-}
-
-.composer-mode,
 .composer-tool-button,
 .composer-send-button {
   border: 1px solid transparent;
   color: #5c606b;
   font: inherit;
-}
-
-.composer-mode {
-  min-width: 52px;
-  height: 28px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: transparent;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.composer-mode.active {
-  border-color: rgba(47, 174, 145, 0.22);
-  background: rgba(47, 174, 145, 0.1);
-  color: #267f6d;
 }
 
 .composer-textarea {
@@ -1421,10 +1568,6 @@ button {
     padding-right: 28px;
   }
 
-  .chat-presence-bar {
-    width: calc(100% - 28px);
-  }
-
   .character-inspector {
     inset: 12px;
     width: auto;
@@ -1437,5 +1580,9 @@ button {
 
   .settings-section-header {
     display: grid;
+  }
+
+  .model-profile-layout {
+    grid-template-columns: 1fr;
   }
 }

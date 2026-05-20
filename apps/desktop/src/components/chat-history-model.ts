@@ -24,7 +24,6 @@ export type AppendChatMessageRequest = {
   speaker: ChatMessage["speaker"];
   author: string;
   text: string;
-  mode?: ChatMessage["mode"];
   stickerId?: string;
   modelRoute?: string;
   providerId?: string;
@@ -120,4 +119,10 @@ export function groupChatSessions(
   return ["今天", "昨天", "更早"]
     .map((bucket) => groups.get(bucket))
     .filter((group): group is SessionGroup => Boolean(group));
+}
+
+export function findLatestCharacterSession(sessions: ChatSessionSummary[], characterId: string) {
+  return sessions
+    .filter((session) => session.characterId === characterId)
+    .sort((left, right) => parseStoredTimestamp(right.updatedAt).getTime() - parseStoredTimestamp(left.updatedAt).getTime())[0] ?? null;
 }

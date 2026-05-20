@@ -12,3 +12,7 @@ test("canSendMessage only allows non-empty enabled drafts", () => {
     false
   );
 });
+
+test("default composer state does not carry a mode", () => {
+  assert.equal("mode" in defaultComposerState, false);
+});

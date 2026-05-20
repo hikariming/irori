@@ -8,8 +8,8 @@ export function buildSettingsTabs(): SettingsTab[] {
   return [
     {
       id: "model-provider",
-      label: "模型供应商",
-      description: "配置一个 OpenAI 兼容接口：Base URL、Token 和模型名。"
+      label: "模型接入",
+      description: "保存多模型配置档案，并选择当前聊天使用的模型。"
     },
     {
       id: "character-card",

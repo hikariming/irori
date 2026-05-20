@@ -1,6 +1,6 @@
 import { Avatar, Button, Chip, ScrollShadow } from "@heroui/react";
 
-import { buildCharacterChatPreview, type ChatMessage } from "./chat-model";
+import type { CharacterChatPreview, ChatMessage } from "./chat-model";
 
 function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: string }) {
   if (message.speaker === "system") {
@@ -40,17 +40,16 @@ function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: stri
 }
 
 type CompanionChatProps = {
+  character: CharacterChatPreview;
   isSending?: boolean;
   isCharacterOpen: boolean;
   messages: ChatMessage[];
   onCharacterClose: () => void;
 };
 
-export function CompanionChat({ isSending = false, isCharacterOpen, messages, onCharacterClose }: CompanionChatProps) {
-  const preview = buildCharacterChatPreview();
-
+export function CompanionChat({ character: preview, isSending = false, isCharacterOpen, messages, onCharacterClose }: CompanionChatProps) {
   return (
-    <section className="chat-layout" aria-label="示璃陪伴对话">
+    <section className="chat-layout" aria-label={`${preview.character.name}陪伴对话`}>
       <img
         alt=""
         aria-hidden="true"
@@ -58,20 +57,6 @@ export function CompanionChat({ isSending = false, isCharacterOpen, messages, on
         src={preview.assets.background}
       />
       <div className="chat-background-wash" />
-
-      <header className="chat-presence-bar" aria-label="当前角色状态">
-        <Avatar className="presence-bar-avatar">
-          <Avatar.Image alt={preview.character.name} src={preview.assets.avatar} />
-          <Avatar.Fallback>{preview.character.name.slice(0, 1)}</Avatar.Fallback>
-        </Avatar>
-        <div>
-          <strong>{preview.character.name}</strong>
-          <span>{preview.mood.description}</span>
-        </div>
-        <Chip className="presence-chip" size="sm" variant="soft">
-          {preview.mood.label}
-        </Chip>
-      </header>
 
       {isCharacterOpen ? (
         <aside className="character-inspector" aria-label="角色详情">
@@ -90,7 +75,6 @@ export function CompanionChat({ isSending = false, isCharacterOpen, messages, on
           </Chip>
           <h1>{preview.character.name}</h1>
           <p>{preview.character.tagline}</p>
-          <span>{preview.mood.description}</span>
           <div className="inspector-stickers" aria-label="角色表情">
             {preview.stickers.map((sticker) => (
               <img alt={sticker.label} key={sticker.id} src={sticker.src} />
@@ -101,7 +85,7 @@ export function CompanionChat({ isSending = false, isCharacterOpen, messages, on
       ) : null}
 
       <ScrollShadow className="chat-stream" hideScrollBar orientation="vertical">
-        <div className="chat-date-pill">今天 · 陪伴模式</div>
+        <div className="chat-date-pill">今天</div>
         {messages.map((message) => (
           <MessageBubble
             avatar={preview.assets.avatar}

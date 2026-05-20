@@ -12,7 +12,9 @@ export function buildPiSessionOptions({
   authPath,
   runtimeToken,
   sessionMode = "memory",
-  thinkingLevel = "medium"
+  thinkingLevel = "medium",
+  tools,
+  customTools
 }) {
   const authStorage = AuthStorage.create(authPath);
 
@@ -31,7 +33,9 @@ export function buildPiSessionOptions({
     modelRegistry,
     sessionManager,
     thinkingLevel,
-    model
+    model,
+    tools,
+    customTools
   };
 }
 

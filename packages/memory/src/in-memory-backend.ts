@@ -1,6 +1,7 @@
 import type {
   CapturedConversationTurn,
   MemoryBackend,
+  MemoryRecallRequest,
   MemoryScope,
   RecalledMemory
 } from "./index.ts";
@@ -49,9 +50,64 @@ function summaryFromTurn(turn: CapturedConversationTurn): RecalledMemory {
     scope: "session",
     kind: "session_summary",
     text: `用户：${turn.userText}\n助手：${turn.assistantText}`,
+    userId: turn.userId,
+    characterId: turn.characterId,
+    projectId: turn.projectId,
+    sessionId: turn.sessionId,
     sourceRef: `${turn.sessionId}/${turn.createdAt}`,
     approved: true
   };
+}
+
+function ownerMatches(value: string | undefined, expected: string | undefined) {
+  return Boolean(value && expected && value === expected);
+}
+
+function sourceMatches(sourceRef: string | undefined, expected: string | undefined, prefix: string) {
+  if (!sourceRef || !expected) {
+    return false;
+  }
+
+  return sourceRef === expected || sourceRef === `${prefix}:${expected}` || sourceRef.startsWith(`${expected}/`);
+}
+
+function hasNoOwner(memory: RecalledMemory) {
+  return !memory.userId && !memory.characterId && !memory.projectId && !memory.sessionId && !memory.sourceRef;
+}
+
+function belongsToRecallRequest(memory: RecalledMemory, request: MemoryRecallRequest) {
+  if (memory.scope === "user") {
+    return (
+      ownerMatches(memory.userId, request.userId) ||
+      sourceMatches(memory.sourceRef, request.userId, "user") ||
+      hasNoOwner(memory)
+    );
+  }
+
+  if (memory.scope === "character") {
+    return (
+      ownerMatches(memory.characterId, request.characterId) ||
+      sourceMatches(memory.sourceRef, request.characterId, "character")
+    );
+  }
+
+  if (memory.scope === "project") {
+    return (
+      ownerMatches(memory.projectId, request.projectId) ||
+      sourceMatches(memory.sourceRef, request.projectId, "project")
+    );
+  }
+
+  if (memory.scope === "session") {
+    const sessionMatches =
+      ownerMatches(memory.sessionId, request.sessionId) ||
+      sourceMatches(memory.sourceRef, request.sessionId, "session");
+    const characterMatches = !memory.characterId || memory.characterId === request.characterId;
+
+    return sessionMatches && characterMatches;
+  }
+
+  return false;
 }
 
 export function createInMemoryBackend(seed: RecalledMemory[] = []): MemoryBackend {
@@ -70,6 +126,7 @@ export function createInMemoryBackend(seed: RecalledMemory[] = []): MemoryBacken
       const maxResults = request.maxResults ?? 5;
 
       return [...memories.values()]
+        .filter((memory) => belongsToRecallRequest(memory, request))
         .filter((memory) => overlaps(request.query, memory))
         .slice(0, maxResults);
     },

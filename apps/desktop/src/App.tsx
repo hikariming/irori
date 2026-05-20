@@ -6,19 +6,23 @@ import { CompanionSidebar } from "./components/CompanionSidebar";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
 import { desktopBackend } from "./components/desktop-backend";
 import { formatUnknownError } from "./components/error-message";
-import { buildCharacterChatPreview, type ChatMessage } from "./components/chat-model";
-import { createSessionTitle, groupChatSessions, type ChatSessionSummary } from "./components/chat-history-model";
+import { buildCharacterChatPreview, isCharacterId, type ChatMessage } from "./components/chat-model";
+import { createSessionTitle, findLatestCharacterSession, groupChatSessions, type ChatSessionSummary } from "./components/chat-history-model";
 import { buildCharacterCardViewModel } from "./components/character-card-view-model";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
-import type { ComposerMode } from "./components/input-model";
-import { buildInitialModelSettings, isModelConfigured, type ModelSettingsState } from "./components/model-settings-controller";
+import {
+  buildInitialModelSettings,
+  getActiveModelProfile,
+  isModelConfigured,
+  type ModelSettingsState
+} from "./components/model-settings-controller";
 import {
   appendMemoryDebugEvent,
   createMemoryDebugEventFromRun,
   type MemoryDebugEvent,
   type MemoryRunSnapshot
 } from "./components/memory-status-model";
-import { characters } from "./components/sidebar-model";
+import { activateCharacter, characters } from "./components/sidebar-model";
 
 function messageTime() {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -27,14 +31,30 @@ function messageTime() {
   }).format(new Date());
 }
 
-function initialMessages(): ChatMessage[] {
-  const preview = buildCharacterChatPreview();
-  const card = buildCharacterCardViewModel();
+function welcomeMessageId(characterId: string) {
+  return `${characterId}-welcome`;
+}
+
+function buildOpeningMessagePrompt(characterId: string) {
+  const card = buildCharacterCardViewModel(characterId);
+
+  return [
+    `你是 ${card.name}，${card.relationship}。`,
+    `角色气质：${card.persona}`,
+    `说话风格：${card.speakingStyle}`,
+    "请结合可用记忆，生成一句自然的重新见面开场白。",
+    "要求：1 到 2 句；不要像任务审问；不要说“根据记忆”；不要编造未提供的事实；不要替用户决定今天必须做什么；只输出开场白本身。"
+  ].join("\n");
+}
+
+function initialMessages(characterId = "shili"): ChatMessage[] {
+  const preview = buildCharacterChatPreview(characterId);
+  const card = buildCharacterCardViewModel(characterId);
   const neutralSticker = preview.stickers.find((sticker) => sticker.id === "neutral");
 
   return [
     {
-      id: "shili-welcome",
+      id: welcomeMessageId(preview.character.id),
       speaker: "character",
       author: card.name,
       text: card.firstMessage,
@@ -45,17 +65,27 @@ function initialMessages(): ChatMessage[] {
 }
 
 export function App() {
+  const [activeCharacterId, setActiveCharacterId] = useState(() => characters.find((character) => character.active)?.id ?? "shili");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages(activeCharacterId));
+  const [openingGenerationKey, setOpeningGenerationKey] = useState(0);
   const [isSending, setIsSending] = useState(false);
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
   const [memoryDebugEvents, setMemoryDebugEvents] = useState<MemoryDebugEvent[]>([]);
   const [latestMemoryRun, setLatestMemoryRun] = useState<MemoryRunSnapshot | null>(null);
   const modelReady = isModelConfigured(modelSettings);
+  const activeModelProfile = getActiveModelProfile(modelSettings);
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
+  const activeCharacter = buildCharacterChatPreview(activeCharacterId);
+  const sidebarCharacters = activateCharacter(characters, activeCharacterId);
+
+  function showInitialMessages(characterId: string) {
+    setMessages(initialMessages(characterId));
+    setOpeningGenerationKey((current) => current + 1);
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -92,7 +122,7 @@ export function App() {
 
         if (sessions.length === 0) {
           setActiveSessionId(null);
-          setMessages(initialMessages());
+          showInitialMessages(activeCharacterId);
           return;
         }
 
@@ -100,7 +130,14 @@ export function App() {
 
         if (isMounted) {
           setActiveSessionId(detail.session.id);
-          setMessages(detail.messages.length === 0 ? initialMessages() : detail.messages);
+          if (isCharacterId(detail.session.characterId)) {
+            setActiveCharacterId(detail.session.characterId);
+          }
+          if (detail.messages.length === 0) {
+            showInitialMessages(detail.session.characterId);
+          } else {
+            setMessages(detail.messages);
+          }
         }
       } catch (error) {
         if (isMounted) {
@@ -126,6 +163,52 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!modelReady || activeSessionId !== null) {
+      return;
+    }
+
+    let isCancelled = false;
+    const characterId = activeCharacterId;
+    const fallbackId = welcomeMessageId(characterId);
+
+    desktopBackend.generateOpeningMessage({
+      characterId,
+      prompt: buildOpeningMessagePrompt(characterId)
+    })
+      .then((response) => {
+        const text = response.text.trim();
+
+        if (isCancelled || !text) {
+          return;
+        }
+
+        setMessages((current) => {
+          if (current.length !== 1 || current[0]?.id !== fallbackId) {
+            return current;
+          }
+
+          return [{ ...current[0], text }];
+        });
+
+        const memoryRun = {
+          memoryBackendSource: response.memoryBackendSource,
+          recalledMemories: response.recalledMemories
+        };
+        setLatestMemoryRun(memoryRun);
+        setMemoryDebugEvents((current) =>
+          appendMemoryDebugEvent(current, createMemoryDebugEventFromRun({ run: memoryRun }))
+        );
+      })
+      .catch(() => {
+        // Static first messages stay in place when opening generation is unavailable.
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeCharacterId, activeSessionId, modelReady, openingGenerationKey]);
+
   async function refreshChatSessions(nextActiveSessionId: string | null = activeSessionId) {
     const sessions = await desktopBackend.listChatSessions();
     setChatSessions(sessions);
@@ -143,7 +226,14 @@ export function App() {
     try {
       const detail = await desktopBackend.getChatSession(sessionId);
       setActiveSessionId(detail.session.id);
-      setMessages(detail.messages.length === 0 ? initialMessages() : detail.messages);
+      if (isCharacterId(detail.session.characterId)) {
+        setActiveCharacterId(detail.session.characterId);
+      }
+      if (detail.messages.length === 0) {
+        showInitialMessages(detail.session.characterId);
+      } else {
+        setMessages(detail.messages);
+      }
       setIsCharacterOpen(false);
       setIsSettingsOpen(false);
     } catch (error) {
@@ -160,7 +250,7 @@ export function App() {
     }
   }
 
-  async function sendPrompt(draft: string, mode: ComposerMode) {
+  async function sendPrompt(draft: string) {
     const prompt = draft.trim();
 
     if (!prompt || isSending || !modelReady) {
@@ -170,8 +260,10 @@ export function App() {
           {
             id: `model-missing-${Date.now()}`,
             speaker: "system",
-            author: "模型供应商",
-            text: "还没有可用模型。请先点左下角设置，填写 OpenAI 兼容接口的 Base URL、Token 和模型名。",
+            author: "模型接入",
+            text: activeModelProfile
+              ? `当前模型「${activeModelProfile.name}」还不可用。请先点左下角设置，填写 Base URL、Token 和模型名。`
+              : "还没有可用模型。请先点左下角设置，添加一个模型配置档案。",
             time: messageTime()
           }
         ]);
@@ -185,10 +277,9 @@ export function App() {
       speaker: "user",
       author: "你",
       text: prompt,
-      time: messageTime(),
-      mode
+      time: messageTime()
     };
-    const preview = buildCharacterChatPreview();
+    const preview = activeCharacter;
 
     setMessages((current) => [...current, userMessage]);
     setIsSending(true);
@@ -205,14 +296,12 @@ export function App() {
         sessionId,
         speaker: userMessage.speaker,
         author: userMessage.author,
-        text: userMessage.text,
-        mode: userMessage.mode
+        text: userMessage.text
       });
       const promptHistory = activeSessionId ? messages : [];
       const sessionPrompt = composeCharacterSessionPrompt({
         character: preview,
         history: promptHistory,
-        mode,
         userPrompt: prompt
       });
 
@@ -222,8 +311,7 @@ export function App() {
       );
 
       const response = await desktopBackend.sendPiPrompt({
-        characterId: "shili",
-        mode,
+        characterId: preview.character.id,
         prompt,
         sessionId,
         sessionPrompt
@@ -243,7 +331,7 @@ export function App() {
       const assistantMessage = await desktopBackend.appendChatMessage({
         sessionId,
         speaker: "character",
-        author: "示璃",
+        author: preview.character.name,
         text: parsedReply.text || `已通过 ${response.modelRoute} 完成这次 Pi session。`,
         stickerId: parsedReply.sticker?.id,
         modelRoute: response.modelRoute,
@@ -287,23 +375,53 @@ export function App() {
     }
   }
 
+  async function switchCharacter(characterId: string) {
+    if (isSending) {
+      return;
+    }
+
+    setActiveCharacterId(characterId);
+    setIsSettingsOpen(false);
+    setIsCharacterOpen(false);
+
+    const latestSession = findLatestCharacterSession(chatSessions, characterId);
+
+    if (latestSession) {
+      await loadChatSession(latestSession.id);
+      return;
+    }
+
+    setActiveSessionId(null);
+    showInitialMessages(characterId);
+  }
+
+  function startNewSession() {
+    if (isSending) {
+      return;
+    }
+
+    setActiveSessionId(null);
+    setIsSettingsOpen(false);
+    setIsCharacterOpen(false);
+    showInitialMessages(activeCharacterId);
+  }
+
   return (
     <main className="app-frame">
       <CompanionSidebar
-        characters={characters}
-        onCharacterInspect={() => {
-          setIsSettingsOpen(false);
-          setIsCharacterOpen(true);
-        }}
+        characters={sidebarCharacters}
+        onCharacterInspect={(character) => switchCharacter(character.id)}
         onSettingsOpen={() => {
           setIsCharacterOpen(false);
           setIsSettingsOpen(true);
         }}
+        onNewSession={startNewSession}
         onSessionSelect={loadChatSession}
         sessions={groupedSessions}
       />
       <section className="conversation-stage" aria-label="陪伴对话">
         <CompanionChat
+          character={activeCharacter}
           isSending={isSending}
           isCharacterOpen={isCharacterOpen}
           messages={messages}
@@ -313,13 +431,9 @@ export function App() {
           disabled={isSending || !modelReady}
           isSending={isSending}
           onSend={sendPrompt}
-          statusHint={
-            modelReady
-              ? undefined
-              : "未配置模型供应商：请先填写 Base URL / Token / 模型名"
-          }
         />
         <SystemSettingsPanel
+          activeCharacterId={activeCharacterId}
           isOpen={isSettingsOpen}
           memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}

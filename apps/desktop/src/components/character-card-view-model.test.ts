@@ -17,3 +17,18 @@ test("buildCharacterCardViewModel exposes shili card assets for settings render"
   assert.equal(viewModel.portrait.endsWith("neutral.png"), true);
   assert.equal(viewModel.background.endsWith("default.png"), true);
 });
+
+test("buildCharacterCardViewModel uses conversational first messages", () => {
+  assert.equal(
+    buildCharacterCardViewModel("shili").firstMessage,
+    "我在。今天想先聊聊，还是直接一起处理一件事？"
+  );
+  assert.equal(
+    buildCharacterCardViewModel("lulin").firstMessage,
+    "来了。把现场丢给我，我们先拆最烦的那一块。"
+  );
+  assert.equal(
+    buildCharacterCardViewModel("shenyanzhou").firstMessage,
+    "说吧，今天想判断哪件事？我先帮你把客户、钱、风险和下一步拆清楚。"
+  );
+});

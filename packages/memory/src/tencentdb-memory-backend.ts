@@ -104,6 +104,10 @@ function metadataFrom(row: Record<string, unknown>): Record<string, unknown> {
   return asRecord(row.metadata) ?? {};
 }
 
+function ownerFrom(record: Record<string, unknown>, metadata: Record<string, unknown>, key: string) {
+  return stringFrom(record[key]) ?? stringFrom(metadata[key]);
+}
+
 export function normalizeTencentDbMemory(row: unknown): RecalledMemory | null {
   const record = asRecord(row);
 
@@ -145,11 +149,83 @@ export function normalizeTencentDbMemory(row: unknown): RecalledMemory | null {
     memory.sourceRef = sourceRef;
   }
 
+  const userId = ownerFrom(record, metadata, "userId");
+  const characterId = ownerFrom(record, metadata, "characterId");
+  const projectId = ownerFrom(record, metadata, "projectId");
+  const sessionId = ownerFrom(record, metadata, "sessionId");
+
+  if (userId !== undefined) {
+    memory.userId = userId;
+  }
+
+  if (characterId !== undefined) {
+    memory.characterId = characterId;
+  }
+
+  if (projectId !== undefined) {
+    memory.projectId = projectId;
+  }
+
+  if (sessionId !== undefined) {
+    memory.sessionId = sessionId;
+  }
+
   if (approved !== undefined) {
     memory.approved = approved;
   }
 
   return memory;
+}
+
+function ownerMatches(value: string | undefined, expected: string | undefined) {
+  return Boolean(value && expected && value === expected);
+}
+
+function sourceMatches(sourceRef: string | undefined, expected: string | undefined, prefix: string) {
+  if (!sourceRef || !expected) {
+    return false;
+  }
+
+  return sourceRef === expected || sourceRef === `${prefix}:${expected}` || sourceRef.startsWith(`${expected}/`);
+}
+
+function hasNoOwner(memory: RecalledMemory) {
+  return !memory.userId && !memory.characterId && !memory.projectId && !memory.sessionId && !memory.sourceRef;
+}
+
+function belongsToRecallRequest(memory: RecalledMemory, request: MemoryRecallRequest) {
+  if (memory.scope === "user") {
+    return (
+      ownerMatches(memory.userId, request.userId) ||
+      sourceMatches(memory.sourceRef, request.userId, "user") ||
+      hasNoOwner(memory)
+    );
+  }
+
+  if (memory.scope === "character") {
+    return (
+      ownerMatches(memory.characterId, request.characterId) ||
+      sourceMatches(memory.sourceRef, request.characterId, "character")
+    );
+  }
+
+  if (memory.scope === "project") {
+    return (
+      ownerMatches(memory.projectId, request.projectId) ||
+      sourceMatches(memory.sourceRef, request.projectId, "project")
+    );
+  }
+
+  if (memory.scope === "session") {
+    const sessionMatches =
+      ownerMatches(memory.sessionId, request.sessionId) ||
+      sourceMatches(memory.sourceRef, request.sessionId, "session");
+    const characterMatches = !memory.characterId || memory.characterId === request.characterId;
+
+    return (sessionMatches || hasNoOwner(memory)) && characterMatches;
+  }
+
+  return false;
 }
 
 export function createTencentDbMemoryBackend(
@@ -170,7 +246,8 @@ export function createTencentDbMemoryBackend(
 
       return (rows ?? [])
         .map(normalizeTencentDbMemory)
-        .filter((memory): memory is RecalledMemory => memory !== null);
+        .filter((memory): memory is RecalledMemory => memory !== null)
+        .filter((memory) => belongsToRecallRequest(memory, request));
     },
     async listMemories(scope, ownerId) {
       const rows = await client.listMemories?.(scope, ownerId);

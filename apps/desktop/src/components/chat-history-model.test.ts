@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createSessionTitle, groupChatSessions, type ChatSessionSummary } from "./chat-history-model.ts";
+import { createSessionTitle, findLatestCharacterSession, groupChatSessions, type ChatSessionSummary } from "./chat-history-model.ts";
 
 test("createSessionTitle uses the first user message and normalizes whitespace", () => {
   assert.equal(createSessionTitle("  先把\n聊天历史 存起来，然后再做记忆  "), "先把聊天历史存起来，然后再做记忆");
@@ -68,4 +68,33 @@ test("groupChatSessions accepts millisecond timestamps from the Tauri store", ()
 
   assert.equal(groups[0].group, "今天");
   assert.equal(groups[0].items[0].time, "10:42");
+});
+
+test("findLatestCharacterSession returns the newest session for a character", () => {
+  const sessions: ChatSessionSummary[] = [
+    {
+      id: "older-lulin",
+      characterId: "lulin",
+      title: "陆临旧会话",
+      updatedAt: "2026-05-18T10:42:00.000+08:00",
+      lastMessagePreview: "旧一点"
+    },
+    {
+      id: "newer-shili",
+      characterId: "shili",
+      title: "示璃新会话",
+      updatedAt: "2026-05-20T10:42:00.000+08:00",
+      lastMessagePreview: "不是当前角色"
+    },
+    {
+      id: "newer-lulin",
+      characterId: "lulin",
+      title: "陆临新会话",
+      updatedAt: "2026-05-19T22:18:00.000+08:00",
+      lastMessagePreview: "最近一次"
+    }
+  ];
+
+  assert.equal(findLatestCharacterSession(sessions, "lulin")?.id, "newer-lulin");
+  assert.equal(findLatestCharacterSession(sessions, "shenyanzhou"), null);
 });

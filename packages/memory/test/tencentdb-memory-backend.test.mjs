@@ -86,6 +86,29 @@ test("tencentdb backend normalizes recalled rows", async () => {
   ]);
 });
 
+test("tencentdb backend keeps unscoped session rows from compatible clients", async () => {
+  const backend = createTencentDbMemoryBackend({
+    recallForPrompt: async () => [
+      {
+        memory_id: "memory-1",
+        layer: "session",
+        type: "summary",
+        memory: "这次在接真实记忆后端。"
+      }
+    ]
+  });
+
+  const recalled = await backend.recallForPrompt({
+    userId: "local-user",
+    characterId: "shili",
+    query: "真实记忆",
+    mode: "companion"
+  });
+
+  assert.equal(recalled[0].kind, "session_summary");
+  assert.equal(recalled[0].text, "这次在接真实记忆后端。");
+});
+
 test("tencentdb backend delegates list and delete when supported", async () => {
   const calls = [];
   const backend = createTencentDbMemoryBackend({

@@ -8,6 +8,7 @@ import { createChatHistoryMemoryBackend } from "./chat-history-memory-backend.mj
 import { resolveConfiguredMemoryBackend } from "./configured-memory-backend.mjs";
 import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
 import { createCockapooPiSession } from "./pi-session-adapter.mjs";
+import { buildToolRuntime } from "./tool-policy-runtime.mjs";
 
 export function collectAssistantText(events) {
   const deltas = [];
@@ -64,6 +65,7 @@ export async function runCockapooPiPrompt({
   memoryRecallRequest,
   memoryCaptureTurn,
   chatHistoryMemory,
+  toolPolicySettings,
   resolveMemoryBackend = resolveConfiguredMemoryBackend
 }) {
   const model = resolvePiModel(modelSettings);
@@ -123,13 +125,21 @@ export async function runCockapooPiPrompt({
     memoryBackend: effectiveMemoryBackend,
     recallRequest: effectiveRecallRequest
   });
+  const toolRuntime = buildToolRuntime({
+    settings: toolPolicySettings,
+    memoryBackend: effectiveMemoryBackend,
+    memoryRecallRequest: effectiveRecallRequest
+  });
 
   const { session } = await createSession({
     cwd,
     modelSettings,
     runtimeToken,
     authPath,
-    sessionMode: "memory"
+    sessionMode: "memory",
+    tools: toolRuntime.tools,
+    customTools: toolRuntime.customTools,
+    toolPolicy: toolRuntime.toolPolicy
   });
 
   const events = [];
@@ -157,7 +167,8 @@ export async function runCockapooPiPrompt({
       modelRoute,
       text,
       memoryBackendSource,
-      recalledMemories: memoryPrompt.memories
+      recalledMemories: memoryPrompt.memories,
+      toolPolicy: toolRuntime.summary
     };
   } finally {
     unsubscribe();

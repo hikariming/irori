@@ -46,6 +46,68 @@ test("buildMemoryDashboardViewModel combines static status and latest recall", (
   assert.equal(viewModel.memories[0].kindLabel, "会话摘要");
 });
 
+test("buildMemoryDashboardViewModel filters role-scoped memories by selected character", () => {
+  const viewModel = buildMemoryDashboardViewModel({
+    selectedCharacterId: "shili",
+    status: null,
+    latestRun: {
+      memoryBackendSource: "tencentdb",
+      recalledMemories: [
+        {
+          id: "user-preference",
+          scope: "user",
+          kind: "preference",
+          text: "用户喜欢短句开场。"
+        },
+        {
+          id: "project-note",
+          scope: "project",
+          kind: "project_note",
+          text: "项目是 Cockapoo。"
+        },
+        {
+          id: "shili-note",
+          scope: "character",
+          kind: "relationship_note",
+          characterId: "shili",
+          text: "示璃开场要轻一点。"
+        },
+        {
+          id: "lulin-note",
+          scope: "character",
+          kind: "relationship_note",
+          characterId: "lulin",
+          text: "陆临可以更直接。"
+        },
+        {
+          id: "shili-session",
+          scope: "session",
+          kind: "session_summary",
+          characterId: "shili",
+          sessionId: "session-shili",
+          text: "示璃最近聊过开场白。"
+        },
+        {
+          id: "lulin-session",
+          scope: "session",
+          kind: "session_summary",
+          characterId: "lulin",
+          sessionId: "session-lulin",
+          text: "陆临最近聊过 bug。"
+        }
+      ]
+    }
+  });
+
+  assert.deepEqual(
+    viewModel.memories.map((memory) => memory.id),
+    ["user-preference", "project-note", "shili-note", "shili-session"]
+  );
+  assert.equal(viewModel.recalledCount, 4);
+  assert.equal(viewModel.totalRecalledCount, 6);
+  assert.equal(viewModel.selectedCharacterLabel, "示璃");
+});
+
 test("createMemoryDebugEventFromRun summarizes latest memory behavior", () => {
   const event = createMemoryDebugEventFromRun({
     now: new Date("2026-05-19T22:41:00.000+08:00"),

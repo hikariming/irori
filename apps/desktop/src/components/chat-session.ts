@@ -1,11 +1,9 @@
 import { buildCharacterCardViewModel } from "./character-card-view-model.ts";
 import type { CharacterChatPreview, ChatMessage, ChatSticker } from "./chat-model.ts";
-import type { ComposerMode } from "./input-model.ts";
 
 export type ComposeCharacterSessionPromptInput = {
   character: CharacterChatPreview;
   history: ChatMessage[];
-  mode: ComposerMode;
   userPrompt: string;
 };
 
@@ -18,7 +16,7 @@ const stickerMarkerPattern = /\[sticker:([a-z-]+)\]/gi;
 
 function speakerLabel(message: ChatMessage) {
   if (message.speaker === "user") {
-    return `用户${message.mode ? `(${message.mode})` : ""}`;
+    return "用户";
   }
 
   if (message.speaker === "character") {
@@ -55,10 +53,9 @@ function stickerProtocol(stickers: ChatSticker[]) {
 export function composeCharacterSessionPrompt({
   character,
   history,
-  mode,
   userPrompt
 }: ComposeCharacterSessionPromptInput) {
-  const card = buildCharacterCardViewModel();
+  const card = buildCharacterCardViewModel(character.character.id);
 
   return [
     "# Cockapoo Pi Companion Chat",
@@ -75,7 +72,6 @@ export function composeCharacterSessionPrompt({
     `沉浸提示：${card.immersionCues.join("；")}`,
     "",
     "## 当前任务",
-    `当前模式：${mode}`,
     "你既要保持角色陪伴感，也可以帮助用户推进代码、设计、排查和文档工作。",
     "当用户需要效率时，直接给清晰步骤；当用户卡住或情绪明显时，先接住状态，再给一个小到能开始的行动。",
     "",

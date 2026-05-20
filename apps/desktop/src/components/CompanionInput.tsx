@@ -1,7 +1,7 @@
-import { Button, Chip, TextArea, Tooltip } from "@heroui/react";
-import { useMemo, useState } from "react";
+import { Button, TextArea, Tooltip } from "@heroui/react";
+import { useState } from "react";
 
-import { canSendMessage, composerModes, defaultComposerState, type ComposerMode } from "./input-model";
+import { canSendMessage, defaultComposerState } from "./input-model";
 
 type ToolAction = {
   id: string;
@@ -18,15 +18,12 @@ const toolActions: ToolAction[] = [
 type CompanionInputProps = {
   disabled?: boolean;
   isSending?: boolean;
-  statusHint?: string;
-  onSend?: (draft: string, mode: ComposerMode) => Promise<void> | void;
+  onSend?: (draft: string) => Promise<void> | void;
 };
 
-export function CompanionInput({ disabled = false, isSending = false, statusHint, onSend }: CompanionInputProps) {
+export function CompanionInput({ disabled = false, isSending = false, onSend }: CompanionInputProps) {
   const [draft, setDraft] = useState(defaultComposerState.draft);
-  const [mode, setMode] = useState<ComposerMode>(defaultComposerState.mode);
-  const activeMode = useMemo(() => composerModes.find((item) => item.id === mode), [mode]);
-  const isSendable = canSendMessage({ draft, mode, disabled });
+  const isSendable = canSendMessage({ draft, disabled });
 
   async function sendMessage() {
     if (!isSendable) {
@@ -35,32 +32,12 @@ export function CompanionInput({ disabled = false, isSending = false, statusHint
 
     const message = draft;
     setDraft("");
-    await onSend?.(message, mode);
+    await onSend?.(message);
   }
 
   return (
     <section className="companion-input-shell" aria-label="消息输入">
-      <div className="composer-context">
-        <Chip className="composer-chip" size="sm" variant="soft">
-          {activeMode?.hint}
-        </Chip>
-        <span>{statusHint ?? "示璃会先稳住节奏，再陪你拆成下一步"}</span>
-      </div>
-
       <div className="composer-card">
-        <div className="composer-mode-tabs" aria-label="输入模式">
-          {composerModes.map((item) => (
-            <Button
-              className={`composer-mode ${item.id === mode ? "active" : ""}`}
-              key={item.id}
-              onPress={() => setMode(item.id)}
-              type="button"
-            >
-              {item.label}
-            </Button>
-          ))}
-        </div>
-
         <TextArea
           aria-label="输入给角色的消息"
           className="composer-textarea"
