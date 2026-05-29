@@ -3,16 +3,20 @@ import { test } from "node:test";
 
 import {
   buildDraftModelProfile,
+  buildProfileFromPreset,
   buildInitialModelSettings,
   deleteModelProfile,
+  detectPresetProvider,
   formatOpenAiCompatibleRequestPreview,
   formatOpenAiCompatibleRoute,
   getActiveModelProfile,
   isModelConfigured,
   mergeSavedModelSettings,
   normalizeOpenAiCompatibleSettings,
+  presetProviders,
   redactToken,
   setActiveModelProfile,
+  shouldMakeSavedProfileActive,
   upsertModelProfile
 } from "./model-settings-controller.ts";
 
@@ -191,6 +195,35 @@ test("setActiveModelProfile switches only to existing profile ids", () => {
   assert.equal(setActiveModelProfile(settings, "missing").activeModelId, "default");
 });
 
+test("shouldMakeSavedProfileActive activates a saved non-current draft", () => {
+  const settings = upsertModelProfile(
+    buildInitialModelSettings(),
+    {
+      id: "moonshot",
+      name: "Kimi",
+      baseUrl: "https://api.moonshot.cn/v1",
+      hasToken: true,
+      modelName: "kimi-k2.6"
+    },
+    { makeActive: false }
+  );
+  const draft = settings.profiles.find((profile) => profile.id === "moonshot");
+
+  assert.ok(draft);
+  assert.equal(settings.activeModelId, "default");
+  assert.equal(shouldMakeSavedProfileActive(settings, draft), true);
+});
+
+test("shouldMakeSavedProfileActive keeps the active profile active while saving edits", () => {
+  const settings = buildInitialModelSettings();
+  const draft = {
+    ...getActiveModelProfile(settings),
+    modelName: "gpt-5.5"
+  };
+
+  assert.equal(shouldMakeSavedProfileActive(settings, draft), true);
+});
+
 test("deleteModelProfile removes a profile, keeps the last one, and selects a remaining active profile", () => {
   const settings = upsertModelProfile(
     buildInitialModelSettings(),
@@ -253,6 +286,71 @@ test("buildDraftModelProfile returns a stable new editable profile shape", () =>
     modelName: "",
     tokenHint: undefined
   });
+});
+
+test("buildProfileFromPreset links a preset model to the editable profile fields", () => {
+  const preset = presetProviders.find((provider) => provider.id === "zhipu-coding");
+  assert.ok(preset);
+
+  const profile = buildProfileFromPreset(preset, "glm-4.7");
+
+  assert.match(profile.id, /^zhipu-coding-/);
+  assert.equal(profile.name, "智谱 Coding Plan · glm-4.7");
+  assert.equal(profile.baseUrl, "https://open.bigmodel.cn/api/coding/paas/v4");
+  assert.equal(profile.modelName, "glm-4.7");
+  assert.equal(profile.hasToken, false);
+});
+
+test("buildProfileFromPreset preserves saved token metadata when updating an existing profile", () => {
+  const preset = presetProviders.find((provider) => provider.id === "openai");
+  assert.ok(preset);
+
+  const profile = buildProfileFromPreset(preset, "gpt-5.4-mini", "default", {
+    id: "default",
+    name: "OpenAI GPT-5.5",
+    baseUrl: "https://api.openai.com/v1",
+    hasToken: true,
+    modelName: "gpt-5.5",
+    tokenHint: "••••1234"
+  });
+
+  assert.equal(profile.id, "default");
+  assert.equal(profile.name, "OpenAI · gpt-5.4-mini");
+  assert.equal(profile.hasToken, true);
+  assert.equal(profile.tokenHint, "••••1234");
+});
+
+test("detectPresetProvider prefers exact coding plan profiles over same-domain official providers", () => {
+  assert.equal(
+    detectPresetProvider({
+      id: "zhipu-coding-123",
+      name: "智谱 Coding Plan · glm-5.1",
+      baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+      hasToken: false,
+      modelName: "glm-5.1"
+    })?.id,
+    "zhipu-coding"
+  );
+  assert.equal(
+    detectPresetProvider({
+      id: "bytedance-coding-123",
+      name: "方舟 Coding Plan · doubao-seed-2.0-code",
+      baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3",
+      hasToken: false,
+      modelName: "doubao-seed-2.0-code"
+    })?.id,
+    "bytedance-coding"
+  );
+  assert.equal(
+    detectPresetProvider({
+      id: "alibaba-coding-123",
+      name: "百炼 Coding Plan · qwen3.5-plus",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      hasToken: false,
+      modelName: "qwen3.5-plus"
+    })?.id,
+    "alibaba-coding"
+  );
 });
 
 test("redactToken preserves current saved token hint behavior", () => {

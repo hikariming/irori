@@ -31,7 +31,7 @@ test("preview backend saves a second model profile and switches active profile",
     profileId: "default",
     name: "Cloud",
     baseUrl: "https://api.openai.com/v1",
-    modelName: "gpt-5.2",
+    modelName: "gpt-5.5",
     token: "sk-cloud-123456",
     makeActive: true
   });
@@ -88,7 +88,7 @@ test("preview backend deletes the active model profile and selects a remaining p
     profileId: "default",
     name: "Cloud",
     baseUrl: "https://api.openai.com/v1",
-    modelName: "gpt-5.2",
+    modelName: "gpt-5.5",
     token: "sk-cloud-123456",
     makeActive: false
   });
@@ -142,6 +142,18 @@ test("preview backend refuses to fake a model test after settings are saved", as
     () => backend.testModelConnection(),
     /浏览器预览不会调用真实 LLM/
   );
+});
+
+test("preview backend exposes a no-op Pi prompt progress listener", async () => {
+  const backend = createPreviewBackend();
+  let called = false;
+
+  const unlisten = await backend.onPiPromptProgress(() => {
+    called = true;
+  });
+
+  unlisten();
+  assert.equal(called, false);
 });
 
 test("preview backend accepts draft model test tokens before saving", async () => {
@@ -256,7 +268,7 @@ test("preview backend stores chat sessions and messages in memory", async () => 
     author: "示璃",
     text: "好，我先处理 SQLite。",
     stickerId: "focused",
-    modelRoute: "https://api.openai.com/v1/gpt-5.2",
+    modelRoute: "https://api.openai.com/v1/gpt-5.5",
     providerId: "openai-compatible"
   });
 

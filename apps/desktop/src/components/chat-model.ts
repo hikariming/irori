@@ -29,6 +29,7 @@ export type ChatMessage = {
   text: string;
   time: string;
   sticker?: ChatSticker;
+  reasoning?: string;
 };
 
 export type CharacterChatPreview = {

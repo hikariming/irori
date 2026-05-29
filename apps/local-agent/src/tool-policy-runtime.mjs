@@ -3,8 +3,8 @@ import { Type } from "@earendil-works/pi-ai";
 import {
   defaultToolPolicySettings,
   resolveToolPolicy
-} from "../../../packages/safety/src/index.ts";
-import { classifyMemoryCandidate } from "../../../packages/memory/src/index.ts";
+} from "../../../packages/safety/src/runtime.mjs";
+import { classifyMemoryCandidate } from "../../../packages/memory/src/runtime.mjs";
 
 const supportedCustomToolNames = {
   "memory.read": "memory_read",

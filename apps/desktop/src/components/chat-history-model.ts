@@ -34,6 +34,26 @@ export type GroupChatSessionsOptions = {
   now?: Date;
 };
 
+export type NewDraftSessionState = {
+  activeSessionId?: string | null;
+  isDraftPending?: boolean;
+  isSending?: boolean;
+};
+
+export type OpeningMessageState = {
+  activeSessionId?: string | null;
+  modelReady: boolean;
+  requested: boolean;
+};
+
+export function canStartNewDraftSession({ activeSessionId = null, isDraftPending = false, isSending = false }: NewDraftSessionState) {
+  return Boolean(activeSessionId) && !isDraftPending && !isSending;
+}
+
+export function shouldGenerateOpeningMessage({ activeSessionId = null, modelReady, requested }: OpeningMessageState) {
+  return modelReady && requested && activeSessionId === null;
+}
+
 function normalizeTitleText(text: string) {
   return text
     .trim()

@@ -1,12 +1,12 @@
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,6 +77,7 @@ struct LegacyStoredModelSettings {
 struct SendPiPromptRequest {
     character_id: String,
     prompt: String,
+    run_id: Option<String>,
     session_prompt: Option<String>,
     session_id: Option<String>,
 }
@@ -98,6 +99,12 @@ struct PiPromptResponse {
     recalled_memories: Option<Vec<RecalledMemorySnapshot>>,
     text: String,
     tool_policy: Option<serde_json::Value>,
+}
+
+#[derive(Debug)]
+enum LocalAgentStreamMessage {
+    Progress(serde_json::Value),
+    Final(PiPromptResponse),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,7 +194,7 @@ struct MemoryChatMessage {
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_MODEL_NAME: &str = "gpt-5.2";
+const DEFAULT_MODEL_NAME: &str = "gpt-5.5";
 
 #[tauri::command]
 fn companion_status() -> &'static str {
@@ -226,37 +233,47 @@ fn delete_model_profile(
 }
 
 #[tauri::command]
-fn send_pi_prompt(
+async fn send_pi_prompt(
     app: AppHandle,
     request: SendPiPromptRequest,
 ) -> Result<PiPromptResponse, String> {
-    let prompt = request
-        .session_prompt
-        .clone()
-        .unwrap_or_else(|| format!("[character:{}]\n{}", request.character_id, request.prompt));
+    tauri::async_runtime::spawn_blocking(move || {
+        let prompt = request
+            .session_prompt
+            .clone()
+            .unwrap_or_else(|| format!("[character:{}]\n{}", request.character_id, request.prompt));
 
-    run_local_agent_prompt(app, prompt, Some(request), None)
+        run_local_agent_prompt(app, prompt, Some(request), None)
+    })
+    .await
+    .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
 }
 
 #[tauri::command]
-fn generate_opening_message(
+async fn generate_opening_message(
     app: AppHandle,
     request: GenerateOpeningMessageRequest,
 ) -> Result<PiPromptResponse, String> {
-    run_local_agent_opening_prompt(app, request)
+    tauri::async_runtime::spawn_blocking(move || run_local_agent_opening_prompt(app, request))
+        .await
+        .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
 }
 
 #[tauri::command]
-fn test_model_connection(
+async fn test_model_connection(
     app: AppHandle,
     request: Option<TestModelConnectionRequest>,
 ) -> Result<PiPromptResponse, String> {
-    run_local_agent_prompt(
-        app,
-        "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
-        None,
-        request,
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        run_local_agent_prompt(
+            app,
+            "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
+            None,
+            request,
+        )
+    })
+    .await
+    .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
 }
 
 #[tauri::command]
@@ -352,6 +369,13 @@ fn run_local_agent_prompt(
         fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
         payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
     }
+
+    if let Some(run_id) = request.as_ref().and_then(|request| request.run_id.clone()) {
+        payload["streamEvents"] = serde_json::Value::Bool(true);
+        payload["runId"] = serde_json::Value::String(run_id);
+        return execute_local_agent_prompt_streaming(app, agent_dir, payload);
+    }
+
     execute_local_agent_prompt(agent_dir, payload)
 }
 
@@ -396,10 +420,12 @@ fn execute_local_agent_prompt(
     agent_dir: PathBuf,
     payload: serde_json::Value,
 ) -> Result<PiPromptResponse, String> {
-    let mut child = Command::new("pnpm")
-        .arg("--dir")
-        .arg(agent_dir)
-        .arg("prompt")
+    let mut command = Command::new("pnpm");
+    for arg in local_agent_prompt_command_args(&agent_dir) {
+        command.arg(arg);
+    }
+
+    let mut child = command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -433,6 +459,130 @@ fn execute_local_agent_prompt(
     }
 
     Ok(response)
+}
+
+fn parse_local_agent_stream_line(line: &str) -> Result<LocalAgentStreamMessage, String> {
+    let value: serde_json::Value = serde_json::from_str(line)
+        .map_err(|error| format!("解析 local-agent 流式响应失败：{error}"))?;
+
+    match value.get("type").and_then(|item| item.as_str()) {
+        Some("progress") => {
+            let event = value
+                .get("event")
+                .cloned()
+                .ok_or_else(|| "local-agent 进度事件缺少 event 字段。".to_string())?;
+
+            Ok(LocalAgentStreamMessage::Progress(event))
+        }
+        Some("final") => {
+            let response = value
+                .get("response")
+                .cloned()
+                .ok_or_else(|| "local-agent 最终响应缺少 response 字段。".to_string())?;
+
+            serde_json::from_value(response)
+                .map(LocalAgentStreamMessage::Final)
+                .map_err(|error| format!("解析 local-agent 最终响应失败：{error}"))
+        }
+        _ => serde_json::from_value(value)
+            .map(LocalAgentStreamMessage::Final)
+            .map_err(|error| format!("解析 local-agent 响应失败：{error}")),
+    }
+}
+
+fn execute_local_agent_prompt_streaming(
+    app: AppHandle,
+    agent_dir: PathBuf,
+    payload: serde_json::Value,
+) -> Result<PiPromptResponse, String> {
+    let mut command = Command::new("pnpm");
+    for arg in local_agent_prompt_command_args(&agent_dir) {
+        command.arg(arg);
+    }
+
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("启动 local-agent 失败：{error}"))?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "local-agent stdin 不可用。".to_string())?;
+    stdin
+        .write_all(payload.to_string().as_bytes())
+        .map_err(|error| format!("写入 prompt 失败：{error}"))?;
+    drop(stdin);
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "local-agent stdout 不可用。".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "local-agent stderr 不可用。".to_string())?;
+    let stderr_reader = std::thread::spawn(move || {
+        let mut text = String::new();
+        let mut reader = BufReader::new(stderr);
+        let _ = reader.read_to_string(&mut text);
+        text
+    });
+
+    let mut final_response = None;
+    let reader = BufReader::new(stdout);
+    for line in reader.lines() {
+        let line = line.map_err(|error| format!("读取 local-agent 流式响应失败：{error}"))?;
+        let line = line.trim();
+
+        if line.is_empty() {
+            continue;
+        }
+
+        match parse_local_agent_stream_line(line)? {
+            LocalAgentStreamMessage::Progress(event) => {
+                app.emit("pi_prompt_progress", event)
+                    .map_err(|error| format!("推送模型进度失败：{error}"))?;
+            }
+            LocalAgentStreamMessage::Final(response) => {
+                final_response = Some(response);
+            }
+        }
+    }
+
+    let output_status = child
+        .wait()
+        .map_err(|error| format!("等待 local-agent 失败：{error}"))?;
+    let stderr = stderr_reader.join().unwrap_or_default();
+
+    if !output_status.success() {
+        let error = stderr.trim().to_string();
+        return Err(if error.is_empty() {
+            "local-agent prompt 执行失败。".to_string()
+        } else {
+            error
+        });
+    }
+
+    let response = final_response
+        .ok_or_else(|| "local-agent prompt 没有返回最终响应。".to_string())?;
+
+    if response.text.trim().is_empty() {
+        return Err("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。".to_string());
+    }
+
+    Ok(response)
+}
+
+fn local_agent_prompt_command_args(agent_dir: &Path) -> Vec<String> {
+    vec![
+        "--silent".to_string(),
+        "--dir".to_string(),
+        agent_dir.to_string_lossy().to_string(),
+        "prompt".to_string(),
+    ]
 }
 
 fn build_local_agent_prompt_payload(
@@ -577,7 +727,7 @@ fn local_agent_dir() -> PathBuf {
 fn default_stored_model_profile() -> StoredModelProfile {
     StoredModelProfile {
         id: "default".to_string(),
-        name: "OpenAI GPT-5.2".to_string(),
+        name: "OpenAI GPT-5.5".to_string(),
         base_url: DEFAULT_BASE_URL.to_string(),
         model_name: DEFAULT_MODEL_NAME.to_string(),
         token: None,
@@ -1210,12 +1360,13 @@ mod tests {
         append_chat_message_to_path, build_local_agent_prompt_payload,
         build_memory_backend_config_payload, build_opening_memory_recall_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
-        init_chat_history_at_path, list_chat_sessions_from_path, memory_status_from_paths,
-        normalize_openai_compatible_settings, read_model_settings_from_path,
-        read_stored_model_registry, read_tool_policy_settings_from_path,
+        init_chat_history_at_path, list_chat_sessions_from_path, local_agent_prompt_command_args,
+        memory_status_from_paths, normalize_openai_compatible_settings, parse_local_agent_stream_line,
+        read_model_settings_from_path, read_stored_model_registry, read_tool_policy_settings_from_path,
         recent_memory_messages_from_path, save_model_settings_to_path,
         save_tool_policy_settings_to_path, set_active_model_profile_at_path,
         AppendChatMessageRequest, CreateChatSessionRequest, GenerateOpeningMessageRequest,
+        LocalAgentStreamMessage,
         ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
     };
 
@@ -1315,7 +1466,7 @@ mod tests {
                 author: "示璃".to_string(),
                 text: "好，我先把 SQLite 这层铺好。".to_string(),
                 sticker_id: Some("focused".to_string()),
-                model_route: Some("https://api.openai.com/v1/gpt-5.2".to_string()),
+                model_route: Some("https://api.openai.com/v1/gpt-5.5".to_string()),
                 provider_id: Some("openai-compatible".to_string()),
             },
             "2026-05-18T10:02:00.000+08:00",
@@ -1462,7 +1613,7 @@ mod tests {
             id: "default".to_string(),
             name: "OpenAI".to_string(),
             base_url: "https://api.openai.com/v1".to_string(),
-            model_name: "gpt-5.2".to_string(),
+            model_name: "gpt-5.5".to_string(),
             token: Some("sk-test".to_string()),
         };
         let tool_policy_settings = serde_json::json!({
@@ -1483,6 +1634,49 @@ mod tests {
         assert_eq!(payload["cwd"], "/tmp/cockapoo-workspace");
         assert_eq!(payload["toolPolicySettings"], tool_policy_settings);
         assert_eq!(payload["runtimeToken"], "sk-test");
+    }
+
+    #[test]
+    fn local_agent_prompt_command_suppresses_pnpm_script_output() {
+        let args = local_agent_prompt_command_args(
+            PathBuf::from("/tmp/cockapoo-local-agent").as_path(),
+        );
+
+        assert_eq!(args[0], "--silent");
+        assert_eq!(args[1], "--dir");
+        assert_eq!(args[2], "/tmp/cockapoo-local-agent");
+        assert_eq!(args[3], "prompt");
+    }
+
+    #[test]
+    fn local_agent_stream_lines_parse_progress_and_final_records() {
+        let progress = parse_local_agent_stream_line(
+            r#"{"type":"progress","event":{"runId":"run-1","phase":"thinking","delta":"先想一下"}}"#,
+        )
+        .expect("progress line should parse");
+
+        match progress {
+            LocalAgentStreamMessage::Progress(event) => {
+                assert_eq!(event["runId"], "run-1");
+                assert_eq!(event["phase"], "thinking");
+                assert_eq!(event["delta"], "先想一下");
+            }
+            _ => panic!("expected progress record"),
+        }
+
+        let final_record = parse_local_agent_stream_line(
+            r#"{"type":"final","response":{"providerId":"openai-compatible","modelRoute":"POST http://localhost:11434/v1/chat/completions · body.model = qwen","text":"你好"}}"#,
+        )
+        .expect("final line should parse");
+
+        match final_record {
+            LocalAgentStreamMessage::Final(response) => {
+                assert_eq!(response.provider_id, "openai-compatible");
+                assert_eq!(response.model_route, "POST http://localhost:11434/v1/chat/completions · body.model = qwen");
+                assert_eq!(response.text, "你好");
+            }
+            _ => panic!("expected final record"),
+        }
     }
 
     #[test]

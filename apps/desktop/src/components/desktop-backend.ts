@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
+import type { PiPromptProgressEvent } from "./assistant-progress-model.ts";
 import {
   buildInitialModelSettings,
   deleteModelProfile as deleteSavedModelProfile,
@@ -44,6 +46,7 @@ export type TestModelConnectionRequest = {
 export type SendPiPromptRequest = {
   characterId: string;
   prompt: string;
+  runId?: string;
   sessionId?: string;
   sessionPrompt?: string;
 };
@@ -81,6 +84,7 @@ export type DesktopBackend = {
   getToolPolicySettings: () => Promise<ToolPolicySettings>;
   listChatSessions: () => Promise<ChatSessionSummary[]>;
   loadModelSettings: () => Promise<ModelSettingsState>;
+  onPiPromptProgress: (callback: (event: PiPromptProgressEvent) => void) => Promise<() => void>;
   saveModelSettings: (request: SaveModelSettingsRequest) => Promise<ModelSettingsState>;
   saveToolPolicySettings: (settings: ToolPolicySettings) => Promise<ToolPolicySettings>;
   sendPiPrompt: (request: SendPiPromptRequest) => Promise<PiPromptResponse>;
@@ -253,6 +257,9 @@ export function createPreviewBackend(): DesktopBackend {
       state = mergeSavedModelSettings(buildInitialModelSettings(), savedSettings);
       return state;
     },
+    async onPiPromptProgress() {
+      return () => {};
+    },
     async saveModelSettings(request) {
       state = upsertModelProfile(state, buildProfileFromRequest(state, request), { makeActive: request.makeActive });
       savedSettings = state;
@@ -328,6 +335,11 @@ export function createTauriBackend(): DesktopBackend {
     async loadModelSettings() {
       const saved = await invoke<SavedModelSettings>("get_model_settings");
       return mergeSavedModelSettings(buildInitialModelSettings(), saved);
+    },
+    async onPiPromptProgress(callback) {
+      return listen<PiPromptProgressEvent>("pi_prompt_progress", (event) => {
+        callback(event.payload);
+      });
     },
     async saveModelSettings(request) {
       const saved = await invoke<SavedModelSettings>("save_model_settings", { request });

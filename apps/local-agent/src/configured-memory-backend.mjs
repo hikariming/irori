@@ -1,4 +1,4 @@
-import { createTencentDbMemoryBackend } from "../../../packages/memory/src/index.ts";
+import { createTencentDbMemoryBackend } from "../../../packages/memory/src/runtime.mjs";
 
 const defaultTencentDbModuleName = "@tencentdb-agent-memory/memory-tencentdb";
 

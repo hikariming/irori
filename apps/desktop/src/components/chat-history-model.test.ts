@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createSessionTitle, findLatestCharacterSession, groupChatSessions, type ChatSessionSummary } from "./chat-history-model.ts";
+import {
+  canStartNewDraftSession,
+  createSessionTitle,
+  findLatestCharacterSession,
+  groupChatSessions,
+  shouldGenerateOpeningMessage,
+  type ChatSessionSummary
+} from "./chat-history-model.ts";
 
 test("createSessionTitle uses the first user message and normalizes whitespace", () => {
   assert.equal(createSessionTitle("  先把\n聊天历史 存起来，然后再做记忆  "), "先把聊天历史存起来，然后再做记忆");
@@ -97,4 +104,19 @@ test("findLatestCharacterSession returns the newest session for a character", ()
 
   assert.equal(findLatestCharacterSession(sessions, "lulin")?.id, "newer-lulin");
   assert.equal(findLatestCharacterSession(sessions, "shenyanzhou"), null);
+});
+
+test("canStartNewDraftSession only allows leaving an active saved session", () => {
+  assert.equal(canStartNewDraftSession({ activeSessionId: "session-1" }), true);
+  assert.equal(canStartNewDraftSession({ activeSessionId: null }), false);
+  assert.equal(canStartNewDraftSession({ activeSessionId: undefined }), false);
+  assert.equal(canStartNewDraftSession({ activeSessionId: "session-1", isSending: true }), false);
+  assert.equal(canStartNewDraftSession({ activeSessionId: "session-1", isDraftPending: true }), false);
+});
+
+test("shouldGenerateOpeningMessage requires an explicit request for a draft session", () => {
+  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: true, requested: true }), true);
+  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: true, requested: false }), false);
+  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: "session-1", modelReady: true, requested: true }), false);
+  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: false, requested: true }), false);
 });

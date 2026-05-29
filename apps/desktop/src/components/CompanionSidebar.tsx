@@ -1,14 +1,18 @@
 import { Avatar, Button, ScrollShadow } from "@heroui/react";
 
 import type { CompanionCharacter, SessionGroup } from "./sidebar-model";
+import type { Theme } from "./use-theme";
 
 type CompanionSidebarProps = {
   characters: CompanionCharacter[];
+  isNewSessionDisabled?: boolean;
   sessions: SessionGroup[];
+  theme: Theme;
   onCharacterInspect?: (character: CompanionCharacter) => void;
   onNewSession?: () => void;
   onSessionSelect?: (sessionId: string) => void;
   onSettingsOpen?: () => void;
+  onThemeToggle?: () => void;
 };
 
 function statusLabel(status: CompanionCharacter["status"]) {
@@ -29,11 +33,14 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
 
 export function CompanionSidebar({
   characters,
+  isNewSessionDisabled = false,
   onCharacterInspect,
   onNewSession,
   onSessionSelect,
   onSettingsOpen,
-  sessions
+  onThemeToggle,
+  sessions,
+  theme
 }: CompanionSidebarProps) {
   return (
     <aside className="companion-sidebar" aria-label="角色与对话记录">
@@ -64,7 +71,13 @@ export function CompanionSidebar({
         <section aria-label="对话记录">
           <header className="session-list-header">
             <h2>对话记录</h2>
-            <Button aria-label="新建会话" className="new-session-button" onPress={onNewSession} type="button">
+            <Button
+              aria-label="新建会话"
+              className="new-session-button"
+              isDisabled={isNewSessionDisabled}
+              onPress={onNewSession}
+              type="button"
+            >
               +
             </Button>
           </header>
@@ -91,8 +104,13 @@ export function CompanionSidebar({
         <Button aria-label="设置" className="sidebar-icon-button" onPress={onSettingsOpen} type="button">
           ⚙
         </Button>
-        <Button aria-label="外观" className="sidebar-icon-button" type="button">
-          ☼
+        <Button
+          aria-label={theme === "dark" ? "切换亮色模式" : "切换暗色模式"}
+          className="sidebar-icon-button"
+          onPress={onThemeToggle}
+          type="button"
+        >
+          {theme === "dark" ? "☀" : "☾"}
         </Button>
       </footer>
     </aside>

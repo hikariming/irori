@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { collectAssistantText, runCockapooPiPrompt } from "../src/prompt-runner.mjs";
+import { collectAssistantText, runCockapooPiPrompt, toPiPromptProgressEvent } from "../src/prompt-runner.mjs";
 
 test("runCockapooPiPrompt dry run returns the selected route without calling a model", async () => {
   const result = await runCockapooPiPrompt({
@@ -19,6 +19,206 @@ test("runCockapooPiPrompt dry run returns the selected route without calling a m
   assert.match(result.text, /Pi session ready/);
 });
 
+test("toPiPromptProgressEvent maps assistant thinking and answer deltas", () => {
+  assert.deepEqual(
+    toPiPromptProgressEvent(
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "thinking_delta",
+          delta: "先检查上下文。"
+        }
+      },
+      "run-1"
+    ),
+    {
+      runId: "run-1",
+      phase: "thinking",
+      delta: "先检查上下文。"
+    }
+  );
+
+  assert.deepEqual(
+    toPiPromptProgressEvent(
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "text_delta",
+          delta: "我在。"
+        }
+      },
+      "run-1"
+    ),
+    {
+      runId: "run-1",
+      phase: "answering",
+      delta: "我在。"
+    }
+  );
+});
+
+test("toPiPromptProgressEvent maps assistant thinking boundaries", () => {
+  assert.deepEqual(
+    toPiPromptProgressEvent(
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "thinking_start"
+        }
+      },
+      "run-1"
+    ),
+    {
+      runId: "run-1",
+      phase: "thinking"
+    }
+  );
+
+  assert.deepEqual(
+    toPiPromptProgressEvent(
+      {
+        type: "message_update",
+        assistantMessageEvent: {
+          type: "thinking_end",
+          content: "完整推理内容"
+        }
+      },
+      "run-1"
+    ),
+    {
+      runId: "run-1",
+      phase: "thinking",
+      text: "完整推理内容"
+    }
+  );
+});
+
+test("runCockapooPiPrompt forwards streaming progress events", async () => {
+  const progressEvents = [];
+
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "你好",
+    runId: "run-progress",
+    onProgressEvent(event) {
+      progressEvents.push(event);
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "thinking_delta",
+                delta: "先想一下。"
+              }
+            });
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_delta",
+                delta: "你好"
+              }
+            });
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "你好。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(result.text, "你好");
+  assert.deepEqual(progressEvents.filter((event) => event.delta || event.text !== undefined), [
+    {
+      runId: "run-progress",
+      phase: "thinking",
+      delta: "先想一下。"
+    },
+    {
+      runId: "run-progress",
+      phase: "answering",
+      delta: "你好"
+    },
+    {
+      runId: "run-progress",
+      phase: "answering",
+      text: "你好。"
+    }
+  ]);
+});
+
+test("runCockapooPiPrompt emits status heartbeats while waiting for first model output", { timeout: 500 }, async () => {
+  const progressEvents = [];
+
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "你好",
+    runId: "run-heartbeat",
+    modelWaitHeartbeatMs: 5,
+    onProgressEvent(event) {
+      progressEvents.push(event);
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_delta",
+                delta: "你好"
+              }
+            });
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "你好。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(result.text, "你好");
+  assert.ok(progressEvents.some((event) => event.status === "正在整理上下文"));
+  assert.ok(progressEvents.some((event) => event.status?.startsWith("等待模型首个输出")));
+});
+
 test("runCockapooPiPrompt requires a token outside dry run", async () => {
   await assert.rejects(
     () =>
@@ -26,7 +226,7 @@ test("runCockapooPiPrompt requires a token outside dry run", async () => {
         cwd: "/tmp/cockapoo-workspace",
         modelSettings: {
           baseUrl: "https://api.openai.com/v1",
-          modelName: "gpt-5.2"
+          modelName: "gpt-5.5"
         },
         prompt: "你好，示璃"
       }),
@@ -80,7 +280,7 @@ test("runCockapooPiPrompt injects recalled memory and captures successful turns"
     cwd: "/tmp/cockapoo-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
-      modelName: "gpt-5.2"
+      modelName: "gpt-5.5"
     },
     runtimeToken: "sk-test",
     prompt: "用户：继续做记忆",
@@ -152,7 +352,7 @@ test("runCockapooPiPrompt can recall memory for opening messages without capturi
     cwd: "/tmp/cockapoo-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
-      modelName: "gpt-5.2"
+      modelName: "gpt-5.5"
     },
     runtimeToken: "sk-test",
     prompt: "请生成一句自然开场白。",
@@ -217,7 +417,7 @@ test("runCockapooPiPrompt uses chat history memory when no backend is provided",
     cwd: "/tmp/cockapoo-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
-      modelName: "gpt-5.2"
+      modelName: "gpt-5.5"
     },
     runtimeToken: "sk-test",
     prompt: "用户：怎么回答更适合我？",
@@ -274,7 +474,7 @@ test("runCockapooPiPrompt uses configured memory backend before chat history fal
     cwd: "/tmp/cockapoo-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
-      modelName: "gpt-5.2"
+      modelName: "gpt-5.5"
     },
     runtimeToken: "sk-test",
     prompt: "用户：继续接真实记忆",
@@ -354,7 +554,7 @@ test("runCockapooPiPrompt applies tool policy settings to the Pi session", async
     cwd: "/tmp/cockapoo-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
-      modelName: "gpt-5.2"
+      modelName: "gpt-5.5"
     },
     runtimeToken: "sk-test",
     prompt: "用户：可以读取记忆，但不要写文件",
@@ -436,6 +636,44 @@ test("runCockapooPiPrompt applies tool policy settings to the Pi session", async
   assert.equal(sessionOptions.customTools[1].name, "memory_write");
   assert.deepEqual(result.toolPolicy.enabledTools, ["read", "grep", "ls", "memory.read", "memory.write"]);
   assert.deepEqual(result.toolPolicy.registeredCustomTools, ["memory.read", "memory.write"]);
+});
+
+test("runCockapooPiPrompt times out stalled model prompts and disposes the session", { timeout: 500 }, async () => {
+  let disposed = false;
+  let unsubscribed = false;
+
+  await assert.rejects(
+    () =>
+      runCockapooPiPrompt({
+        cwd: "/tmp/cockapoo-workspace",
+        modelSettings: {
+          baseUrl: "https://api.openai.com/v1",
+          modelName: "gpt-5.5"
+        },
+        runtimeToken: "sk-test",
+        prompt: "用户：这次模型一直不返回",
+        promptTimeoutMs: 10,
+        createSession: async () => ({
+          session: {
+            subscribe() {
+              return () => {
+                unsubscribed = true;
+              };
+            },
+            async prompt() {
+              return new Promise(() => {});
+            },
+            dispose() {
+              disposed = true;
+            }
+          }
+        })
+      }),
+    /模型响应超时/
+  );
+
+  assert.equal(unsubscribed, true);
+  assert.equal(disposed, true);
 });
 
 test("collectAssistantText uses text_end content when deltas are missing", () => {

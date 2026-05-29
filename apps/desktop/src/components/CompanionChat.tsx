@@ -1,5 +1,11 @@
 import { Avatar, Button, Chip, ScrollShadow } from "@heroui/react";
 
+import {
+  assistantProgressPrimaryText,
+  assistantProgressStatusLabel,
+  assistantReasoningDisplayText,
+  type AssistantProgress
+} from "./assistant-progress-model";
 import type { CharacterChatPreview, ChatMessage } from "./chat-model";
 
 function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: string }) {
@@ -13,9 +19,10 @@ function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: stri
   }
 
   const isUser = message.speaker === "user";
+  const isStreaming = !isUser && message.id.startsWith("assistant-stream-");
 
   return (
-    <article className={`chat-message ${isUser ? "user" : "character"}`}>
+    <article className={`chat-message ${isUser ? "user" : "character"} ${isStreaming ? "is-streaming" : ""}`}>
       {!isUser ? (
         <Avatar className="chat-avatar">
           <Avatar.Image alt={message.author} src={avatar} />
@@ -28,6 +35,12 @@ function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: stri
           <strong>{message.author}</strong>
           <time>{message.time}</time>
         </header>
+        {message.reasoning ? (
+          <details className="chat-reasoning">
+            <summary>推理思考</summary>
+            <p>{message.reasoning}</p>
+          </details>
+        ) : null}
         <p>{message.text}</p>
         {message.sticker ? (
           <figure className="chat-sticker">
@@ -40,6 +53,7 @@ function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: stri
 }
 
 type CompanionChatProps = {
+  assistantProgress?: AssistantProgress | null;
   character: CharacterChatPreview;
   isSending?: boolean;
   isCharacterOpen: boolean;
@@ -47,7 +61,18 @@ type CompanionChatProps = {
   onCharacterClose: () => void;
 };
 
-export function CompanionChat({ character: preview, isSending = false, isCharacterOpen, messages, onCharacterClose }: CompanionChatProps) {
+export function CompanionChat({
+  assistantProgress,
+  character: preview,
+  isSending = false,
+  isCharacterOpen,
+  messages,
+  onCharacterClose
+}: CompanionChatProps) {
+  const statusLabel = assistantProgressStatusLabel(assistantProgress?.phase ?? "queued");
+  const primaryProgressText = assistantProgressPrimaryText(assistantProgress);
+  const reasoningDisplayText = assistantReasoningDisplayText(assistantProgress);
+
   return (
     <section className="chat-layout" aria-label={`${preview.character.name}陪伴对话`}>
       <img
@@ -102,9 +127,18 @@ export function CompanionChat({ character: preview, isSending = false, isCharact
             <div className="chat-message-body">
               <header>
                 <strong>{preview.character.name}</strong>
-                <time>思考中</time>
+                <time>{statusLabel}</time>
               </header>
-              <p>正在把角色卡、上下文和你的新消息交给 Pi...</p>
+              <div className="chat-progress-status">
+                <span className="chat-progress-pulse" aria-hidden="true" />
+                <p>{primaryProgressText}</p>
+              </div>
+              {reasoningDisplayText ? (
+                <section className="chat-progress-section" aria-label="模型推理思考">
+                  <span>推理思考</span>
+                  <p>{reasoningDisplayText}</p>
+                </section>
+              ) : null}
             </div>
           </article>
         ) : null}

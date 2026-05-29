@@ -1,4 +1,4 @@
-import { formatMemoryContext } from "../../../packages/memory/src/index.ts";
+import { formatMemoryContext } from "../../../packages/memory/src/runtime.mjs";
 
 export async function buildPromptWithMemory({ prompt, memoryBackend, recallRequest }) {
   if (!memoryBackend || !recallRequest) {
