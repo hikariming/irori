@@ -1,4 +1,4 @@
-import { Avatar, Button, Chip, ScrollShadow } from "@heroui/react";
+import { Avatar, Button, ScrollShadow } from "@heroui/react";
 
 import {
   assistantProgressPrimaryText,
@@ -95,9 +95,6 @@ export function CompanionChat({
           </Button>
           <img alt={`${preview.character.name} 立绘`} src={preview.assets.portrait} />
           <div className="inspector-copy">
-          <Chip className="presence-chip" size="sm" variant="soft">
-            {preview.mood.label}
-          </Chip>
           <h1>{preview.character.name}</h1>
           <p>{preview.character.tagline}</p>
           <div className="inspector-stickers" aria-label="角色表情">

@@ -351,15 +351,16 @@ fn run_local_agent_prompt(
     let tool_policy_settings =
         read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
             .map_err(|error| error.to_string())?;
+    let resolved = StoredModelProfile {
+        token: Some(token),
+        ..stored
+    };
     let mut payload = build_local_agent_prompt_payload(
         std::env::current_dir()
             .map_err(|error| error.to_string())?
             .to_string_lossy()
             .to_string(),
-        &StoredModelProfile {
-            token: Some(token),
-            ..stored
-        },
+        &resolved,
         prompt,
         chat_history_memory,
         tool_policy_settings,
@@ -367,7 +368,8 @@ fn run_local_agent_prompt(
     if request.is_some() {
         let memory_dir = memory_backend_dir(&app)?;
         fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
-        payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
+        payload["memoryBackendConfig"] =
+            build_memory_backend_config_payload(&memory_dir, &resolved);
     }
 
     if let Some(run_id) = request.as_ref().and_then(|request| request.run_id.clone()) {
@@ -397,20 +399,21 @@ fn run_local_agent_opening_prompt(
             .map_err(|error| error.to_string())?;
     let memory_dir = memory_backend_dir(&app)?;
     fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
+    let resolved = StoredModelProfile {
+        token: Some(token),
+        ..stored
+    };
     let mut payload = build_local_agent_prompt_payload(
         std::env::current_dir()
             .map_err(|error| error.to_string())?
             .to_string_lossy()
             .to_string(),
-        &StoredModelProfile {
-            token: Some(token),
-            ..stored
-        },
+        &resolved,
         request.prompt.clone(),
         None,
         tool_policy_settings,
     );
-    payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir);
+    payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir, &resolved);
     payload["memoryRecallRequest"] = build_opening_memory_recall_payload(&request);
 
     execute_local_agent_prompt(agent_dir, payload)
@@ -689,11 +692,31 @@ fn tool_policy_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join("tool-policy-settings.json"))
 }
 
-fn build_memory_backend_config_payload(memory_dir: &Path) -> serde_json::Value {
+fn build_memory_backend_config_payload(
+    memory_dir: &Path,
+    stored: &StoredModelProfile,
+) -> serde_json::Value {
+    let mut llm = serde_json::json!({
+        "baseUrl": stored.base_url,
+        "model": stored.model_name
+    });
+    if let Some(token) = stored
+        .token
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    {
+        llm["apiKey"] = serde_json::Value::String(token.to_string());
+    }
+
     serde_json::json!({
         "backend": "tencentdb",
         "tencentdb": {
-            "dataDir": memory_dir.to_string_lossy()
+            // rootDataDir is the per-character gateway root; dataDir is kept for
+            // the legacy in-process backend that keys off a single store.
+            "dataDir": memory_dir.to_string_lossy(),
+            "rootDataDir": memory_dir.to_string_lossy(),
+            "llm": llm
         }
     })
 }
@@ -1535,6 +1558,13 @@ mod tests {
     fn memory_backend_config_points_to_local_tencentdb_directory() {
         let value = build_memory_backend_config_payload(
             PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+            &StoredModelProfile {
+                id: "m1".to_string(),
+                name: "Pi".to_string(),
+                base_url: "https://pi.example/v1".to_string(),
+                model_name: "pi-1".to_string(),
+                token: Some("tok-123".to_string()),
+            },
         );
 
         assert_eq!(value["backend"], "tencentdb");
@@ -1542,6 +1572,29 @@ mod tests {
             value["tencentdb"]["dataDir"],
             "/tmp/cockapoo-app-data/memory-tdai"
         );
+        assert_eq!(
+            value["tencentdb"]["rootDataDir"],
+            "/tmp/cockapoo-app-data/memory-tdai"
+        );
+        assert_eq!(value["tencentdb"]["llm"]["baseUrl"], "https://pi.example/v1");
+        assert_eq!(value["tencentdb"]["llm"]["model"], "pi-1");
+        assert_eq!(value["tencentdb"]["llm"]["apiKey"], "tok-123");
+    }
+
+    #[test]
+    fn memory_backend_config_omits_api_key_when_token_blank() {
+        let value = build_memory_backend_config_payload(
+            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+            &StoredModelProfile {
+                id: "m1".to_string(),
+                name: "Pi".to_string(),
+                base_url: "https://pi.example/v1".to_string(),
+                model_name: "pi-1".to_string(),
+                token: Some("   ".to_string()),
+            },
+        );
+
+        assert!(value["tencentdb"]["llm"].get("apiKey").is_none());
     }
 
     #[test]

@@ -52,14 +52,12 @@ export function validateCharacterCard(card) {
   assertString(card.name, "name");
   assertObject(card.identity, "identity");
   assertString(card.identity.persona, "identity.persona");
-  assertObject(card.companionPolicy, "companionPolicy");
-  assertObject(card.agentPolicy, "agentPolicy");
-  assertObject(card.memoryPolicy, "memoryPolicy");
+  assertString(card.identity.speakingStyle, "identity.speakingStyle");
+  assertString(card.identity.relationship, "identity.relationship");
   assertObject(card.assets, "assets");
-  assertObject(card.assets.avatar, "assets.avatar");
-  assertString(card.assets.avatar.src, "assets.avatar.src");
-  assertArray(card.assets.portraits, "assets.portraits");
-  assertArray(card.assets.backgrounds, "assets.backgrounds");
+  assertString(card.assets.avatar, "assets.avatar");
+  assertString(card.assets.portrait, "assets.portrait");
+  assertString(card.assets.background, "assets.background");
   validateRequiredStickerSet(card.assets.stickers);
 
   return card;

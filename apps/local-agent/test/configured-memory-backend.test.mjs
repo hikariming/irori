@@ -10,7 +10,7 @@ test("buildMemoryRuntimeConfig keeps memory disabled by default", () => {
   const config = buildMemoryRuntimeConfig({ env: {} });
 
   assert.equal(config.backend, "chat-history");
-  assert.equal(config.tencentdb.moduleName, "@tencentdb-agent-memory/memory-tencentdb");
+  assert.ok(config.tencentdb.moduleName.endsWith("tencentdb-memory-client.mjs"));
 });
 
 test("buildMemoryRuntimeConfig reads tencentdb settings from request and env", () => {

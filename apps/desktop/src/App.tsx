@@ -6,7 +6,13 @@ import { CompanionSidebar } from "./components/CompanionSidebar";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
 import { desktopBackend } from "./components/desktop-backend";
 import { formatUnknownError } from "./components/error-message";
-import { buildCharacterChatPreview, isCharacterId, type ChatMessage } from "./components/chat-model";
+import { type ChatMessage } from "./components/chat-model";
+import {
+  buildCharacterChatPreview,
+  findCharacterCard,
+  loadCharacterCards,
+  type CharacterCard
+} from "./components/character-cards";
 import {
   createAssistantProgress,
   nextTypewriterText,
@@ -24,7 +30,6 @@ import {
   shouldGenerateOpeningMessage,
   type ChatSessionSummary
 } from "./components/chat-history-model";
-import { buildCharacterCardViewModel } from "./components/character-card-view-model";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
 import {
   buildInitialModelSettings,
@@ -38,7 +43,7 @@ import {
   type MemoryDebugEvent,
   type MemoryRunSnapshot
 } from "./components/memory-status-model";
-import { activateCharacter, characters } from "./components/sidebar-model";
+import { buildSidebarCharacters } from "./components/sidebar-model";
 import { useTheme } from "./components/use-theme";
 
 function messageTime() {
@@ -60,9 +65,7 @@ function createPromptRunId() {
   return `prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function buildOpeningMessagePrompt(characterId: string) {
-  const card = buildCharacterCardViewModel(characterId);
-
+function buildOpeningMessagePrompt(card: CharacterCard) {
   return [
     `你是 ${card.name}，${card.relationship}。`,
     `角色气质：${card.persona}`,
@@ -72,14 +75,12 @@ function buildOpeningMessagePrompt(characterId: string) {
   ].join("\n");
 }
 
-function initialMessages(characterId = "shili"): ChatMessage[] {
-  const preview = buildCharacterChatPreview(characterId);
-  const card = buildCharacterCardViewModel(characterId);
-  const neutralSticker = preview.stickers.find((sticker) => sticker.id === "neutral");
+function initialMessages(card: CharacterCard): ChatMessage[] {
+  const neutralSticker = card.stickers.find((sticker) => sticker.id === "neutral");
 
   return [
     {
-      id: welcomeMessageId(preview.character.id),
+      id: welcomeMessageId(card.id),
       speaker: "character",
       author: card.name,
       text: card.firstMessage,
@@ -91,12 +92,13 @@ function initialMessages(characterId = "shili"): ChatMessage[] {
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
-  const [activeCharacterId, setActiveCharacterId] = useState(() => characters.find((character) => character.active)?.id ?? "shili");
+  const [cards, setCards] = useState<CharacterCard[]>([]);
+  const [activeCharacterId, setActiveCharacterId] = useState("shili");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages(activeCharacterId));
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [openingGenerationKey, setOpeningGenerationKey] = useState(0);
   const [isOpeningGenerationRequested, setIsOpeningGenerationRequested] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -115,6 +117,7 @@ export function App() {
   const activeTypewriterResolveRef = useRef<(() => void) | null>(null);
   const activeTypewriterTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const newDraftSessionLockRef = useRef(false);
+  const initialSessionLoadedRef = useRef(false);
   const modelReady = isModelConfigured(modelSettings);
   const activeModelProfile = getActiveModelProfile(modelSettings);
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
@@ -123,11 +126,13 @@ export function App() {
     isDraftPending: isNewDraftSessionPending,
     isSending
   });
-  const activeCharacter = buildCharacterChatPreview(activeCharacterId);
-  const sidebarCharacters = activateCharacter(characters, activeCharacterId);
+  const activeCard = findCharacterCard(cards, activeCharacterId) ?? cards[0] ?? null;
+  const activeCharacter = activeCard ? buildCharacterChatPreview(activeCard) : null;
+  const sidebarCharacters = buildSidebarCharacters(cards, activeCard?.id ?? activeCharacterId);
 
   function showInitialMessages(characterId: string, options: { generateOpening?: boolean } = {}) {
-    setMessages(initialMessages(characterId));
+    const card = findCharacterCard(cards, characterId) ?? activeCard;
+    setMessages(card ? initialMessages(card) : []);
     setIsOpeningGenerationRequested(options.generateOpening === true);
     if (options.generateOpening) {
       setOpeningGenerationKey((current) => current + 1);
@@ -215,6 +220,26 @@ export function App() {
   useEffect(() => {
     let isMounted = true;
 
+    loadCharacterCards()
+      .then((loaded) => {
+        if (isMounted) {
+          setCards(loaded);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setCards([]);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
     desktopBackend.loadModelSettings()
       .then((settings) => {
         if (isMounted) {
@@ -271,6 +296,11 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (cards.length === 0 || initialSessionLoadedRef.current) {
+      return;
+    }
+
+    initialSessionLoadedRef.current = true;
     let isMounted = true;
 
     async function loadInitialSession() {
@@ -293,7 +323,7 @@ export function App() {
 
         if (isMounted) {
           setActiveSessionId(detail.session.id);
-          if (isCharacterId(detail.session.characterId)) {
+          if (findCharacterCard(cards, detail.session.characterId)) {
             setActiveCharacterId(detail.session.characterId);
           }
           if (detail.messages.length === 0) {
@@ -304,9 +334,10 @@ export function App() {
         }
       } catch (error) {
         if (isMounted) {
+          const fallbackCard = findCharacterCard(cards, activeCharacterId) ?? cards[0] ?? null;
           setActiveSessionId(null);
           setMessages([
-            ...initialMessages(),
+            ...(fallbackCard ? initialMessages(fallbackCard) : []),
             {
               id: `history-load-error-${Date.now()}`,
               speaker: "system",
@@ -324,7 +355,7 @@ export function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cards]);
 
   useEffect(() => {
     if (!shouldGenerateOpeningMessage({
@@ -335,13 +366,18 @@ export function App() {
       return;
     }
 
+    const card = findCharacterCard(cards, activeCharacterId);
+    if (!card) {
+      return;
+    }
+
     let isCancelled = false;
     const characterId = activeCharacterId;
     const fallbackId = welcomeMessageId(characterId);
 
     desktopBackend.generateOpeningMessage({
       characterId,
-      prompt: buildOpeningMessagePrompt(characterId)
+      prompt: buildOpeningMessagePrompt(card)
     })
       .then((response) => {
         const text = response.text.trim();
@@ -377,7 +413,7 @@ export function App() {
     return () => {
       isCancelled = true;
     };
-  }, [activeCharacterId, activeSessionId, isOpeningGenerationRequested, modelReady, openingGenerationKey]);
+  }, [activeCharacterId, activeSessionId, cards, isOpeningGenerationRequested, modelReady, openingGenerationKey]);
 
   useEffect(() => {
     if (activeSessionId !== null) {
@@ -403,7 +439,7 @@ export function App() {
     try {
       const detail = await desktopBackend.getChatSession(sessionId);
       setActiveSessionId(detail.session.id);
-      if (isCharacterId(detail.session.characterId)) {
+      if (findCharacterCard(cards, detail.session.characterId)) {
         setActiveCharacterId(detail.session.characterId);
       }
       if (detail.messages.length === 0) {
@@ -430,7 +466,7 @@ export function App() {
   async function sendPrompt(draft: string) {
     const prompt = draft.trim();
 
-    if (!prompt || isSending || !modelReady) {
+    if (!prompt || isSending || !modelReady || !activeCard) {
       if (prompt && !modelReady) {
         setMessages((current) => [
           ...current,
@@ -456,7 +492,7 @@ export function App() {
       text: prompt,
       time: messageTime()
     };
-    const preview = activeCharacter;
+    const card = activeCard;
     const runId = createPromptRunId();
 
     setMessages((current) => [...current, userMessage]);
@@ -466,7 +502,7 @@ export function App() {
     activeDisplayedAnswerTextRef.current = "";
     activeAssistantStreamMessageIdRef.current = `assistant-stream-${runId}`;
     activeAssistantStreamTimeRef.current = messageTime();
-    activePromptCharacterNameRef.current = preview.character.name;
+    activePromptCharacterNameRef.current = card.name;
     activeTypewriterResolveRef.current = null;
     activePromptRunIdRef.current = runId;
     setAssistantProgress(createAssistantProgress(runId));
@@ -476,7 +512,7 @@ export function App() {
 
     try {
       const sessionId = activeSessionId ?? (await desktopBackend.createChatSession({
-        characterId: preview.character.id,
+        characterId: card.id,
         title: createSessionTitle(prompt)
       })).id;
       sessionIdForRun = sessionId;
@@ -488,7 +524,7 @@ export function App() {
       });
       const promptHistory = activeSessionId ? messages : [];
       const sessionPrompt = composeCharacterSessionPrompt({
-        character: preview,
+        card,
         history: promptHistory,
         userPrompt: prompt
       });
@@ -499,7 +535,7 @@ export function App() {
       );
 
       const response = await desktopBackend.sendPiPrompt({
-        characterId: preview.character.id,
+        characterId: card.id,
         prompt,
         runId,
         sessionId,
@@ -516,13 +552,13 @@ export function App() {
       if (!response.text.trim()) {
         throw new Error("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。");
       }
-      const parsedReply = parseCharacterReply(response.text, preview.stickers);
+      const parsedReply = parseCharacterReply(response.text, card.stickers);
       const replyText = parsedReply.text || `已通过 ${response.modelRoute} 完成这次 Pi session。`;
       await revealAssistantText(replyText);
       const assistantMessage = await desktopBackend.appendChatMessage({
         sessionId,
         speaker: "character",
-        author: preview.character.name,
+        author: card.name,
         text: replyText,
         stickerId: parsedReply.sticker?.id,
         modelRoute: response.modelRoute,
@@ -637,21 +673,28 @@ export function App() {
         theme={theme}
       />
       <section className="conversation-stage" aria-label="陪伴对话">
-        <CompanionChat
-          assistantProgress={assistantProgress}
-          character={activeCharacter}
-          isSending={isSending}
-          isCharacterOpen={isCharacterOpen}
-          messages={messages}
-          onCharacterClose={() => setIsCharacterOpen(false)}
-        />
+        {activeCharacter ? (
+          <CompanionChat
+            assistantProgress={assistantProgress}
+            character={activeCharacter}
+            isSending={isSending}
+            isCharacterOpen={isCharacterOpen}
+            messages={messages}
+            onCharacterClose={() => setIsCharacterOpen(false)}
+          />
+        ) : (
+          <div className="conversation-loading" role="status">
+            正在加载角色卡…
+          </div>
+        )}
         <CompanionInput
-          disabled={isSending || !modelReady}
+          disabled={isSending || !modelReady || !activeCharacter}
           isSending={isSending}
           onSend={sendPrompt}
         />
         <SystemSettingsPanel
           activeCharacterId={activeCharacterId}
+          cards={cards}
           isOpen={isSettingsOpen}
           memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}

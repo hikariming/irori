@@ -22,7 +22,13 @@ import {
   type ChatSessionSummary,
   type CreateChatSessionRequest
 } from "./chat-history-model.ts";
-import { buildCharacterChatPreview, type ChatMessage } from "./chat-model.ts";
+import {
+  requiredStickerIds,
+  stickerMeta,
+  type ChatMessage,
+  type ChatSticker,
+  type StickerId
+} from "./chat-model.ts";
 import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "./memory-status-model.ts";
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
 
@@ -124,10 +130,26 @@ function previewId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function stickerFromRecord(characterId: string, stickerId: string): ChatSticker | undefined {
+  if (!requiredStickerIds.includes(stickerId as StickerId)) {
+    return undefined;
+  }
+
+  const id = stickerId as StickerId;
+  const meta = stickerMeta[id];
+
+  return {
+    id,
+    emotion: id,
+    intent: meta.intent,
+    label: meta.label,
+    src: `/characters/${characterId}.card/assets/stickers/${id}.png`
+  };
+}
+
 function chatMessageFromRecord(record: StoredChatMessageRecord, characterId = "shili"): ChatMessage {
-  const preview = buildCharacterChatPreview(characterId);
   const sticker = record.stickerId
-    ? preview.stickers.find((item) => item.id === record.stickerId)
+    ? stickerFromRecord(characterId, record.stickerId)
     : undefined;
 
   return {

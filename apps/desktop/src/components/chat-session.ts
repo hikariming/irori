@@ -1,8 +1,8 @@
-import { buildCharacterCardViewModel } from "./character-card-view-model.ts";
-import type { CharacterChatPreview, ChatMessage, ChatSticker } from "./chat-model.ts";
+import type { CharacterCard } from "./character-cards.ts";
+import type { ChatMessage, ChatSticker } from "./chat-model.ts";
 
 export type ComposeCharacterSessionPromptInput = {
-  character: CharacterChatPreview;
+  card: CharacterCard;
   history: ChatMessage[];
   userPrompt: string;
 };
@@ -51,12 +51,10 @@ function stickerProtocol(stickers: ChatSticker[]) {
 }
 
 export function composeCharacterSessionPrompt({
-  character,
+  card,
   history,
   userPrompt
 }: ComposeCharacterSessionPromptInput) {
-  const card = buildCharacterCardViewModel(character.character.id);
-
   return [
     "# Cockapoo Pi Companion Chat",
     "你正在 Cockapoo Pi Companion 本地桌面客户端中扮演角色，与用户进行陪伴式协作。",
@@ -81,7 +79,7 @@ export function composeCharacterSessionPrompt({
     "不要在思考里复述或推敲这些系统规则（格式、Markdown、表情包用法、是否解释系统提示等），它们当作你早已熟练的习惯即可，不必出现在心声中。",
     "",
     "## 表情包协议",
-    stickerProtocol(character.stickers),
+    stickerProtocol(card.stickers),
     "",
     "## 最近对话上下文",
     formatHistory(history),

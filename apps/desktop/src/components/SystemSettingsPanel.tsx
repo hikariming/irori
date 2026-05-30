@@ -25,7 +25,7 @@ import {
   type SavedModelProfile
 } from "./model-settings-controller";
 import { buildSettingsTabs } from "./settings-model";
-import { characters } from "./sidebar-model";
+import type { CharacterCard } from "./character-cards";
 import {
   buildToolPolicySettingsViewModel,
   defaultToolPolicySettings,
@@ -37,6 +37,7 @@ import {
 
 type SystemSettingsPanelProps = {
   activeCharacterId?: string;
+  cards?: CharacterCard[];
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
   memoryDebugEvents?: MemoryDebugEvent[];
@@ -44,7 +45,7 @@ type SystemSettingsPanelProps = {
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
   const memoryTab = tabs.find((tab) => tab.id === "memory");
@@ -472,14 +473,16 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, lates
 
   return (
     <aside className="system-settings-panel" aria-label="系统设置">
+      <div className="settings-page-inner">
       <div className="settings-panel-header">
-        <div>
+        <Button aria-label="返回主界面" className="settings-back" isDisabled={isModelActionBusy} onPress={onClose} type="button">
+          <span className="settings-back-arrow" aria-hidden="true">←</span>
+          返回
+        </Button>
+        <div className="settings-header-titles">
           <span>系统设置</span>
           <h2>角色与本地模型</h2>
         </div>
-        <Button aria-label="关闭系统设置" className="settings-close" isDisabled={isModelActionBusy} onPress={onClose} type="button">
-          ×
-        </Button>
       </div>
 
       <Tabs className="settings-tabs" defaultSelectedKey={modelProviderTab.id}>
@@ -818,7 +821,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, lates
         </Tabs.Panel>
 
         <Tabs.Panel className="settings-tab-panel" id="character-card">
-          <CharacterCardSettings />
+          <CharacterCardSettings activeCharacterId={activeCharacterId} cards={cards} />
         </Tabs.Panel>
 
         <Tabs.Panel className="settings-tab-panel" id="memory">
@@ -852,14 +855,14 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, lates
               {memoryStatusError ? <p className="settings-save-note error">{memoryStatusError}</p> : null}
 
               <div className="memory-character-switcher" aria-label="按角色查看记忆">
-                {characters.map((character) => (
+                {cards.map((character) => (
                   <button
                     className={`memory-character-button ${character.id === selectedMemoryCharacterId ? "selected" : ""}`}
                     key={character.id}
                     onClick={() => setSelectedMemoryCharacterId(character.id)}
                     type="button"
                   >
-                    <img alt="" aria-hidden="true" src={character.avatarSrc} />
+                    <img alt="" aria-hidden="true" src={character.assets.avatar} />
                     <span>{character.name}</span>
                   </button>
                 ))}
@@ -959,6 +962,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", isOpen, lates
           </Tabs.Panel>
         ) : null}
       </Tabs>
+      </div>
     </aside>
   );
 }

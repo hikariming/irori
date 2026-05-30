@@ -1,11 +1,25 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { buildCharacterChatPreview } from "./chat-model.ts";
+import { parseCharacterCard, type CharacterCard } from "./character-cards.ts";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./chat-session.ts";
 import type { ChatMessage } from "./chat-model.ts";
 
-const preview = buildCharacterChatPreview();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function loadFixtureCard(characterId: string): Promise<CharacterCard> {
+  const path = resolve(
+    __dirname,
+    `../../public/characters/${characterId}.card/card.json`
+  );
+  const raw = JSON.parse(await readFile(path, "utf8"));
+  return parseCharacterCard(characterId, raw);
+}
+
+const card = await loadFixtureCard("shili");
 
 test("composeCharacterSessionPrompt includes character persona, context, and sticker protocol without input modes", () => {
   const history: ChatMessage[] = [
@@ -26,7 +40,7 @@ test("composeCharacterSessionPrompt includes character persona, context, and sti
   ];
 
   const prompt = composeCharacterSessionPrompt({
-    character: preview,
+    card,
     history,
     userPrompt: "帮我把下一步拆出来"
   });
@@ -45,10 +59,10 @@ test("composeCharacterSessionPrompt includes character persona, context, and sti
   assert.match(prompt, /用户：帮我把下一步拆出来/);
 });
 
-test("composeCharacterSessionPrompt uses the selected character card", () => {
-  const lulinPreview = buildCharacterChatPreview("lulin");
+test("composeCharacterSessionPrompt uses the selected character card", async () => {
+  const lulinCard = await loadFixtureCard("lulin");
   const prompt = composeCharacterSessionPrompt({
-    character: lulinPreview,
+    card: lulinCard,
     history: [],
     userPrompt: "今晚状态有点散"
   });
@@ -59,14 +73,14 @@ test("composeCharacterSessionPrompt uses the selected character card", () => {
 });
 
 test("parseCharacterReply extracts one allowed sticker marker and removes it from text", () => {
-  const reply = parseCharacterReply("先把范围缩小到输入框和保存按钮。\n[sticker:focused]", preview.stickers);
+  const reply = parseCharacterReply("先把范围缩小到输入框和保存按钮。\n[sticker:focused]", card.stickers);
 
   assert.equal(reply.text, "先把范围缩小到输入框和保存按钮。");
   assert.equal(reply.sticker?.id, "focused");
 });
 
 test("parseCharacterReply ignores unsupported sticker markers", () => {
-  const reply = parseCharacterReply("这个先不急。\n[sticker:laser]", preview.stickers);
+  const reply = parseCharacterReply("这个先不急。\n[sticker:laser]", card.stickers);
 
   assert.equal(reply.text, "这个先不急。");
   assert.equal(reply.sticker, undefined);

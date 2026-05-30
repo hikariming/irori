@@ -18,7 +18,7 @@ test("loadCharacterCardFromDirectory loads and validates a full character card",
     card.assets.stickers.map((sticker) => sticker.id),
     requiredStickerIds
   );
-  assert.equal(card.assets.avatar.src, "assets/avatar/avatar-circle.png");
-  assert.equal(card.assets.portraits[0]?.src, "assets/portraits/neutral.png");
-  assert.equal(card.assets.backgrounds[0]?.src, "assets/backgrounds/default.png");
+  assert.equal(card.assets.avatar, "assets/avatar/avatar-circle.png");
+  assert.equal(card.assets.portrait, "assets/portraits/neutral.png");
+  assert.equal(card.assets.background, "assets/backgrounds/default.png");
 });

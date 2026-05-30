@@ -1,6 +1,9 @@
 import { createTencentDbMemoryBackend } from "../../../packages/memory/src/runtime.mjs";
 
-const defaultTencentDbModuleName = "@tencentdb-agent-memory/memory-tencentdb";
+// The upstream package is an OpenClaw plugin with no in-process client factory,
+// so the default points at our bundled gateway adapter, which spawns the engine's
+// HTTP gateway (one per character) and speaks cockapoo's memory-client contract.
+const defaultTencentDbModuleName = new URL("./tencentdb-memory-client.mjs", import.meta.url).href;
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
@@ -39,6 +42,15 @@ function tencentDbFactoryOptions(config) {
   if (config.dataDir) {
     options.dataDir = config.dataDir;
   }
+  if (config.rootDataDir) {
+    options.rootDataDir = config.rootDataDir;
+  }
+  if (config.llm) {
+    options.llm = config.llm;
+  }
+  if (config.embedding) {
+    options.embedding = config.embedding;
+  }
 
   return options;
 }
@@ -51,19 +63,51 @@ export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env
     nonEmptyString(env.COCKAPOO_MEMORY_BACKEND) ??
     "chat-history";
 
-  return {
-    backend,
-    tencentdb: {
-      moduleName:
-        nonEmptyString(requestTencentDb.moduleName) ??
-        nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_MODULE) ??
-        defaultTencentDbModuleName,
-      dataDir:
-        nonEmptyString(requestTencentDb.dataDir) ??
-        nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_DATA_DIR),
-      client: requestTencentDb.client
-    }
+  const llm = resolveTencentDbLlm(requestTencentDb.llm, env);
+
+  const tencentdb = {
+    moduleName:
+      nonEmptyString(requestTencentDb.moduleName) ??
+      nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_MODULE) ??
+      defaultTencentDbModuleName,
+    dataDir:
+      nonEmptyString(requestTencentDb.dataDir) ??
+      nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_DATA_DIR),
+    client: requestTencentDb.client
   };
+
+  const rootDataDir =
+    nonEmptyString(requestTencentDb.rootDataDir) ??
+    nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_ROOT);
+  if (rootDataDir) {
+    tencentdb.rootDataDir = rootDataDir;
+  }
+  if (llm) {
+    tencentdb.llm = llm;
+  }
+  if (requestTencentDb.embedding) {
+    tencentdb.embedding = requestTencentDb.embedding;
+  }
+
+  return { backend, tencentdb };
+}
+
+function resolveTencentDbLlm(requestLlm, env) {
+  const baseUrl =
+    nonEmptyString(requestLlm?.baseUrl) ?? nonEmptyString(env.TDAI_LLM_BASE_URL);
+  const apiKey =
+    nonEmptyString(requestLlm?.apiKey) ?? nonEmptyString(env.TDAI_LLM_API_KEY);
+  const model = nonEmptyString(requestLlm?.model) ?? nonEmptyString(env.TDAI_LLM_MODEL);
+
+  if (!baseUrl && !apiKey && !model) {
+    return undefined;
+  }
+
+  const llm = {};
+  if (baseUrl) llm.baseUrl = baseUrl;
+  if (apiKey) llm.apiKey = apiKey;
+  if (model) llm.model = model;
+  return llm;
 }
 
 export async function loadTencentDbMemoryClient({

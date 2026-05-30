@@ -1,3 +1,5 @@
+import type { CharacterCard } from "./character-cards.ts";
+
 export type CharacterStatus = "online" | "idle";
 
 export type CompanionCharacter = {
@@ -21,32 +23,19 @@ export type SessionGroup = {
   items: SessionItem[];
 };
 
-export const characters: CompanionCharacter[] = [
-  {
-    id: "shili",
-    name: "示璃",
+export function buildSidebarCharacters(
+  cards: CharacterCard[],
+  activeCharacterId: string
+): CompanionCharacter[] {
+  return cards.map((card) => ({
+    id: card.id,
+    name: card.name,
     status: "online",
-    tone: "安静陪伴",
-    active: true,
-    avatarSrc: "/characters/shili.card/assets/avatar/avatar-circle.png"
-  },
-  {
-    id: "lulin",
-    name: "陆临",
-    status: "idle",
-    tone: "深夜护短",
-    active: false,
-    avatarSrc: "/characters/lulin.card/assets/avatar/avatar-circle.png"
-  },
-  {
-    id: "shenyanzhou",
-    name: "沈砚洲",
-    status: "online",
-    tone: "犀利反问",
-    active: false,
-    avatarSrc: "/characters/shenyanzhou.card/assets/avatar/avatar-circle.png"
-  }
-];
+    tone: card.tagline,
+    active: card.id === activeCharacterId,
+    avatarSrc: card.assets.avatar
+  }));
+}
 
 export const sessionGroups: SessionGroup[] = [
   {

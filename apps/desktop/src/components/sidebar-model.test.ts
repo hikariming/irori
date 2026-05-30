@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-import { activateCharacter, characters, getActiveCharacter } from "./sidebar-model.ts";
+import { parseCharacterCard, type CharacterCard } from "./character-cards.ts";
+import { activateCharacter, buildSidebarCharacters, getActiveCharacter } from "./sidebar-model.ts";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+async function loadFixtureCard(characterId: string): Promise<CharacterCard> {
+  const path = resolve(
+    __dirname,
+    `../../public/characters/${characterId}.card/card.json`
+  );
+  const raw = JSON.parse(await readFile(path, "utf8"));
+  return parseCharacterCard(characterId, raw);
+}
+
+const cards = await Promise.all(
+  ["shili", "lulin", "shenyanzhou"].map((id) => loadFixtureCard(id))
+);
 
 test("getActiveCharacter returns the selected character", () => {
   const active = getActiveCharacter([
@@ -12,31 +31,30 @@ test("getActiveCharacter returns the selected character", () => {
   assert.equal(active?.id, "b");
 });
 
+test("buildSidebarCharacters projects cards and marks the active one", () => {
+  const items = buildSidebarCharacters(cards, "lulin");
+
+  assert.deepEqual(
+    items.map((item) => item.id),
+    ["shili", "lulin", "shenyanzhou"]
+  );
+  assert.equal(getActiveCharacter(items)?.id, "lulin");
+  assert.equal(items.find((item) => item.id === "shili")?.active, false);
+});
+
+test("buildSidebarCharacters maps name, tagline, and avatar from the card", () => {
+  const items = buildSidebarCharacters(cards, "shili");
+  const lulin = items.find((item) => item.id === "lulin");
+
+  assert.equal(lulin?.name, "陆临");
+  assert.equal(lulin?.tone, cards[1].tagline);
+  assert.equal(lulin?.avatarSrc, "/characters/lulin.card/assets/avatar/avatar-circle.png");
+});
+
 test("activateCharacter marks the requested character as active", () => {
-  const nextCharacters = activateCharacter(characters, "lulin");
+  const items = buildSidebarCharacters(cards, "shili");
+  const next = activateCharacter(items, "lulin");
 
-  assert.equal(getActiveCharacter(nextCharacters)?.id, "lulin");
-  assert.equal(nextCharacters.find((character) => character.id === "shili")?.active, false);
-});
-
-test("sidebar second mock character uses Lu Lin", () => {
-  assert.deepEqual(characters[1], {
-    id: "lulin",
-    name: "陆临",
-    status: "idle",
-    tone: "深夜护短",
-    active: false,
-    avatarSrc: "/characters/lulin.card/assets/avatar/avatar-circle.png"
-  });
-});
-
-test("sidebar third mock character uses Shen Yanzhou", () => {
-  assert.deepEqual(characters[2], {
-    id: "shenyanzhou",
-    name: "沈砚洲",
-    status: "online",
-    tone: "犀利反问",
-    active: false,
-    avatarSrc: "/characters/shenyanzhou.card/assets/avatar/avatar-circle.png"
-  });
+  assert.equal(getActiveCharacter(next)?.id, "lulin");
+  assert.equal(next.find((item) => item.id === "shili")?.active, false);
 });
