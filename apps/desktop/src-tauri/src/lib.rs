@@ -212,6 +212,10 @@ struct AddCharacterLetterRequest {
     body: String,
     mood: Option<String>,
     deliver_at: String,
+    #[serde(default)]
+    sender: Option<String>,
+    #[serde(default)]
+    reply_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -225,6 +229,8 @@ struct CharacterLetterRecord {
     created_at: String,
     deliver_at: String,
     read_at: Option<String>,
+    sender: String,
+    reply_to: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1296,7 +1302,9 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           mood TEXT,
           created_at TEXT NOT NULL,
           deliver_at TEXT NOT NULL,
-          read_at TEXT
+          read_at TEXT,
+          sender TEXT NOT NULL DEFAULT 'character',
+          reply_to TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
@@ -1312,6 +1320,14 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           ON character_letter(character_id, deliver_at DESC);
         "#,
     )?;
+
+    // 老库迁移：早于双向通信的 character_letter 没有 sender/reply_to 列，补上。
+    // 列已存在时 ALTER 会报错，忽略即可。
+    let _ = connection.execute(
+        "ALTER TABLE character_letter ADD COLUMN sender TEXT NOT NULL DEFAULT 'character'",
+        [],
+    );
+    let _ = connection.execute("ALTER TABLE character_letter ADD COLUMN reply_to TEXT", []);
 
     Ok(())
 }
@@ -1448,10 +1464,14 @@ fn insert_character_letter_to_path(
 ) -> Result<CharacterLetterRecord, Box<dyn std::error::Error>> {
     let connection = open_chat_history(path)?;
     let id = compact_id("letter", &format!("{}{}", now, request.character_id));
+    let sender = match request.sender.as_deref() {
+        Some("user") => "user",
+        _ => "character",
+    };
 
     connection.execute(
-        "INSERT INTO character_letter (id, character_id, subject, body, mood, created_at, deliver_at, read_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+        "INSERT INTO character_letter (id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)",
         params![
             id,
             request.character_id,
@@ -1459,7 +1479,9 @@ fn insert_character_letter_to_path(
             request.body,
             request.mood,
             now,
-            request.deliver_at
+            request.deliver_at,
+            sender,
+            request.reply_to
         ],
     )?;
 
@@ -1477,7 +1499,7 @@ fn list_character_letters_from_path(
 
     if let Some(character_id) = character_id {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
              FROM character_letter
              WHERE character_id = ?1
              ORDER BY deliver_at DESC
@@ -1489,7 +1511,7 @@ fn list_character_letters_from_path(
         }
     } else {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
              FROM character_letter
              ORDER BY deliver_at DESC
              LIMIT ?1",
@@ -1524,7 +1546,7 @@ fn get_character_letter_record(
 ) -> Result<Option<CharacterLetterRecord>, rusqlite::Error> {
     connection
         .query_row(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
              FROM character_letter
              WHERE id = ?1",
             params![id],
@@ -1545,6 +1567,8 @@ fn row_to_character_letter_record(
         created_at: row.get(5)?,
         deliver_at: row.get(6)?,
         read_at: row.get(7)?,
+        sender: row.get(8)?,
+        reply_to: row.get(9)?,
     })
 }
 
@@ -2146,6 +2170,8 @@ mod tests {
                 body: "最近天气转凉了，记得加衣。".into(),
                 mood: Some("warm".into()),
                 deliver_at: "2024-01-01T08:00:00Z".into(),
+                sender: None,
+                reply_to: None,
             },
             "2024-01-01T00:00:00Z",
         )
@@ -2158,6 +2184,8 @@ mod tests {
                 body: "我去了海边，想起了你。".into(),
                 mood: None,
                 deliver_at: "2024-01-02T08:00:00Z".into(),
+                sender: None,
+                reply_to: None,
             },
             "2024-01-01T01:00:00Z",
         )
@@ -2170,6 +2198,8 @@ mod tests {
                 body: "无关内容".into(),
                 mood: None,
                 deliver_at: "2024-01-03T08:00:00Z".into(),
+                sender: None,
+                reply_to: None,
             },
             "2024-01-01T02:00:00Z",
         )
@@ -2181,6 +2211,7 @@ mod tests {
         assert_eq!(lulin[0].id, later.id);
         assert_eq!(lulin[0].subject, "今天的事");
         assert!(lulin[0].read_at.is_none());
+        assert_eq!(lulin[0].sender, "character");
 
         let all = list_character_letters_from_path(&path, None, 50).expect("all letters should load");
         assert_eq!(all.len(), 3);
@@ -2193,6 +2224,46 @@ mod tests {
         let again = mark_character_letter_read_to_path(&path, &first.id, "2024-01-01T10:00:00Z")
             .expect("second mark read should be a no-op update");
         assert_eq!(again.read_at.as_deref(), Some("2024-01-01T09:00:00Z"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_letters_store_user_sender_and_reply_link() {
+        let path = temp_chat_history_path();
+
+        let user_letter = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "想你了".into(),
+                body: "最近还好吗？".into(),
+                mood: None,
+                deliver_at: "2024-02-01T00:00:00Z".into(),
+                sender: Some("user".into()),
+                reply_to: None,
+            },
+            "2024-02-01T00:00:00Z",
+        )
+        .expect("user letter should save");
+        assert_eq!(user_letter.sender, "user");
+
+        let reply = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "回信".into(),
+                body: "我很好，谢谢你想着我。".into(),
+                mood: Some("warm".into()),
+                deliver_at: "2024-02-01T06:00:00Z".into(),
+                sender: Some("character".into()),
+                reply_to: Some(user_letter.id.clone()),
+            },
+            "2024-02-01T01:00:00Z",
+        )
+        .expect("reply should save");
+        assert_eq!(reply.sender, "character");
+        assert_eq!(reply.reply_to.as_deref(), Some(user_letter.id.as_str()));
 
         let _ = fs::remove_file(path);
     }

@@ -33,7 +33,7 @@ import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
 import { sanitizeCharacterStates, type CharacterStates, type Mood } from "./character-state.ts";
 import { sanitizeMoments, type CharacterMoment } from "./character-moments.ts";
-import { sanitizeLetters, type CharacterLetter } from "./character-letters.ts";
+import { sanitizeLetters, type CharacterLetter, type LetterSender } from "./character-letters.ts";
 
 export type SaveModelSettingsRequest = {
   profileId: string;
@@ -86,6 +86,8 @@ export type AddCharacterLetterRequest = {
   body: string;
   mood?: Mood | null;
   deliverAt: string;
+  sender?: LetterSender;
+  replyTo?: string | null;
 };
 
 type CharacterLetterRecord = {
@@ -97,6 +99,8 @@ type CharacterLetterRecord = {
   createdAt: string;
   deliverAt: string;
   readAt: string | null;
+  sender: string;
+  replyTo: string | null;
 };
 
 export type PiPromptResponse = {
@@ -193,7 +197,9 @@ function letterFromRecord(record: CharacterLetterRecord) {
     mood: record.mood,
     createdAt: parseStoredTimestamp(record.createdAt).getTime(),
     deliverAt: parseStoredTimestamp(record.deliverAt).getTime(),
-    readAt: record.readAt ? parseStoredTimestamp(record.readAt).getTime() : null
+    readAt: record.readAt ? parseStoredTimestamp(record.readAt).getTime() : null,
+    sender: record.sender === "user" ? "user" : "character",
+    replyTo: record.replyTo ?? null
   };
 }
 
@@ -296,7 +302,9 @@ export function createPreviewBackend(): DesktopBackend {
         mood: request.mood ?? null,
         createdAt: now,
         deliverAt: parseStoredTimestamp(request.deliverAt).getTime(),
-        readAt: null
+        readAt: null,
+        sender: request.sender === "user" ? "user" : "character",
+        replyTo: request.replyTo ?? null
       };
       characterLetters = [letter, ...characterLetters];
       return letter;

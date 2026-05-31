@@ -74,7 +74,8 @@ export function App() {
   const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
   const { states: characterStates, beginCharacterTurn, recordCharacterTurn } = useCharacterState();
   const { moments, postingIds, loadMoments, maybePostMoment } = useCharacterMoments();
-  const { letters, writingIds, loadLetters, maybeWriteLetter, markRead } = useCharacterLetters();
+  const { letters, writingIds, sendingIds, loadLetters, maybeWriteLetter, sendUserLetter, markRead } =
+    useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
   const [viewMode, setViewMode] = useState<"chat" | "feed" | "letters">("chat");
@@ -734,7 +735,24 @@ export function App() {
               character={activeCharacter}
               letters={letters.filter((letter) => letter.characterId === activeCharacter.character.id)}
               writing={writingIds.includes(activeCharacter.character.id)}
+              sending={sendingIds.includes(activeCharacter.character.id)}
               onRead={markRead}
+              onSend={(draft) => {
+                const card = activeCard;
+                if (!card) {
+                  return;
+                }
+                void sendUserLetter({
+                  card,
+                  state: getCharacterState(characterStates, card.id),
+                  subject: draft.subject,
+                  body: draft.body,
+                  replyTo: draft.replyTo,
+                  generateReply: modelReady,
+                  onExchange: ({ userText, replyText, impressions }) =>
+                    recordCharacterTurn(card.id, { userText, replyText, impressions })
+                });
+              }}
             />
           ) : (
             <CompanionChat

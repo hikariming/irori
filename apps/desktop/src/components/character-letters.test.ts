@@ -5,6 +5,7 @@ import type { CharacterCard } from "./character-cards.ts";
 import { defaultCharacterState } from "./character-state.ts";
 import {
   composeLetterPrompt,
+  composeLetterReplyPrompt,
   formatLetterTime,
   isDelivered,
   MIN_LETTER_GAP_MS,
@@ -44,6 +45,21 @@ test("composeLetterPrompt is persona-aware and asks for the subject/body format"
   const prompt = composeLetterPrompt(card, familiarState(), Date.now());
   assert.match(prompt, /璐林/);
   assert.match(prompt, /安静的研究者/);
+  assert.match(prompt, /主题：/);
+  assert.match(prompt, /正文：/);
+});
+
+test("composeLetterReplyPrompt echoes the user letter and asks for memory markers", () => {
+  const prompt = composeLetterReplyPrompt(
+    card,
+    familiarState(),
+    { subject: "想你了", body: "今天养了只猫，取名团子。" },
+    Date.now()
+  );
+  assert.match(prompt, /璐林/);
+  assert.match(prompt, /想你了/);
+  assert.match(prompt, /团子/);
+  assert.match(prompt, /\[memory:fact\]/);
   assert.match(prompt, /主题：/);
   assert.match(prompt, /正文：/);
 });
@@ -104,4 +120,19 @@ test("sanitizeLetters defaults deliverAt to createdAt when missing", () => {
   const result = sanitizeLetters([{ id: "a", characterId: "lulin", subject: "s", body: "b", mood: null, createdAt: 150 }]);
   assert.equal(result[0].deliverAt, 150);
   assert.equal(result[0].readAt, null);
+});
+
+test("sanitizeLetters reads sender/replyTo and defaults to character", () => {
+  const result = sanitizeLetters([
+    { id: "u", characterId: "lulin", subject: "嗨", body: "我先写", createdAt: 100, deliverAt: 100, readAt: null, sender: "user", replyTo: null },
+    { id: "r", characterId: "lulin", subject: "回你", body: "我回了", createdAt: 200, deliverAt: 300, readAt: null, sender: "character", replyTo: "u" },
+    { id: "d", characterId: "lulin", subject: "默认", body: "没字段", createdAt: 50, deliverAt: 50, readAt: null }
+  ]);
+  const byId = Object.fromEntries(result.map((letter) => [letter.id, letter]));
+  assert.equal(byId.u.sender, "user");
+  assert.equal(byId.u.replyTo, null);
+  assert.equal(byId.r.sender, "character");
+  assert.equal(byId.r.replyTo, "u");
+  assert.equal(byId.d.sender, "character");
+  assert.equal(byId.d.replyTo, null);
 });

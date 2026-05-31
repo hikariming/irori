@@ -1,7 +1,10 @@
 import type { CharacterCard } from "./character-cards.ts";
 import { affinityTier, lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
 
-// 角色写给用户的一封信。结构化、可序列化、无向量（保持 FTS-only 理念）。
+// 信件的寄出方：角色写来的，或用户写给角色的。
+export type LetterSender = "character" | "user";
+
+// 一封信。结构化、可序列化、无向量（保持 FTS-only 理念）。角色写来的或用户写出的都用这个结构。
 export type CharacterLetter = {
   id: string;
   characterId: string;
@@ -11,6 +14,8 @@ export type CharacterLetter = {
   createdAt: number; // 写信时间戳（ms）
   deliverAt: number; // 送达时间戳（ms），到点前不在收件箱出现
   readAt: number | null; // 用户读信时间戳（ms），null 表示未读
+  sender: LetterSender; // 谁写的：角色 or 用户
+  replyTo: string | null; // 若是回信，这里是被回复那封信的 id
 };
 
 // 两封信之间至少间隔这么久：写信比发动态郑重，别太频繁。
@@ -75,6 +80,42 @@ export function composeLetterPrompt(card: CharacterCard, state: CharacterState, 
     "- 严格按下面两行格式输出，不要有多余内容：",
     "主题：<一句话主题>",
     "正文：<信的正文，可分多段>"
+  ].join("\n");
+}
+
+// 生成「让角色回一封信」的一次性 prompt：用户刚寄来一封信，角色读后回信。
+// 要求结构化输出主题/正文，并允许用 [memory:...] 标记沉淀印象（提好感度、迭代记忆）。
+export function composeLetterReplyPrompt(
+  card: CharacterCard,
+  state: CharacterState,
+  userLetter: { subject: string; body: string },
+  now: number
+): string {
+  const beat = lifeBeatAt(new Date(now));
+
+  return [
+    `你是 ${card.name}。`,
+    `人设：${card.persona}`,
+    `说话风格：${card.speakingStyle}`,
+    "",
+    "ta（一直在和你聊天的那个人）刚刚给你写来一封信：",
+    `主题：${userLetter.subject}`,
+    `正文：${userLetter.body}`,
+    "",
+    "现在请你读完后，给 ta 回一封信。",
+    `此刻大致的情形：${beat.activity}`,
+    `此刻的心情：${moodHint[state.mood]}。`,
+    `你们的关系：${tierHint[affinityTier(state.affinity)]}。`,
+    "",
+    "要求：",
+    "- 用第一人称回信，真诚回应 ta 信里说的事和情绪，不要客套话。",
+    "- 可以分享你自己的近况和想法，但要让 ta 感到你认真读了 ta 的信。",
+    "- 不要解释设定，不要出现任何数字或系统字样，不要用 Markdown。",
+    "- 若 ta 透露了值得你记住的事，可在信末单独用标记沉淀印象（用户看不到这些标记）：",
+    "  [memory:fact] ta 提到的事实    [memory:like] ta 喜欢的    [memory:dislike] ta 讨厌的",
+    "- 严格按下面两行格式输出正文部分，标记另起一行放最后：",
+    "主题：<一句话主题>",
+    "正文：<回信正文，可分多段>"
   ].join("\n");
 }
 
@@ -180,6 +221,8 @@ export function sanitizeLetters(value: unknown): CharacterLetter[] {
     const createdAt = toFiniteNumber(entry.createdAt, 0);
     const readAtRaw = entry.readAt;
     const readAt = readAtRaw === null || readAtRaw === undefined ? null : toFiniteNumber(readAtRaw, 0);
+    const sender: LetterSender = entry.sender === "user" ? "user" : "character";
+    const replyTo = typeof entry.replyTo === "string" && entry.replyTo ? entry.replyTo : null;
     result.push({
       id: entry.id,
       characterId: entry.characterId,
@@ -188,7 +231,9 @@ export function sanitizeLetters(value: unknown): CharacterLetter[] {
       mood: moods.includes(entry.mood as Mood) ? (entry.mood as Mood) : null,
       createdAt,
       deliverAt: toFiniteNumber(entry.deliverAt, createdAt),
-      readAt
+      readAt,
+      sender,
+      replyTo
     });
   }
 

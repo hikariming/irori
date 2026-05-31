@@ -2209,8 +2209,14 @@ button {
 
 .letters-header-copy {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   gap: 2px;
+}
+
+.letters-compose-btn {
+  flex: 0 0 auto;
 }
 
 .letters-header-copy strong {
@@ -2323,6 +2329,79 @@ button {
   line-height: 1.6;
   text-align: center;
   backdrop-filter: blur(16px);
+}
+
+.letter-card.is-from-user {
+  align-self: center;
+  background: rgba(47, 174, 145, 0.1);
+  border-color: rgba(47, 174, 145, 0.24);
+}
+
+.letter-sender-tag {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(47, 50, 59, 0.08);
+  color: rgba(84, 88, 100, 0.82);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.letter-card.is-from-user .letter-sender-tag {
+  background: rgba(47, 174, 145, 0.2);
+  color: #1f7a64;
+}
+
+.letter-reply-btn {
+  margin-top: 12px;
+}
+
+.letter-composer {
+  width: min(560px, 100%);
+  align-self: center;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgba(47, 174, 145, 0.3);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14px 46px rgba(36, 40, 52, 0.1);
+  backdrop-filter: blur(18px);
+}
+
+.letter-composer-subject,
+.letter-composer-body {
+  width: 100%;
+  border: 1px solid rgba(42, 47, 61, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 9px 12px;
+  color: #333640;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.letter-composer-subject {
+  font-weight: 700;
+}
+
+.letter-composer-body {
+  line-height: 1.8;
+  resize: vertical;
+}
+
+.letter-composer-subject:focus,
+.letter-composer-body:focus {
+  outline: none;
+  border-color: rgba(47, 174, 145, 0.55);
+}
+
+.letter-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 @keyframes progress-pulse {

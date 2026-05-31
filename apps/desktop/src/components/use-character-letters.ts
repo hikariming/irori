@@ -3,12 +3,14 @@ import { useCallback, useRef, useState } from "react";
 import type { CharacterCard } from "./character-cards";
 import {
   composeLetterPrompt,
+  composeLetterReplyPrompt,
   parseLetterReply,
   pickDeliverAt,
   shouldWriteLetter,
   type CharacterLetter
 } from "./character-letters";
-import type { CharacterState } from "./character-state";
+import type { CharacterState, ParsedImpression } from "./character-state";
+import { parseCharacterReply } from "./chat-session";
 import { desktopBackend } from "./desktop-backend";
 
 function createLetterRunId() {
@@ -22,10 +24,18 @@ function createLetterRunId() {
 export function useCharacterLetters() {
   const [letters, setLetters] = useState<CharacterLetter[]>([]);
   const [writingIds, setWritingIds] = useState<string[]>([]);
+  // 用户正在寄信/等角色回信的角色 id（用于禁用按钮、显示「投递中」）。
+  const [sendingIds, setSendingIds] = useState<string[]>([]);
   const lettersRef = useRef(letters);
   lettersRef.current = letters;
   // 正在写信的角色 id，避免并发重复写。
   const inFlightRef = useRef<Set<string>>(new Set());
+
+  function prependLetter(letter: CharacterLetter) {
+    const next = [letter, ...lettersRef.current];
+    lettersRef.current = next;
+    setLetters(next);
+  }
 
   const loadLetters = useCallback(async (characterId: string) => {
     const loaded = await desktopBackend.listCharacterLetters(characterId).catch(() => [] as CharacterLetter[]);
@@ -83,6 +93,74 @@ export function useCharacterLetters() {
     }
   }, []);
 
+  // 用户主动写信或回信：先即时投递用户这封，再让角色生成一封延迟送达的回信，
+  // 并把回信里沉淀的印象交给 onExchange 提升好感度、迭代记忆。
+  const sendUserLetter = useCallback(
+    async (params: {
+      card: CharacterCard;
+      state: CharacterState;
+      subject: string;
+      body: string;
+      replyTo?: string | null;
+      generateReply?: boolean;
+      onExchange?: (input: { userText: string; replyText: string; impressions: ParsedImpression[] }) => void;
+    }) => {
+      const { card, state, subject, body, replyTo = null, generateReply = false, onExchange } = params;
+      const trimmedBody = body.trim();
+      if (!trimmedBody) {
+        return;
+      }
+      const trimmedSubject = subject.trim() || "给你的信";
+      const now = Date.now();
+
+      // 用户的信即时送达（deliverAt = now），立刻出现在收件箱。
+      const userLetter = await desktopBackend.addCharacterLetter({
+        characterId: card.id,
+        subject: trimmedSubject,
+        body: trimmedBody,
+        mood: null,
+        deliverAt: new Date(now).toISOString(),
+        sender: "user",
+        replyTo
+      });
+      prependLetter(userLetter);
+
+      if (!generateReply) {
+        return;
+      }
+
+      setSendingIds((current) => (current.includes(card.id) ? current : [...current, card.id]));
+      try {
+        const response = await desktopBackend.sendPiPrompt({
+          characterId: card.id,
+          prompt: "（读用户的信并回信）",
+          runId: createLetterRunId(),
+          sessionPrompt: composeLetterReplyPrompt(card, state, { subject: trimmedSubject, body: trimmedBody }, now)
+        });
+
+        const rawText = response.text ?? "";
+        const { impressions } = parseCharacterReply(rawText, []);
+        const { subject: replySubject, body: replyBody } = parseLetterReply(rawText);
+        if (replyBody) {
+          const reply = await desktopBackend.addCharacterLetter({
+            characterId: card.id,
+            subject: replySubject,
+            body: replyBody,
+            mood: state.mood,
+            deliverAt: new Date(pickDeliverAt(now)).toISOString(),
+            sender: "character",
+            replyTo: userLetter.id
+          });
+          prependLetter(reply);
+          onExchange?.({ userText: trimmedBody, replyText: replyBody, impressions });
+        }
+      } finally {
+        setSendingIds((current) => current.filter((id) => id !== card.id));
+      }
+    },
+    []
+  );
+
   const markRead = useCallback(async (letterId: string) => {
     const updated = await desktopBackend.markCharacterLetterRead(letterId).catch(() => null);
     if (!updated) {
@@ -93,5 +171,5 @@ export function useCharacterLetters() {
     setLetters(next);
   }, []);
 
-  return { letters, writingIds, loadLetters, maybeWriteLetter, markRead } as const;
+  return { letters, writingIds, sendingIds, loadLetters, maybeWriteLetter, sendUserLetter, markRead } as const;
 }
