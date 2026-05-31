@@ -36,7 +36,7 @@ shili.card/
 
 - `assets/avatar/avatar-circle.png` 用于 sidebar、聊天气泡和通知。
 - `assets/portraits/neutral.png` 用于右侧或主舞台的角色立绘。
-- `assets/stickers/*.png` 固定为九种基础情绪，由运行时根据 `emotion`、`intent`、`cooldownSeconds` 选择。
+- `assets/stickers/*.png` 固定为九种基础情绪，由运行时按情绪节点选择，卡里每个贴纸只需 `id`、`src`、`textFallback`。
 - `assets/backgrounds/default.png` 用于聊天背景，建议叠加浅色可读性遮罩。
 
 ## 资产规范
@@ -49,8 +49,7 @@ shili.card/
 ## 数据结构要点
 
 - `identity` 是角色身份设定，优先级高于记忆和会话上下文。
-- `companionPolicy` 控制陪伴温度、主动性和关系边界。
-- `agentPolicy` 控制本地工具权限，高风险动作必须保留确认。
-- `memoryPolicy` 控制可记忆内容，敏感主题应写入 `excludedTopics`。
+- `speakingStyle` 约束句式、语气和禁用表达。
+- `interactionPrinciples` 控制不同用户状态下的回应密度。
 - `assets` 只描述视觉资源和主题色，不承载聊天布局。
-- `runtimeDefaults` 是首次加载状态，不是长期记忆。
+- `assets.themeColor` 使用墨绿色，匹配头像、立绘和背景。

@@ -62,6 +62,26 @@ test("reduceAssistantProgress uses final text_end content when provided", () => 
   assert.equal(next.answerText, "最终回复。");
 });
 
+test("reduceAssistantProgress collects tool decisions without resetting the answer", () => {
+  const answering = reduceAssistantProgress(createAssistantProgress("run-1"), {
+    runId: "run-1",
+    phase: "answering",
+    delta: "我来改一下。"
+  });
+
+  const next = reduceAssistantProgress(answering, {
+    runId: "run-1",
+    phase: "tool",
+    status: "已拦截 edit：.env",
+    tool: { name: "edit", status: "blocked", target: ".env", reason: "命中受保护路径" }
+  });
+
+  assert.equal(next.answerText, "我来改一下。");
+  assert.equal(next.phase, "answering");
+  assert.equal(next.toolEvents.length, 1);
+  assert.equal(next.toolEvents[0].status, "blocked");
+});
+
 test("assistantProgressStatusLabel describes each visible phase", () => {
   assert.equal(assistantProgressStatusLabel("queued"), "准备中");
   assert.equal(assistantProgressStatusLabel("thinking"), "推理中");

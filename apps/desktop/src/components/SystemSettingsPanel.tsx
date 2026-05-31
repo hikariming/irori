@@ -26,6 +26,8 @@ import {
 } from "./model-settings-controller";
 import { buildSettingsTabs } from "./settings-model";
 import type { CharacterCard } from "./character-cards";
+import type { CharacterPreference, CharacterPreferences } from "./character-preferences";
+import type { CharacterStates } from "./character-state";
 import {
   buildToolPolicySettingsViewModel,
   defaultToolPolicySettings,
@@ -38,6 +40,9 @@ import {
 type SystemSettingsPanelProps = {
   activeCharacterId?: string;
   cards?: CharacterCard[];
+  characterPreferences?: CharacterPreferences;
+  characterStates?: CharacterStates;
+  onCharacterPreferenceChange?: (characterId: string, patch: Partial<CharacterPreference>) => void;
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
   memoryDebugEvents?: MemoryDebugEvent[];
@@ -45,7 +50,7 @@ type SystemSettingsPanelProps = {
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
   const memoryTab = tabs.find((tab) => tab.id === "memory");
@@ -821,7 +826,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], i
         </Tabs.Panel>
 
         <Tabs.Panel className="settings-tab-panel" id="character-card">
-          <CharacterCardSettings activeCharacterId={activeCharacterId} cards={cards} />
+          <CharacterCardSettings
+            activeCharacterId={activeCharacterId}
+            cards={cards}
+            preferences={characterPreferences}
+            states={characterStates}
+            onPreferenceChange={onCharacterPreferenceChange}
+          />
         </Tabs.Panel>
 
         <Tabs.Panel className="settings-tab-panel" id="memory">

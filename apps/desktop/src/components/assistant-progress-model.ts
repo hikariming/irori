@@ -1,6 +1,30 @@
 import type { ChatMessage } from "./chat-model";
 
-export type AssistantProgressPhase = "queued" | "thinking" | "answering";
+export type AssistantProgressPhase = "queued" | "thinking" | "answering" | "tool";
+
+export type ToolGateStatus =
+  | "allowed"
+  | "blocked"
+  | "needs_confirmation"
+  | "confirmed"
+  | "rejected";
+
+export type ToolProgressInfo = {
+  name: string;
+  status: ToolGateStatus;
+  target?: string;
+  reason?: string;
+};
+
+export type PiToolConfirmRequest = {
+  confirmId: string;
+  runId: string;
+  tool: {
+    name: string;
+    target?: string;
+    reason?: string;
+  };
+};
 
 export type PiPromptProgressEvent = {
   runId: string;
@@ -8,6 +32,7 @@ export type PiPromptProgressEvent = {
   delta?: string;
   status?: string;
   text?: string;
+  tool?: ToolProgressInfo;
 };
 
 export type AssistantProgress = {
@@ -16,6 +41,7 @@ export type AssistantProgress = {
   reasoningText: string;
   answerText: string;
   statusText: string;
+  toolEvents: ToolProgressInfo[];
 };
 
 export function createAssistantProgress(runId: string): AssistantProgress {
@@ -24,7 +50,8 @@ export function createAssistantProgress(runId: string): AssistantProgress {
     phase: "queued",
     reasoningText: "",
     answerText: "",
-    statusText: ""
+    statusText: "",
+    toolEvents: []
   };
 }
 
@@ -51,6 +78,16 @@ export function reduceAssistantProgress(
       phase: "answering",
       answerText: event.text ?? `${current.answerText}${event.delta ?? ""}`,
       statusText: event.status ?? ""
+    };
+  }
+
+  if (event.phase === "tool") {
+    // Keep the streaming answer phase intact: tool decisions interleave with
+    // generation and should not reset the visible reasoning/answer text.
+    return {
+      ...current,
+      statusText: event.status ?? current.statusText,
+      toolEvents: event.tool ? [...current.toolEvents, event.tool] : current.toolEvents
     };
   }
 

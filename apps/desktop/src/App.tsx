@@ -20,14 +20,14 @@ import {
   reduceAssistantProgress,
   replaceAssistantStreamMessage,
   upsertAssistantStreamMessage,
-  type AssistantProgress
+  type AssistantProgress,
+  type PiToolConfirmRequest
 } from "./components/assistant-progress-model";
 import {
   canStartNewDraftSession,
   createSessionTitle,
   findLatestCharacterSession,
   groupChatSessions,
-  shouldGenerateOpeningMessage,
   type ChatSessionSummary
 } from "./components/chat-history-model";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
@@ -44,6 +44,8 @@ import {
   type MemoryRunSnapshot
 } from "./components/memory-status-model";
 import { buildSidebarCharacters } from "./components/sidebar-model";
+import { useCharacterPreferences } from "./components/use-character-preferences";
+import { useCharacterState } from "./components/use-character-state";
 import { useTheme } from "./components/use-theme";
 
 function messageTime() {
@@ -53,9 +55,6 @@ function messageTime() {
   }).format(new Date());
 }
 
-function welcomeMessageId(characterId: string) {
-  return `${characterId}-welcome`;
-}
 
 function createPromptRunId() {
   if (globalThis.crypto?.randomUUID) {
@@ -65,33 +64,10 @@ function createPromptRunId() {
   return `prompt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function buildOpeningMessagePrompt(card: CharacterCard) {
-  return [
-    `你是 ${card.name}，${card.relationship}。`,
-    `角色气质：${card.persona}`,
-    `说话风格：${card.speakingStyle}`,
-    "请结合可用记忆，生成一句自然的重新见面开场白。",
-    "要求：1 到 2 句；不要像任务审问；不要说“根据记忆”；不要编造未提供的事实；不要替用户决定今天必须做什么；只输出开场白本身。"
-  ].join("\n");
-}
-
-function initialMessages(card: CharacterCard): ChatMessage[] {
-  const neutralSticker = card.stickers.find((sticker) => sticker.id === "neutral");
-
-  return [
-    {
-      id: welcomeMessageId(card.id),
-      speaker: "character",
-      author: card.name,
-      text: card.firstMessage,
-      time: messageTime(),
-      sticker: neutralSticker
-    }
-  ];
-}
-
 export function App() {
   const { theme, toggleTheme } = useTheme();
+  const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
+  const { states: characterStates, beginCharacterTurn, recordCharacterTurn } = useCharacterState();
   const [cards, setCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
@@ -99,10 +75,9 @@ export function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [openingGenerationKey, setOpeningGenerationKey] = useState(0);
-  const [isOpeningGenerationRequested, setIsOpeningGenerationRequested] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [assistantProgress, setAssistantProgress] = useState<AssistantProgress | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<PiToolConfirmRequest | null>(null);
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
   const [memoryDebugEvents, setMemoryDebugEvents] = useState<MemoryDebugEvent[]>([]);
   const [latestMemoryRun, setLatestMemoryRun] = useState<MemoryRunSnapshot | null>(null);
@@ -128,15 +103,10 @@ export function App() {
   });
   const activeCard = findCharacterCard(cards, activeCharacterId) ?? cards[0] ?? null;
   const activeCharacter = activeCard ? buildCharacterChatPreview(activeCard) : null;
-  const sidebarCharacters = buildSidebarCharacters(cards, activeCard?.id ?? activeCharacterId);
+  const sidebarCharacters = buildSidebarCharacters(cards, activeCard?.id ?? activeCharacterId, characterPreferences);
 
-  function showInitialMessages(characterId: string, options: { generateOpening?: boolean } = {}) {
-    const card = findCharacterCard(cards, characterId) ?? activeCard;
-    setMessages(card ? initialMessages(card) : []);
-    setIsOpeningGenerationRequested(options.generateOpening === true);
-    if (options.generateOpening) {
-      setOpeningGenerationKey((current) => current + 1);
-    }
+  function showInitialMessages() {
+    setMessages([]);
   }
 
   function clearAssistantTypewriterTimer() {
@@ -296,6 +266,35 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
+    let unlisten: (() => void) | null = null;
+
+    desktopBackend.onPiToolConfirm((request) => {
+      if (request.runId !== activePromptRunIdRef.current) {
+        // The run that asked has already ended; let it fall back to a block.
+        return;
+      }
+
+      setPendingConfirm(request);
+    })
+      .then((nextUnlisten) => {
+        if (isMounted) {
+          unlisten = nextUnlisten;
+        } else {
+          nextUnlisten();
+        }
+      })
+      .catch(() => {
+        // Confirm prompts are best-effort; without them the run blocks safely.
+      });
+
+    return () => {
+      isMounted = false;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (cards.length === 0 || initialSessionLoadedRef.current) {
       return;
     }
@@ -315,7 +314,7 @@ export function App() {
 
         if (sessions.length === 0) {
           setActiveSessionId(null);
-          showInitialMessages(activeCharacterId, { generateOpening: true });
+          showInitialMessages();
           return;
         }
 
@@ -327,17 +326,15 @@ export function App() {
             setActiveCharacterId(detail.session.characterId);
           }
           if (detail.messages.length === 0) {
-            showInitialMessages(detail.session.characterId, { generateOpening: true });
+            showInitialMessages();
           } else {
             setMessages(detail.messages);
           }
         }
       } catch (error) {
         if (isMounted) {
-          const fallbackCard = findCharacterCard(cards, activeCharacterId) ?? cards[0] ?? null;
           setActiveSessionId(null);
           setMessages([
-            ...(fallbackCard ? initialMessages(fallbackCard) : []),
             {
               id: `history-load-error-${Date.now()}`,
               speaker: "system",
@@ -356,64 +353,6 @@ export function App() {
       isMounted = false;
     };
   }, [cards]);
-
-  useEffect(() => {
-    if (!shouldGenerateOpeningMessage({
-      activeSessionId,
-      modelReady,
-      requested: isOpeningGenerationRequested
-    })) {
-      return;
-    }
-
-    const card = findCharacterCard(cards, activeCharacterId);
-    if (!card) {
-      return;
-    }
-
-    let isCancelled = false;
-    const characterId = activeCharacterId;
-    const fallbackId = welcomeMessageId(characterId);
-
-    desktopBackend.generateOpeningMessage({
-      characterId,
-      prompt: buildOpeningMessagePrompt(card)
-    })
-      .then((response) => {
-        const text = response.text.trim();
-
-        if (isCancelled || !text) {
-          return;
-        }
-
-        setIsOpeningGenerationRequested(false);
-
-        setMessages((current) => {
-          if (current.length !== 1 || current[0]?.id !== fallbackId) {
-            return current;
-          }
-
-          return [{ ...current[0], text }];
-        });
-
-        const memoryRun = {
-          memoryBackendSource: response.memoryBackendSource,
-          recalledMemories: response.recalledMemories
-        };
-        setLatestMemoryRun(memoryRun);
-        setMemoryDebugEvents((current) =>
-          appendMemoryDebugEvent(current, createMemoryDebugEventFromRun({ run: memoryRun }))
-        );
-      })
-      .catch(() => {
-        setIsOpeningGenerationRequested(false);
-        // Static first messages stay in place when opening generation is unavailable.
-      });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [activeCharacterId, activeSessionId, cards, isOpeningGenerationRequested, modelReady, openingGenerationKey]);
 
   useEffect(() => {
     if (activeSessionId !== null) {
@@ -443,7 +382,7 @@ export function App() {
         setActiveCharacterId(detail.session.characterId);
       }
       if (detail.messages.length === 0) {
-        showInitialMessages(detail.session.characterId);
+        showInitialMessages();
       } else {
         setMessages(detail.messages);
       }
@@ -506,6 +445,7 @@ export function App() {
     activeTypewriterResolveRef.current = null;
     activePromptRunIdRef.current = runId;
     setAssistantProgress(createAssistantProgress(runId));
+    setPendingConfirm(null);
     setIsSending(true);
 
     let sessionIdForRun = activeSessionId;
@@ -523,10 +463,13 @@ export function App() {
         text: userMessage.text
       });
       const promptHistory = activeSessionId ? messages : [];
+      const { selfState, memories } = beginCharacterTurn(card);
       const sessionPrompt = composeCharacterSessionPrompt({
         card,
         history: promptHistory,
-        userPrompt: prompt
+        userPrompt: prompt,
+        selfState,
+        memories
       });
 
       setActiveSessionId(sessionId);
@@ -554,6 +497,7 @@ export function App() {
       }
       const parsedReply = parseCharacterReply(response.text, card.stickers);
       const replyText = parsedReply.text || `已通过 ${response.modelRoute} 完成这次 Pi session。`;
+      recordCharacterTurn(card.id, { userText: prompt, replyText, impressions: parsedReply.impressions });
       await revealAssistantText(replyText);
       const assistantMessage = await desktopBackend.appendChatMessage({
         sessionId,
@@ -614,8 +558,28 @@ export function App() {
         activePromptCharacterNameRef.current = "";
         activeTypewriterResolveRef.current = null;
         setAssistantProgress(null);
+        setPendingConfirm(null);
       }
       setIsSending(false);
+    }
+  }
+
+  async function respondToConfirm(approved: boolean) {
+    const request = pendingConfirm;
+    if (!request) {
+      return;
+    }
+
+    setPendingConfirm(null);
+
+    try {
+      await desktopBackend.respondPiToolConfirm({
+        runId: request.runId,
+        confirmId: request.confirmId,
+        approved
+      });
+    } catch {
+      // The run likely ended before we answered; it falls back to a block.
     }
   }
 
@@ -636,7 +600,7 @@ export function App() {
     }
 
     setActiveSessionId(null);
-    showInitialMessages(characterId, { generateOpening: true });
+    showInitialMessages();
   }
 
   function startNewSession() {
@@ -653,7 +617,7 @@ export function App() {
     setActiveSessionId(null);
     setIsSettingsOpen(false);
     setIsCharacterOpen(false);
-    showInitialMessages(activeCharacterId);
+    showInitialMessages();
   }
 
   return (
@@ -687,6 +651,27 @@ export function App() {
             正在加载角色卡…
           </div>
         )}
+        {pendingConfirm ? (
+          <div className="tool-confirm" role="alertdialog" aria-label="工具操作确认">
+            <div className="tool-confirm__body">
+              <p className="tool-confirm__title">
+                {activeCharacter?.character.name ?? "角色"} 想执行 {pendingConfirm.tool.name}
+                {pendingConfirm.tool.target ? `：${pendingConfirm.tool.target}` : ""}
+              </p>
+              {pendingConfirm.tool.reason ? (
+                <p className="tool-confirm__reason">{pendingConfirm.tool.reason}</p>
+              ) : null}
+            </div>
+            <div className="tool-confirm__actions">
+              <button type="button" className="tool-confirm__reject" onClick={() => respondToConfirm(false)}>
+                取消
+              </button>
+              <button type="button" className="tool-confirm__approve" onClick={() => respondToConfirm(true)}>
+                允许
+              </button>
+            </div>
+          </div>
+        ) : null}
         <CompanionInput
           disabled={isSending || !modelReady || !activeCharacter}
           isSending={isSending}
@@ -695,6 +680,9 @@ export function App() {
         <SystemSettingsPanel
           activeCharacterId={activeCharacterId}
           cards={cards}
+          characterPreferences={characterPreferences}
+          characterStates={characterStates}
+          onCharacterPreferenceChange={updateCharacterPreference}
           isOpen={isSettingsOpen}
           memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}

@@ -55,7 +55,6 @@ export function CompanionSidebar({
             <CharacterAvatar character={character} index={index} />
             <span className="character-copy">
               <strong>{character.name}</strong>
-              <small>{character.tone}</small>
             </span>
             {character.active ? <span className="status-dot online" aria-label="在线" /> : null}
           </Button>

@@ -24,8 +24,8 @@ const cards = await Promise.all(
 
 test("getActiveCharacter returns the selected character", () => {
   const active = getActiveCharacter([
-    { id: "a", name: "A", status: "idle", tone: "quiet", active: false },
-    { id: "b", name: "B", status: "online", tone: "warm", active: true }
+    { id: "a", name: "A", status: "idle", active: false },
+    { id: "b", name: "B", status: "online", active: true }
   ]);
 
   assert.equal(active?.id, "b");
@@ -42,12 +42,11 @@ test("buildSidebarCharacters projects cards and marks the active one", () => {
   assert.equal(items.find((item) => item.id === "shili")?.active, false);
 });
 
-test("buildSidebarCharacters maps name, tagline, and avatar from the card", () => {
+test("buildSidebarCharacters maps name and avatar from the card", () => {
   const items = buildSidebarCharacters(cards, "shili");
   const lulin = items.find((item) => item.id === "lulin");
 
   assert.equal(lulin?.name, "陆临");
-  assert.equal(lulin?.tone, cards[1].tagline);
   assert.equal(lulin?.avatarSrc, "/characters/lulin.card/assets/avatar/avatar-circle.png");
 });
 

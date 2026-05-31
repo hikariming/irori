@@ -210,10 +210,22 @@ export function buildToolRuntime({
     allowedTools: [...resolved.builtinTools, ...registeredCustomTools]
   };
 
+  // Translate the policy into the Pi tool names the tool_call hook sees, so the
+  // gate extension can evaluate concrete calls without knowing Cockapoo tool ids.
+  const confirmToolNames = resolved.alwaysConfirm
+    .map((toolId) => (toolId.includes(".") ? supportedCustomToolNames[toolId] : toolId))
+    .filter((name) => name && tools.includes(name));
+  const gatePolicy = {
+    allowedToolNames: tools,
+    confirmToolNames,
+    protectedPaths: resolved.protectedPaths
+  };
+
   return {
     tools,
     customTools,
     toolPolicy: effectiveToolPolicy,
+    gatePolicy,
     summary: {
       enabledTools: effectiveToolPolicy.allowedTools,
       registeredCustomTools,

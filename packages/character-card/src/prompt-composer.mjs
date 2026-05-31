@@ -41,9 +41,7 @@ export function composePromptBundle(card, context) {
         ...optionalLine("背景", card.identity.background),
         ...optionalLine("核心动机", card.identity.coreMotivation),
         `说话风格：${card.identity.speakingStyle}`,
-        `关系定位：${card.identity.relationship}`,
-        ...optionalListLine("互动原则", card.identity.interactionPrinciples),
-        ...optionalListLine("沉浸提示", card.identity.immersionCues)
+        ...optionalListLine("互动原则", card.identity.interactionPrinciples)
       ].join("\n")
     ),
     section("Memory", context.memorySummary),

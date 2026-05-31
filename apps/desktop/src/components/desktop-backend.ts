@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
-import type { PiPromptProgressEvent } from "./assistant-progress-model.ts";
+import type { PiPromptProgressEvent, PiToolConfirmRequest } from "./assistant-progress-model.ts";
 import {
   buildInitialModelSettings,
   deleteModelProfile as deleteSavedModelProfile,
@@ -31,6 +31,7 @@ import {
 } from "./chat-model.ts";
 import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "./memory-status-model.ts";
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
+import { sanitizeCharacterStates, type CharacterStates } from "./character-state.ts";
 
 export type SaveModelSettingsRequest = {
   profileId: string;
@@ -57,10 +58,10 @@ export type SendPiPromptRequest = {
   sessionPrompt?: string;
 };
 
-export type GenerateOpeningMessageRequest = {
-  characterId: string;
-  prompt: string;
-  sessionId?: string;
+export type RespondPiToolConfirmRequest = {
+  runId: string;
+  confirmId: string;
+  approved: boolean;
 };
 
 export type PiPromptResponse = {
@@ -84,13 +85,16 @@ export type DesktopBackend = {
   appendChatMessage: (request: AppendChatMessageRequest) => Promise<ChatMessage>;
   createChatSession: (request: CreateChatSessionRequest) => Promise<ChatSessionSummary>;
   deleteModelProfile: (profileId: string) => Promise<ModelSettingsState>;
-  generateOpeningMessage: (request: GenerateOpeningMessageRequest) => Promise<PiPromptResponse>;
   getChatSession: (sessionId: string) => Promise<ChatSessionDetail>;
+  loadCharacterStates: () => Promise<CharacterStates>;
+  saveCharacterStates: (states: CharacterStates) => Promise<void>;
   getMemoryStatus: () => Promise<MemoryStatus>;
   getToolPolicySettings: () => Promise<ToolPolicySettings>;
   listChatSessions: () => Promise<ChatSessionSummary[]>;
   loadModelSettings: () => Promise<ModelSettingsState>;
   onPiPromptProgress: (callback: (event: PiPromptProgressEvent) => void) => Promise<() => void>;
+  onPiToolConfirm: (callback: (request: PiToolConfirmRequest) => void) => Promise<() => void>;
+  respondPiToolConfirm: (request: RespondPiToolConfirmRequest) => Promise<void>;
   saveModelSettings: (request: SaveModelSettingsRequest) => Promise<ModelSettingsState>;
   saveToolPolicySettings: (settings: ToolPolicySettings) => Promise<ToolPolicySettings>;
   sendPiPrompt: (request: SendPiPromptRequest) => Promise<PiPromptResponse>;
@@ -188,10 +192,17 @@ export function createPreviewBackend(): DesktopBackend {
   let savedSettings: SavedModelSettings | null = null;
   let state = buildInitialModelSettings();
   let toolPolicySettings = defaultToolPolicySettings;
+  let characterStates: CharacterStates = {};
   const sessions: ChatSessionSummary[] = [];
   const messagesBySession = new Map<string, StoredChatMessageRecord[]>();
 
   return {
+    async loadCharacterStates() {
+      return characterStates;
+    },
+    async saveCharacterStates(states) {
+      characterStates = states;
+    },
     async appendChatMessage(request) {
       const messages = messagesBySession.get(request.sessionId);
 
@@ -240,13 +251,6 @@ export function createPreviewBackend(): DesktopBackend {
       savedSettings = state;
       return state;
     },
-    async generateOpeningMessage() {
-      if (!isModelConfigured(state)) {
-        throw new Error("请先完成模型接入，再生成开场白。");
-      }
-
-      throw new Error(previewRuntimeMessage);
-    },
     async getChatSession(sessionId) {
       const session = sessions.find((item) => item.id === sessionId);
 
@@ -281,6 +285,12 @@ export function createPreviewBackend(): DesktopBackend {
     },
     async onPiPromptProgress() {
       return () => {};
+    },
+    async onPiToolConfirm() {
+      return () => {};
+    },
+    async respondPiToolConfirm() {
+      throw new Error(previewRuntimeMessage);
     },
     async saveModelSettings(request) {
       state = upsertModelProfile(state, buildProfileFromRequest(state, request), { makeActive: request.makeActive });
@@ -334,9 +344,6 @@ export function createTauriBackend(): DesktopBackend {
       const saved = await invoke<SavedModelSettings>("delete_model_profile", { profileId });
       return mergeSavedModelSettings(buildInitialModelSettings(), saved);
     },
-    async generateOpeningMessage(request) {
-      return invoke<PiPromptResponse>("generate_opening_message", { request });
-    },
     async getChatSession(sessionId) {
       const detail = await invoke<{ session: ChatSessionSummary; messages: StoredChatMessageRecord[] }>("get_chat_session", { sessionId });
 
@@ -344,6 +351,13 @@ export function createTauriBackend(): DesktopBackend {
         session: detail.session,
         messages: detail.messages.map((message) => chatMessageFromRecord(message, detail.session.characterId))
       };
+    },
+    async loadCharacterStates() {
+      const raw = await invoke<unknown>("get_character_states");
+      return sanitizeCharacterStates(raw);
+    },
+    async saveCharacterStates(states) {
+      await invoke("save_character_states", { states });
     },
     async getMemoryStatus() {
       return invoke<MemoryStatus>("get_memory_status");
@@ -362,6 +376,14 @@ export function createTauriBackend(): DesktopBackend {
       return listen<PiPromptProgressEvent>("pi_prompt_progress", (event) => {
         callback(event.payload);
       });
+    },
+    async onPiToolConfirm(callback) {
+      return listen<PiToolConfirmRequest>("pi_tool_confirm", (event) => {
+        callback(event.payload);
+      });
+    },
+    async respondPiToolConfirm(request) {
+      await invoke("respond_pi_tool_confirm", { request });
     },
     async saveModelSettings(request) {
       const saved = await invoke<SavedModelSettings>("save_model_settings", { request });

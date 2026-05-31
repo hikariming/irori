@@ -130,6 +130,25 @@ export function toPiPromptProgressEvent(event, runId) {
   return null;
 }
 
+function toolGateStatusText(toolEvent = {}) {
+  const target = toolEvent.target ? `：${toolEvent.target}` : "";
+
+  switch (toolEvent.status) {
+    case "allowed":
+      return `执行工具 ${toolEvent.toolName}${target}`;
+    case "blocked":
+      return `已拦截 ${toolEvent.toolName}${target}`;
+    case "needs_confirmation":
+      return `${toolEvent.toolName} 需要确认${target}`;
+    case "confirmed":
+      return `已确认 ${toolEvent.toolName}${target}`;
+    case "rejected":
+      return `已取消 ${toolEvent.toolName}${target}`;
+    default:
+      return `工具 ${toolEvent.toolName}`;
+  }
+}
+
 function emitRunStatus(onProgressEvent, runId, status) {
   if (!runId || !status) {
     return;
@@ -162,11 +181,13 @@ export async function runCockapooPiPrompt({
   memoryCaptureTurn,
   chatHistoryMemory,
   toolPolicySettings,
+  toolGateMode = "confirm",
   resolveMemoryBackend = resolveConfiguredMemoryBackend,
   promptTimeoutMs = defaultPromptTimeoutMs,
   modelWaitHeartbeatMs = 3000,
   runId,
-  onProgressEvent
+  onProgressEvent,
+  onConfirm
 }) {
   const model = resolvePiModel(modelSettings);
   const modelRoute = formatOpenAiCompatibleRoute(modelSettings);
@@ -235,6 +256,22 @@ export async function runCockapooPiPrompt({
 
   emitRunStatus(onProgressEvent, runId, "上下文已整理，正在启动本地 Pi 会话");
 
+  const onToolEvent = runId && onProgressEvent
+    ? (toolEvent) => {
+        onProgressEvent({
+          runId,
+          phase: "tool",
+          status: toolGateStatusText(toolEvent),
+          tool: {
+            name: toolEvent.toolName,
+            status: toolEvent.status,
+            target: toolEvent.target,
+            reason: toolEvent.reason
+          }
+        });
+      }
+    : undefined;
+
   const { session } = await createSession({
     cwd,
     modelSettings,
@@ -243,7 +280,11 @@ export async function runCockapooPiPrompt({
     sessionMode: "memory",
     tools: toolRuntime.tools,
     customTools: toolRuntime.customTools,
-    toolPolicy: toolRuntime.toolPolicy
+    toolPolicy: toolRuntime.toolPolicy,
+    gatePolicy: toolRuntime.gatePolicy,
+    gateMode: toolGateMode,
+    onToolEvent,
+    onConfirm
   });
 
   const events = [];

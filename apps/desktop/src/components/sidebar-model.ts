@@ -1,4 +1,5 @@
 import type { CharacterCard } from "./character-cards.ts";
+import { isCharacterVisibleInSidebar, type CharacterPreferences } from "./character-preferences.ts";
 
 export type CharacterStatus = "online" | "idle";
 
@@ -6,7 +7,6 @@ export type CompanionCharacter = {
   id: string;
   name: string;
   status: CharacterStatus;
-  tone: string;
   active: boolean;
   avatarSrc?: string;
 };
@@ -25,13 +25,15 @@ export type SessionGroup = {
 
 export function buildSidebarCharacters(
   cards: CharacterCard[],
-  activeCharacterId: string
+  activeCharacterId: string,
+  preferences: CharacterPreferences = {}
 ): CompanionCharacter[] {
-  return cards.map((card) => ({
+  return cards
+    .filter((card) => isCharacterVisibleInSidebar(preferences, card.id))
+    .map((card) => ({
     id: card.id,
     name: card.name,
     status: "online",
-    tone: card.tagline,
     active: card.id === activeCharacterId,
     avatarSrc: card.assets.avatar
   }));

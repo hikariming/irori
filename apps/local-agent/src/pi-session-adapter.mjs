@@ -13,6 +13,7 @@ import {
   openAiCompatibleProviderId,
   resolvePiModel
 } from "./model-provider-resolver.mjs";
+import { createToolPolicyGateExtension } from "./tool-policy-gate.mjs";
 
 const kimiPreservedThinkingModelIds = new Set([
   "kimi-k2.5",
@@ -109,10 +110,24 @@ export function buildPiSessionOptions({
 export async function createCockapooPiSession(options) {
   const sessionOptions = buildPiSessionOptions(options);
   const agentDir = getAgentDir();
+  const extensionFactories = [
+    createProviderRequestOverrideExtension(options?.modelSettings ?? defaultOpenAiCompatibleSettings)
+  ];
+
+  if (options?.gatePolicy) {
+    extensionFactories.push(createToolPolicyGateExtension({
+      gatePolicy: options.gatePolicy,
+      mode: options.gateMode,
+      onToolEvent: options.onToolEvent,
+      onConfirm: options.onConfirm,
+      confirmFallback: options.confirmFallback
+    }));
+  }
+
   const resourceLoader = new DefaultResourceLoader({
     cwd: sessionOptions.cwd,
     agentDir,
-    extensionFactories: [createProviderRequestOverrideExtension(options?.modelSettings ?? defaultOpenAiCompatibleSettings)]
+    extensionFactories
   });
 
   await resourceLoader.reload();

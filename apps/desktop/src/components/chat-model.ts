@@ -39,8 +39,6 @@ export type CharacterChatPreview = {
   character: {
     id: string;
     name: string;
-    tagline: string;
-    relationship: string;
   };
   assets: {
     avatar: string;

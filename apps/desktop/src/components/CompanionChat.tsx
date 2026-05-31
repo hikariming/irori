@@ -96,7 +96,6 @@ export function CompanionChat({
           <img alt={`${preview.character.name} 立绘`} src={preview.assets.portrait} />
           <div className="inspector-copy">
           <h1>{preview.character.name}</h1>
-          <p>{preview.character.tagline}</p>
           <div className="inspector-stickers" aria-label="角色表情">
             {preview.stickers.map((sticker) => (
               <img alt={sticker.label} key={sticker.id} src={sticker.src} />

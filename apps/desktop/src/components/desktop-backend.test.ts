@@ -206,39 +206,6 @@ test("preview backend accepts session id on Pi prompt requests", async () => {
   );
 });
 
-test("preview backend exposes opening message generation and refuses to fake it", async () => {
-  const backend = createPreviewBackend();
-  await backend.saveModelSettings({
-    profileId: "default",
-    name: "Local Qwen",
-    baseUrl: "http://localhost:11434/v1",
-    modelName: "qwen3-coder",
-    token: "sk-preview-123456"
-  });
-
-  await assert.rejects(
-    () =>
-      backend.generateOpeningMessage({
-        characterId: "shili",
-        prompt: "请生成一句自然开场白。"
-      }),
-    /浏览器预览不会调用真实 LLM/
-  );
-});
-
-test("preview backend refuses opening message generation before a token is saved", async () => {
-  const backend = createPreviewBackend();
-
-  await assert.rejects(
-    () =>
-      backend.generateOpeningMessage({
-        characterId: "shili",
-        prompt: "请生成一句自然开场白。"
-      }),
-    /请先完成模型接入/
-  );
-});
-
 test("preview backend exposes memory status", async () => {
   const backend = createPreviewBackend();
   const status = await backend.getMemoryStatus();

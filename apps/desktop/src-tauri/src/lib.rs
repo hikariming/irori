@@ -1,12 +1,28 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{ChildStdin, Command, Stdio};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+/// Keeps the local-agent child's stdin open for streaming runs so the desktop
+/// can answer confirm_request prompts mid-run. Keyed by runId; the entry is
+/// removed (closing stdin) when the run finishes.
+#[derive(Default)]
+struct PromptStdinRegistry(Mutex<HashMap<String, ChildStdin>>);
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RespondPiToolConfirmRequest {
+    run_id: String,
+    confirm_id: String,
+    approved: bool,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,14 +98,6 @@ struct SendPiPromptRequest {
     session_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct GenerateOpeningMessageRequest {
-    character_id: String,
-    prompt: String,
-    session_id: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PiPromptResponse {
@@ -104,6 +112,7 @@ struct PiPromptResponse {
 #[derive(Debug)]
 enum LocalAgentStreamMessage {
     Progress(serde_json::Value),
+    ConfirmRequest(serde_json::Value),
     Final(PiPromptResponse),
 }
 
@@ -250,16 +259,6 @@ async fn send_pi_prompt(
 }
 
 #[tauri::command]
-async fn generate_opening_message(
-    app: AppHandle,
-    request: GenerateOpeningMessageRequest,
-) -> Result<PiPromptResponse, String> {
-    tauri::async_runtime::spawn_blocking(move || run_local_agent_opening_prompt(app, request))
-        .await
-        .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
-}
-
-#[tauri::command]
 async fn test_model_connection(
     app: AppHandle,
     request: Option<TestModelConnectionRequest>,
@@ -274,6 +273,35 @@ async fn test_model_connection(
     })
     .await
     .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
+}
+
+#[tauri::command]
+fn respond_pi_tool_confirm(
+    registry: State<'_, PromptStdinRegistry>,
+    request: RespondPiToolConfirmRequest,
+) -> Result<(), String> {
+    let line = serde_json::json!({
+        "type": "confirm_response",
+        "confirmId": request.confirm_id,
+        "approved": request.approved
+    });
+
+    let mut guard = registry
+        .0
+        .lock()
+        .map_err(|_| "确认通道状态被污染。".to_string())?;
+    let stdin = guard
+        .get_mut(&request.run_id)
+        .ok_or_else(|| "该请求已结束，无法再确认。".to_string())?;
+
+    stdin
+        .write_all(format!("{}\n", line).as_bytes())
+        .map_err(|error| format!("写入确认结果失败：{error}"))?;
+    stdin
+        .flush()
+        .map_err(|error| format!("写入确认结果失败：{error}"))?;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -293,6 +321,20 @@ fn create_chat_session(
 #[tauri::command]
 fn get_chat_session(app: AppHandle, session_id: String) -> Result<ChatSessionDetail, String> {
     get_chat_session_from_path(&chat_history_path(&app)?, &session_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_character_states(app: AppHandle) -> Result<serde_json::Value, String> {
+    read_character_states_from_path(&chat_history_path(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_character_states(
+    app: AppHandle,
+    states: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    save_character_states_to_path(&chat_history_path(&app)?, states, &current_timestamp())
         .map_err(|error| error.to_string())
 }
 
@@ -381,44 +423,6 @@ fn run_local_agent_prompt(
     execute_local_agent_prompt(agent_dir, payload)
 }
 
-fn run_local_agent_opening_prompt(
-    app: AppHandle,
-    request: GenerateOpeningMessageRequest,
-) -> Result<PiPromptResponse, String> {
-    let settings_path = settings_path(&app)?;
-    let registry = read_stored_model_registry(&settings_path).map_err(|error| error.to_string())?;
-    let stored = active_stored_model_profile(&registry)?;
-    let token = stored
-        .token
-        .clone()
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "请先在模型接入里保存或填写 Token。".to_string())?;
-    let agent_dir = local_agent_dir();
-    let tool_policy_settings =
-        read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
-            .map_err(|error| error.to_string())?;
-    let memory_dir = memory_backend_dir(&app)?;
-    fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
-    let resolved = StoredModelProfile {
-        token: Some(token),
-        ..stored
-    };
-    let mut payload = build_local_agent_prompt_payload(
-        std::env::current_dir()
-            .map_err(|error| error.to_string())?
-            .to_string_lossy()
-            .to_string(),
-        &resolved,
-        request.prompt.clone(),
-        None,
-        tool_policy_settings,
-    );
-    payload["memoryBackendConfig"] = build_memory_backend_config_payload(&memory_dir, &resolved);
-    payload["memoryRecallRequest"] = build_opening_memory_recall_payload(&request);
-
-    execute_local_agent_prompt(agent_dir, payload)
-}
-
 fn execute_local_agent_prompt(
     agent_dir: PathBuf,
     payload: serde_json::Value,
@@ -477,6 +481,7 @@ fn parse_local_agent_stream_line(line: &str) -> Result<LocalAgentStreamMessage, 
 
             Ok(LocalAgentStreamMessage::Progress(event))
         }
+        Some("confirm_request") => Ok(LocalAgentStreamMessage::ConfirmRequest(value)),
         Some("final") => {
             let response = value
                 .get("response")
@@ -491,6 +496,39 @@ fn parse_local_agent_stream_line(line: &str) -> Result<LocalAgentStreamMessage, 
             .map(LocalAgentStreamMessage::Final)
             .map_err(|error| format!("解析 local-agent 响应失败：{error}")),
     }
+}
+
+fn read_local_agent_stream(
+    app: &AppHandle,
+    stdout: std::process::ChildStdout,
+) -> Result<Option<PiPromptResponse>, String> {
+    let mut final_response = None;
+    let reader = BufReader::new(stdout);
+
+    for line in reader.lines() {
+        let line = line.map_err(|error| format!("读取 local-agent 流式响应失败：{error}"))?;
+        let line = line.trim();
+
+        if line.is_empty() {
+            continue;
+        }
+
+        match parse_local_agent_stream_line(line)? {
+            LocalAgentStreamMessage::Progress(event) => {
+                app.emit("pi_prompt_progress", event)
+                    .map_err(|error| format!("推送模型进度失败：{error}"))?;
+            }
+            LocalAgentStreamMessage::ConfirmRequest(request) => {
+                app.emit("pi_tool_confirm", request)
+                    .map_err(|error| format!("推送工具确认请求失败：{error}"))?;
+            }
+            LocalAgentStreamMessage::Final(response) => {
+                final_response = Some(response);
+            }
+        }
+    }
+
+    Ok(final_response)
 }
 
 fn execute_local_agent_prompt_streaming(
@@ -510,15 +548,17 @@ fn execute_local_agent_prompt_streaming(
         .spawn()
         .map_err(|error| format!("启动 local-agent 失败：{error}"))?;
 
+    let run_id = payload
+        .get("runId")
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string());
+
     let mut stdin = child
         .stdin
         .take()
         .ok_or_else(|| "local-agent stdin 不可用。".to_string())?;
-    stdin
-        .write_all(payload.to_string().as_bytes())
-        .map_err(|error| format!("写入 prompt 失败：{error}"))?;
-    drop(stdin);
-
+    // Take the output handles before parking stdin in the registry, so an
+    // unexpected failure here can't leave a dangling confirm channel behind.
     let stdout = child
         .stdout
         .take()
@@ -527,6 +567,26 @@ fn execute_local_agent_prompt_streaming(
         .stderr
         .take()
         .ok_or_else(|| "local-agent stderr 不可用。".to_string())?;
+
+    // Newline-terminate the request so the agent's line reader can start work
+    // while stdin stays open for confirm_response messages.
+    stdin
+        .write_all(format!("{}\n", payload).as_bytes())
+        .map_err(|error| format!("写入 prompt 失败：{error}"))?;
+    stdin
+        .flush()
+        .map_err(|error| format!("写入 prompt 失败：{error}"))?;
+
+    if let Some(run_id) = run_id.as_deref() {
+        app.state::<PromptStdinRegistry>()
+            .0
+            .lock()
+            .map_err(|_| "确认通道状态被污染。".to_string())?
+            .insert(run_id.to_string(), stdin);
+    } else {
+        drop(stdin);
+    }
+
     let stderr_reader = std::thread::spawn(move || {
         let mut text = String::new();
         let mut reader = BufReader::new(stderr);
@@ -534,26 +594,17 @@ fn execute_local_agent_prompt_streaming(
         text
     });
 
-    let mut final_response = None;
-    let reader = BufReader::new(stdout);
-    for line in reader.lines() {
-        let line = line.map_err(|error| format!("读取 local-agent 流式响应失败：{error}"))?;
-        let line = line.trim();
+    let stream_result = read_local_agent_stream(&app, stdout);
 
-        if line.is_empty() {
-            continue;
-        }
-
-        match parse_local_agent_stream_line(line)? {
-            LocalAgentStreamMessage::Progress(event) => {
-                app.emit("pi_prompt_progress", event)
-                    .map_err(|error| format!("推送模型进度失败：{error}"))?;
-            }
-            LocalAgentStreamMessage::Final(response) => {
-                final_response = Some(response);
-            }
+    // Always close stdin (drop the parked handle) before returning, so a failed
+    // read loop can't leave a dangling confirm channel in the registry.
+    if let Some(run_id) = run_id.as_deref() {
+        if let Ok(mut registry) = app.state::<PromptStdinRegistry>().0.lock() {
+            registry.remove(run_id);
         }
     }
+
+    let final_response = stream_result?;
 
     let output_status = child
         .wait()
@@ -640,24 +691,6 @@ fn build_chat_history_memory_payload(
         "maxResults": 5,
         "messages": messages
     })))
-}
-
-fn build_opening_memory_recall_payload(
-    request: &GenerateOpeningMessageRequest,
-) -> serde_json::Value {
-    let mut payload = serde_json::json!({
-        "userId": "local-user",
-        "characterId": request.character_id,
-        "query": "开场白 自然 问候 用户偏好",
-        "mode": "companion",
-        "maxResults": 5
-    });
-
-    if let Some(session_id) = request.session_id.as_deref() {
-        payload["sessionId"] = serde_json::Value::String(session_id.to_string());
-    }
-
-    payload
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1151,6 +1184,12 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           FOREIGN KEY(session_id) REFERENCES chat_sessions(id)
         );
 
+        CREATE TABLE IF NOT EXISTS character_state (
+          character_id TEXT PRIMARY KEY,
+          payload TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
           ON chat_sessions(updated_at DESC);
 
@@ -1160,6 +1199,50 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
     )?;
 
     Ok(())
+}
+
+fn read_character_states_from_path(
+    path: &Path,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let mut statement = connection.prepare("SELECT character_id, payload FROM character_state")?;
+    let rows = statement.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let payload: String = row.get(1)?;
+        Ok((id, payload))
+    })?;
+
+    let mut map = serde_json::Map::new();
+    for row in rows {
+        let (id, payload) = row?;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&payload) {
+            map.insert(id, value);
+        }
+    }
+
+    Ok(serde_json::Value::Object(map))
+}
+
+fn save_character_states_to_path(
+    path: &Path,
+    states: serde_json::Value,
+    now: &str,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    if let Some(object) = states.as_object() {
+        for (id, value) in object {
+            let payload = serde_json::to_string(value)?;
+            connection.execute(
+                "INSERT INTO character_state (character_id, payload, updated_at)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(character_id)
+                 DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at",
+                params![id, payload, now],
+            )?;
+        }
+    }
+
+    Ok(states)
 }
 
 fn open_chat_history(path: &Path) -> Result<Connection, Box<dyn std::error::Error>> {
@@ -1351,17 +1434,20 @@ fn row_to_chat_message_record(
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(PromptStdinRegistry::default())
         .invoke_handler(tauri::generate_handler![
             append_chat_message,
             companion_status,
             create_chat_session,
             delete_model_profile,
-            generate_opening_message,
+            get_character_states,
             get_chat_session,
             get_memory_status,
             get_model_settings,
             get_tool_policy_settings,
             list_chat_sessions,
+            respond_pi_tool_confirm,
+            save_character_states,
             save_model_settings,
             save_tool_policy_settings,
             set_active_model_profile,
@@ -1381,14 +1467,15 @@ mod tests {
 
     use super::{
         append_chat_message_to_path, build_local_agent_prompt_payload,
-        build_memory_backend_config_payload, build_opening_memory_recall_payload,
+        build_memory_backend_config_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
         init_chat_history_at_path, list_chat_sessions_from_path, local_agent_prompt_command_args,
         memory_status_from_paths, normalize_openai_compatible_settings, parse_local_agent_stream_line,
-        read_model_settings_from_path, read_stored_model_registry, read_tool_policy_settings_from_path,
-        recent_memory_messages_from_path, save_model_settings_to_path,
+        read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
+        read_tool_policy_settings_from_path,
+        recent_memory_messages_from_path, save_character_states_to_path, save_model_settings_to_path,
         save_tool_policy_settings_to_path, set_active_model_profile_at_path,
-        AppendChatMessageRequest, CreateChatSessionRequest, GenerateOpeningMessageRequest,
+        AppendChatMessageRequest, CreateChatSessionRequest,
         LocalAgentStreamMessage,
         ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
     };
@@ -1598,22 +1685,6 @@ mod tests {
     }
 
     #[test]
-    fn opening_memory_recall_payload_scopes_to_active_character_without_capture() {
-        let value = build_opening_memory_recall_payload(&GenerateOpeningMessageRequest {
-            character_id: "shili".to_string(),
-            prompt: "请生成开场白。".to_string(),
-            session_id: Some("session-1".to_string()),
-        });
-
-        assert_eq!(value["userId"], "local-user");
-        assert_eq!(value["characterId"], "shili");
-        assert_eq!(value["sessionId"], "session-1");
-        assert_eq!(value["mode"], "companion");
-        assert_eq!(value["maxResults"], 5);
-        assert!(value.get("memoryCaptureTurn").is_none());
-    }
-
-    #[test]
     fn memory_status_reports_local_backend_paths() {
         let status = memory_status_from_paths(
             PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
@@ -1640,6 +1711,40 @@ mod tests {
             .as_array()
             .unwrap()
             .contains(&serde_json::json!(".env")));
+    }
+
+    #[test]
+    fn character_states_default_to_empty_object() {
+        let path = temp_chat_history_path();
+
+        let states = read_character_states_from_path(&path).expect("empty states should load");
+        assert_eq!(states, serde_json::json!({}));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_states_round_trip_and_upsert() {
+        let path = temp_chat_history_path();
+        let states = serde_json::json!({
+            "lulin": { "affinity": 42, "mood": "warm", "energy": 70, "meetCount": 3, "impressions": [] },
+            "cenji": { "affinity": 12, "mood": "calm", "energy": 80, "meetCount": 1, "impressions": [] }
+        });
+
+        save_character_states_to_path(&path, states.clone(), "1000").expect("states should save");
+        let stored = read_character_states_from_path(&path).expect("saved states should load");
+        assert_eq!(stored, states);
+
+        // Upserting one character keeps the others intact.
+        let update = serde_json::json!({
+            "lulin": { "affinity": 50, "mood": "playful", "energy": 65, "meetCount": 4, "impressions": [] }
+        });
+        save_character_states_to_path(&path, update, "2000").expect("update should save");
+        let after = read_character_states_from_path(&path).expect("updated states should load");
+        assert_eq!(after["lulin"]["affinity"], 50);
+        assert_eq!(after["cenji"]["affinity"], 12);
+
+        let _ = fs::remove_file(path);
     }
 
     #[test]
@@ -1729,6 +1834,23 @@ mod tests {
                 assert_eq!(response.text, "你好");
             }
             _ => panic!("expected final record"),
+        }
+    }
+
+    #[test]
+    fn local_agent_stream_lines_parse_confirm_request_records() {
+        let confirm = parse_local_agent_stream_line(
+            r#"{"type":"confirm_request","confirmId":"run-1-confirm-1","runId":"run-1","tool":{"name":"edit","target":"src/app.ts","reason":"需要确认"}}"#,
+        )
+        .expect("confirm line should parse");
+
+        match confirm {
+            LocalAgentStreamMessage::ConfirmRequest(request) => {
+                assert_eq!(request["confirmId"], "run-1-confirm-1");
+                assert_eq!(request["runId"], "run-1");
+                assert_eq!(request["tool"]["name"], "edit");
+            }
+            _ => panic!("expected confirm request record"),
         }
     }
 

@@ -53,7 +53,6 @@ export function validateCharacterCard(card) {
   assertObject(card.identity, "identity");
   assertString(card.identity.persona, "identity.persona");
   assertString(card.identity.speakingStyle, "identity.speakingStyle");
-  assertString(card.identity.relationship, "identity.relationship");
   assertObject(card.assets, "assets");
   assertString(card.assets.avatar, "assets.avatar");
   assertString(card.assets.portrait, "assets.portrait");

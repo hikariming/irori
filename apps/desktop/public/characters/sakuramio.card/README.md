@@ -39,7 +39,7 @@ sakuramio.card/
 
 - `assets/avatar/avatar-circle.png` 用于 sidebar、聊天气泡和通知。
 - `assets/portraits/neutral.png` 用于右侧或主舞台的角色立绘。
-- `assets/stickers/*.png` 固定为九种基础情绪，由运行时根据 `emotion`、`intent`、`cooldownSeconds` 选择。
+- `assets/stickers/*.png` 固定为九种基础情绪，由运行时按情绪节点选择，卡里每个贴纸只需 `id`、`src`、`textFallback`。
 - `assets/backgrounds/default.png` 用于聊天背景，适合叠加轻柔可读性遮罩。
 
 ## 资产规范

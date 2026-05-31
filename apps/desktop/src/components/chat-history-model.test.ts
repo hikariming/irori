@@ -6,7 +6,6 @@ import {
   createSessionTitle,
   findLatestCharacterSession,
   groupChatSessions,
-  shouldGenerateOpeningMessage,
   type ChatSessionSummary
 } from "./chat-history-model.ts";
 
@@ -112,11 +111,4 @@ test("canStartNewDraftSession only allows leaving an active saved session", () =
   assert.equal(canStartNewDraftSession({ activeSessionId: undefined }), false);
   assert.equal(canStartNewDraftSession({ activeSessionId: "session-1", isSending: true }), false);
   assert.equal(canStartNewDraftSession({ activeSessionId: "session-1", isDraftPending: true }), false);
-});
-
-test("shouldGenerateOpeningMessage requires an explicit request for a draft session", () => {
-  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: true, requested: true }), true);
-  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: true, requested: false }), false);
-  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: "session-1", modelReady: true, requested: true }), false);
-  assert.equal(shouldGenerateOpeningMessage({ activeSessionId: null, modelReady: false, requested: true }), false);
 });

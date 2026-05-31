@@ -6,18 +6,20 @@ import {
   type StickerId
 } from "./chat-model.ts";
 
+export type CharacterExample = {
+  user: string;
+  reply: string;
+};
+
 export type CharacterCard = {
   id: string;
   name: string;
-  tagline: string;
-  relationship: string;
   persona: string;
   storyBackground: string;
   coreMotivation: string;
   speakingStyle: string;
-  firstMessage: string;
   interactionPrinciples: string[];
-  immersionCues: string[];
+  examples: CharacterExample[];
   themeColor: string;
   assets: {
     avatar: string;
@@ -41,6 +43,19 @@ function asString(value: unknown, fallback = "") {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function parseExamples(value: unknown): CharacterExample[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => {
+      const entry = (item ?? {}) as Record<string, unknown>;
+      return { user: asString(entry.user), reply: asString(entry.reply) };
+    })
+    .filter((example) => example.user.length > 0 && example.reply.length > 0);
 }
 
 function buildStickers(
@@ -75,15 +90,12 @@ export function parseCharacterCard(characterId: string, raw: Record<string, unkn
   return {
     id: characterId,
     name: asString(raw.name, characterId),
-    tagline: asString(raw.tagline),
-    relationship: asString(identity.relationship),
     persona: asString(identity.persona),
     storyBackground: asString(identity.background),
     coreMotivation: asString(identity.coreMotivation),
     speakingStyle: asString(identity.speakingStyle),
-    firstMessage: asString(identity.firstMessage),
     interactionPrinciples: asStringArray(identity.interactionPrinciples),
-    immersionCues: asStringArray(identity.immersionCues),
+    examples: parseExamples(identity.examples),
     themeColor: asString(assets.themeColor, "#2f6f68"),
     assets: {
       avatar: resolveAsset(basePath, asString(assets.avatar, "assets/avatar/avatar-circle.png")),
@@ -98,9 +110,7 @@ export function buildCharacterChatPreview(card: CharacterCard): CharacterChatPre
   return {
     character: {
       id: card.id,
-      name: card.name,
-      tagline: card.tagline,
-      relationship: card.relationship
+      name: card.name
     },
     assets: card.assets,
     stickers: card.stickers,
@@ -110,11 +120,8 @@ export function buildCharacterChatPreview(card: CharacterCard): CharacterChatPre
 
 const fallbackCharacterCard: CharacterCard = parseCharacterCard("shili", {
   name: "示璃",
-  tagline: "安静但可靠的本地陪伴",
   identity: {
-    relationship: "可信赖的陪伴型协作者",
-    persona: "冷静、细致、带一点柔和距离感的本地 AI 陪伴角色。",
-    firstMessage: "我在。今天想先聊聊，还是直接一起处理一件事？"
+    persona: "冷静、细致、带一点柔和距离感的本地 AI 陪伴角色。"
   }
 });
 

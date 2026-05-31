@@ -1,16 +1,19 @@
 # Cockapoo 角色卡制作规范
 
-本文档描述 Cockapoo Pi Companion 当前的角色卡包格式。`characters/shili.card` 是参考实现，桌面端会把可用角色包复制到 `apps/desktop/public/characters/` 下供前端直接加载。
+本文档描述 Cockapoo Pi Companion 当前实际加载的角色卡包格式。`characters/shili.card` 是参考实现，桌面端会把可用角色包复制到 `apps/desktop/public/characters/` 下供前端直接加载。
+
+本规范以前端解析器 `apps/desktop/src/components/character-cards.ts` 的实际行为为准。解析器只读取下文列出的字段，未列出的字段会被忽略。
 
 ## 目标
 
-角色卡应该同时回答三个问题：
+角色卡应该同时回答两个问题：
 
-- 这个角色是谁：人格、背景、说话方式、边界。
-- 这个角色如何陪伴和协作：情绪支持、主动性、工具权限、记忆策略。
-- 前端如何呈现这个角色：头像、立绘、表情贴纸、背景、主题色。
+- 这个角色是谁：人格、背景、动机、说话方式、关系定位、互动原则。
+- 前端如何呈现这个角色：头像、立绘、背景、表情贴纸、主题色。
 
 角色卡不应该把运行时 UI 画死在图片里。聊天气泡、输入框、状态条、通知点、角色详情面板、按钮和文字说明都由前端渲染。
+
+陪伴强度、工具权限和记忆策略目前不在角色卡里配置：工具确认和记忆行为由运行时（local-agent 与安全策略）统一控制，与角色无关。
 
 ## 包结构
 
@@ -45,30 +48,61 @@
 
 `source/` 存放生成源图、资产板、提示词记录或人工编辑源文件。运行时不依赖 `source/`，但保留它能帮助后续重新生成和修补资产。
 
+## 角色清单 manifest.json
+
+前端先读取 `characters/manifest.json` 拿到角色 ID 列表，再逐个加载 `characters/<id>.card/card.json`。新增或下线角色时必须同步更新 manifest。
+
+```json
+{
+  "characters": ["shili", "lulin", "shenyanzhou", "tangyuan", "sakuramio", "cenji"]
+}
+```
+
 ## card.json
 
-当前示例使用 `version: 2`。顶层字段分为元信息、身份、策略、资产、运行时默认值和来源信息。
+`card.json` 顶层只有四类字段：元信息、`identity`、`assets`。结构示例：
+
+```json
+{
+  "id": "shili",
+  "name": "示璃",
+  "identity": {
+    "persona": "...",
+    "background": "...",
+    "coreMotivation": "...",
+    "speakingStyle": "...",
+    "interactionPrinciples": ["...", "..."],
+    "examples": [
+      { "user": "...", "reply": "...\n[sticker:focused]" }
+    ]
+  },
+  "assets": {
+    "avatar": "assets/avatar/avatar-circle.png",
+    "portrait": "assets/portraits/neutral.png",
+    "background": "assets/backgrounds/default.png",
+    "themeColor": "#2f6f68",
+    "stickers": [
+      { "id": "neutral", "src": "assets/stickers/neutral.png", "textFallback": "我在听。" }
+    ]
+  }
+}
+```
 
 ### 元信息
 
-- `id`：稳定的机器可读 ID，使用小写字母、数字和连字符。
-- `version`：角色卡结构版本。结构字段变更时递增。
-- `name`：展示名。
-- `tagline`：一句短描述，用于角色详情或列表。
-- `locale`：主要语言，例如 `zh-CN`。
+- `id`：稳定的机器可读 ID，使用小写字母、数字和连字符。需与目录名和 manifest 一致。
+- `name`：展示名。缺省时回退为 `id`。
 
 ### identity
 
-`identity` 决定角色的灵魂，优先级高于记忆和会话上下文。
+`identity` 决定角色的灵魂，优先级高于记忆和会话上下文。所有字段都是字符串或字符串数组。
 
 - `persona`：角色核心人格和陪伴气质。
 - `background`：角色背景设定。写可影响行为的背景，不堆无关履历。
 - `coreMotivation`：角色为什么愿意陪伴用户。
 - `speakingStyle`：句式、语气、节奏、禁用表达。
-- `relationship`：与用户的关系定位。
-- `firstMessage`：新会话的开场语。
-- `interactionPrinciples`：根据不同用户状态调整回应密度的原则。
-- `immersionCues`：少量沉浸感表达，用于保持角色感。
+- `interactionPrinciples`：字符串数组，根据不同用户状态调整回应密度的原则。
+- `examples`：示例对话数组,用于锁定语气和处理方式(few-shot)。每条是 `{ "user": "用户说的话", "reply": "角色的回复" }`,建议每个角色 2-3 条,覆盖典型场景(如情绪安抚、要效率、追问)。`reply` 里可以单独成行放一个 `[sticker:<id>]` 标记演示表情用法。模型会模仿示例风格但不照抄内容。
 
 写作要求：
 
@@ -76,94 +110,37 @@
 - 避免强依赖、恋爱承诺、冒充真人关系。
 - 不要让角色自称拥有未被授权的真实经历、位置或身份能力。
 
-### companionPolicy
-
-`companionPolicy` 控制陪伴强度和边界。
-
-- `warmth`：温暖程度，例如 `low`、`medium`、`high`。
-- `initiative`：主动性，例如 `low`、`balanced`、`high`。
-- `emotionalSupportStyle`：情绪支持策略。
-- `boundaries`：明确禁止或需要降级的陪伴方式。
-
-### agentPolicy
-
-`agentPolicy` 控制本地 Agent 行为。
-
-- `defaultMode`：默认模式，例如 `companion`。
-- `allowedTools`：无需额外确认即可使用的能力。
-- `protectedPaths`：默认视为敏感的路径。
-- `alwaysConfirm`：始终需要用户确认的能力。
-
-原则：角色的亲近感不能绕过安全确认。写入文件、执行命令、外部网络访问等高风险动作应该保持确认。
-
-### memoryPolicy
-
-`memoryPolicy` 控制长期记忆。
-
-- `rememberFacts`：是否记住稳定事实。
-- `rememberPreferences`：是否记住偏好。
-- `rememberEmotionalContext`：是否记住情绪上下文。默认应谨慎。
-- `excludedTopics`：不应自动记忆的主题。
-
-记忆是背景上下文，不是新的身份设定。记忆与 `identity` 冲突时，以角色卡身份为准。
+> 注：角色卡不再包含 `firstMessage`/开场白字段。新会话从空白开始，由用户先发起。
 
 ### assets
 
-`assets` 描述视觉资源和主题。
+`assets` 描述视觉资源和主题。头像、立绘、背景是相对 `card.json` 的图片路径（也支持 `/` 开头的绝对路径或 `http` 链接）。
 
-#### avatar
-
-- `src`：主要头像，当前推荐圆形头像。
-- `sourceSrc`：未裁切或高清源头像。
-- `thumbnailSrc`：小尺寸头像。
-- `shape`：展示形状，例如 `circle`。
-- `fallbackText`：图片加载失败时的单字占位。
-- `dominantColor`：头像主色，用于 UI 辅助色。
-- `statusRing`：状态环风格，例如 `online`。
-
-#### portraits
-
-立绘用于角色详情面板或主舞台展示。
-
-- `id`：立绘 ID。
-- `src`：图片路径。
-- `mood`：情绪基线。
-- `pose`：姿势。
-- `crop.desktopAnchor`：桌面端裁切锚点。
-- `crop.mobileAnchor`：移动端裁切锚点。
-
-立绘应只包含角色本体和必要的透明或干净背景，不要包含聊天界面元素。
+- `avatar`：主要头像路径。缺省为 `assets/avatar/avatar-circle.png`。
+- `portrait`：立绘路径，用于角色详情或主舞台。缺省为 `assets/portraits/neutral.png`。
+- `background`：聊天背景路径。缺省为 `assets/backgrounds/default.png`。
+- `themeColor`：角色主题色（十六进制）。缺省为 `#2f6f68`。应来自头像、立绘或背景，不要只因为好看而脱离角色资产。
+- `stickers`：表情贴纸数组，见下。
 
 #### stickers
 
-贴纸用于轻量情绪反馈。当前基础集是九种：
+贴纸用于轻量情绪反馈。基础集固定为九种，ID 必须完整覆盖：
 
-- `neutral`
-- `happy`
-- `thinking`
-- `comfort`
-- `shy`
-- `focused`
-- `surprised`
-- `worried`
-- `proud`
+```text
+neutral  happy  thinking  comfort  shy  focused  surprised  worried  proud
+```
 
-每个贴纸条目包含：
+每个贴纸条目只需三个字段：
 
-- `id`：贴纸 ID，与文件名保持一致。
-- `src`：图片路径。
-- `emotion`：情绪标签。
-- `intent`：使用意图，例如 `react`、`celebrate`、`comfort`、`nudge`、`tease`。
-- `intensity`：强度，建议 1 到 3。
-- `cooldownSeconds`：冷却时间，避免表情过度重复。
+- `id`：贴纸 ID，必须是上面九种之一，并与文件名保持一致。
+- `src`：图片路径。缺省为 `assets/stickers/<id>.png`。
 - `textFallback`：无法显示贴纸时的短文本。
-- `triggerHints`：触发参考词，不是硬规则。
 
-贴纸可以夸张一些，但应该与 `speakingStyle` 一致。
+情绪标签、意图（`react`/`comfort`/`celebrate`/`nudge`/`tease`）和中文标签由前端的 `stickerMeta` 统一提供，不在角色卡里配置。运行时会按九种基础情绪渲染缺失的贴纸条目，但应在卡里补全九种以保证视觉一致。贴纸可以夸张一些，但应该与 `speakingStyle` 一致。
 
-#### backgrounds
+#### backgrounds 画面边界
 
-背景图用于聊天区域的环境氛围。背景必须只画场景，不画前端 UI。
+背景图只画环境，不画前端 UI。
 
 允许：
 
@@ -177,42 +154,6 @@
 - 圆角 UI 卡片、按钮、状态栏、面板边框。
 - 文字、水印、logo。
 - 会被误认为前端控件的半透明矩形或装饰点。
-
-字段：
-
-- `id`：背景 ID。
-- `src`：图片路径。
-- `scene`：场景标签。
-- `readabilityOverlay`：建议前端遮罩，例如 `light`。
-- `defaultForMode`：默认使用模式，例如 `companion`。
-
-#### theme
-
-- `primaryColor`：主色，用于角色相关 UI。
-- `accentColor`：辅助色。
-- `textTone`：文本气质，例如 `clean`。
-
-主题色应来自头像、立绘或背景，不要只因为好看而脱离角色资产。
-
-### runtimeDefaults
-
-`runtimeDefaults` 是角色首次加载时的状态，不是永久记忆。
-
-- `currentMood`：初始情绪。
-- `energy`：初始能量值。
-- `affinity`：初始熟悉度。
-- `activePortraitId`：默认立绘。
-- `activeBackgroundId`：默认背景。
-
-### provenance
-
-`provenance` 记录资产来源。
-
-- `source`：来源类型。
-- `sourceImage`：源图路径。
-- `generatedWith`：生成或制作方式。
-
-如果资产经过二次修补，应在 README 或来源记录里说明关键修改，例如“背景图已移除生成时误入的聊天气泡，UI 由前端渲染”。
 
 ## 资产制作规范
 
@@ -248,24 +189,23 @@
 
 ## 制作流程
 
-1. 写 `identity` 和策略字段，先确认角色行为。
+1. 写 `identity`，先确认角色行为。
 2. 生成或绘制资产板，产出头像、立绘、九种贴纸、背景。
 3. 裁切并命名资产，保持路径与 `card.json` 一致。
 4. 检查背景是否没有 UI 元素。
-5. 检查贴纸情绪是否覆盖基础九种状态。
+5. 检查贴纸是否覆盖九种基础情绪。
 6. 更新 `README.md`，说明资产来源和使用建议。
-7. 把角色包复制到 `apps/desktop/public/characters/`，保持运行时资源同步。
+7. 把角色包复制到 `apps/desktop/public/characters/`，并把 `id` 加入两份 `manifest.json`，保持运行时资源同步。
 8. 在桌面端加载检查头像、立绘、贴纸、背景和主题色。
 
 ## 发布前清单
 
 - `card.json` 是合法 JSON。
+- `id` 与目录名、`manifest.json` 一致。
+- `identity` 字段齐全，`interactionPrinciples` 为字符串数组，`examples` 为 `{ user, reply }` 对象数组。
 - 所有 `src` 指向的文件都存在。
-- `runtimeDefaults.activePortraitId` 存在于 `assets.portraits`。
-- `runtimeDefaults.activeBackgroundId` 存在于 `assets.backgrounds`。
+- `assets.stickers` 覆盖九种基础情绪 ID，且文件名与 `id` 一致。
 - 头像、立绘、贴纸和背景风格一致。
 - 背景没有聊天气泡、消息框、输入框、按钮、状态点、文字或水印。
-- 贴纸有合理的 `textFallback` 和 `cooldownSeconds`。
-- `agentPolicy.alwaysConfirm` 覆盖写入、命令、外部网络等高风险动作。
-- `memoryPolicy.excludedTopics` 覆盖敏感主题。
-- 根角色包和桌面端 public 角色包内容同步。
+- `themeColor` 来自角色资产配色。
+- 根角色包和桌面端 public 角色包内容同步，两份 `manifest.json` 一致。

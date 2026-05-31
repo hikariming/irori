@@ -39,7 +39,7 @@ lulin.card/
 
 - `assets/avatar/avatar-circle.png` 用于 sidebar、聊天气泡和通知。
 - `assets/portraits/neutral.png` 用于右侧或主舞台的角色立绘。
-- `assets/stickers/*.png` 固定为九种基础情绪，由运行时根据 `emotion`、`intent`、`cooldownSeconds` 选择。
+- `assets/stickers/*.png` 固定为九种基础情绪，由运行时按情绪节点选择，卡里每个贴纸只需 `id`、`src`、`textFallback`。
 - `assets/backgrounds/default.png` 用于聊天背景，建议叠加深色可读性遮罩。
 
 ## 资产规范
@@ -51,7 +51,6 @@ lulin.card/
 ## 数据结构要点
 
 - `identity` 定义陆临的护短、直接和深夜陪伴气质。
-- `companionPolicy` 明确护短不等于煽动对立，也不制造强依赖。
-- `agentPolicy` 沿用本地工具确认边界，高风险动作必须确认。
-- `memoryPolicy` 默认不自动记忆情绪上下文和敏感主题。
-- `assets.backgrounds.default.readabilityOverlay` 使用 `dark`，匹配夜色背景。
+- `speakingStyle` 限制油腻、说教和恋爱化称呼。
+- `interactionPrinciples` 强调先打断自责，再给一个很小的下一步。
+- `assets.themeColor` 使用深夜墨蓝色，匹配头像、立绘和背景。

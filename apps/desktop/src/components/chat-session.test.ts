@@ -54,6 +54,9 @@ test("composeCharacterSessionPrompt includes character persona, context, and sti
   assert.match(prompt, /可以帮助用户推进代码、设计、排查和文档工作/);
   assert.match(prompt, /只在情绪节点偶尔输出一个表情标记/);
   assert.match(prompt, /\[sticker:happy\]/);
+  assert.match(prompt, /## 对话示例/);
+  assert.match(prompt, /用户：我感觉今天什么都没做完/);
+  assert.match(prompt, /示璃：先停一下/);
   assert.match(prompt, /用户：我有点卡住/);
   assert.match(prompt, /示璃：先稳住/);
   assert.match(prompt, /用户：帮我把下一步拆出来/);
@@ -84,4 +87,16 @@ test("parseCharacterReply ignores unsupported sticker markers", () => {
 
   assert.equal(reply.text, "这个先不急。");
   assert.equal(reply.sticker, undefined);
+  assert.deepEqual(reply.impressions, []);
+});
+
+test("parseCharacterReply extracts memory markers and removes them from text", () => {
+  const reply = parseCharacterReply(
+    "记住啦，我们慢慢来。\n[memory:like] 用户喜欢深夜写代码\n[sticker:happy]",
+    card.stickers
+  );
+
+  assert.equal(reply.text, "记住啦，我们慢慢来。");
+  assert.equal(reply.sticker?.id, "happy");
+  assert.deepEqual(reply.impressions, [{ kind: "like", text: "用户喜欢深夜写代码" }]);
 });
