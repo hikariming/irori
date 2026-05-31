@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
 import { CompanionLetters } from "./components/CompanionLetters";
 import { CompanionMomentsFeed } from "./components/CompanionMomentsFeed";
 import { CompanionSidebar } from "./components/CompanionSidebar";
+import { isDelivered } from "./components/character-letters";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
 import { desktopBackend } from "./components/desktop-backend";
 import { formatUnknownError } from "./components/error-message";
@@ -74,7 +75,7 @@ export function App() {
   const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
   const { states: characterStates, beginCharacterTurn, recordCharacterTurn } = useCharacterState();
   const { moments, postingIds, loadMoments, maybePostMoment } = useCharacterMoments();
-  const { letters, writingIds, sendingIds, loadLetters, maybeWriteLetter, sendUserLetter, markRead } =
+  const { letters, writingIds, sendingIds, loadAllLetters, loadLetters, maybeWriteLetter, sendUserLetter, markRead } =
     useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
@@ -91,6 +92,8 @@ export function App() {
   const [memoryDebugEvents, setMemoryDebugEvents] = useState<MemoryDebugEvent[]>([]);
   const [latestMemoryRun, setLatestMemoryRun] = useState<MemoryRunSnapshot | null>(null);
   const [isNewDraftSessionPending, setIsNewDraftSessionPending] = useState(false);
+  // 每分钟走一格，让「在路上」的信到点后自动翻成已送达、点亮侧边栏红点。
+  const [letterClock, setLetterClock] = useState(() => Date.now());
   const activeAnswerTextRef = useRef("");
   const activeReasoningTextRef = useRef("");
   const activeDisplayedAnswerTextRef = useRef("");
@@ -112,7 +115,22 @@ export function App() {
   });
   const activeCard = findCharacterCard(cards, activeCharacterId) ?? cards[0] ?? null;
   const activeCharacter = activeCard ? buildCharacterChatPreview(activeCard) : null;
-  const sidebarCharacters = buildSidebarCharacters(cards, activeCard?.id ?? activeCharacterId, characterPreferences);
+  // 每个角色「已送达但未读」的来信数（用户自己寄出的不算），驱动侧边栏红点。
+  const unreadLettersByCharacter = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const letter of letters) {
+      if (letter.sender === "character" && letter.readAt === null && isDelivered(letter, letterClock)) {
+        counts[letter.characterId] = (counts[letter.characterId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [letters, letterClock]);
+  const sidebarCharacters = buildSidebarCharacters(
+    cards,
+    activeCard?.id ?? activeCharacterId,
+    characterPreferences,
+    unreadLettersByCharacter
+  );
 
   function showInitialMessages() {
     setMessages([]);
@@ -392,6 +410,17 @@ export function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, activeCard?.id, modelReady]);
+
+  // 启动后加载所有角色的历史信件，统计未读、在侧边栏点亮红点。
+  useEffect(() => {
+    void loadAllLetters();
+  }, [loadAllLetters]);
+
+  // 每分钟推进一次时钟，让到点的「在路上」信件自动变为已送达并点亮红点。
+  useEffect(() => {
+    const timer = window.setInterval(() => setLetterClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   // 打开信件收件箱时加载历史信件，并在合适时机让角色写一封新的（延迟送达）。
   useEffect(() => {
@@ -736,6 +765,7 @@ export function App() {
               letters={letters.filter((letter) => letter.characterId === activeCharacter.character.id)}
               writing={writingIds.includes(activeCharacter.character.id)}
               sending={sendingIds.includes(activeCharacter.character.id)}
+              now={letterClock}
               onRead={markRead}
               onSend={(draft) => {
                 const card = activeCard;

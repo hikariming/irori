@@ -9,6 +9,7 @@ export type CompanionCharacter = {
   status: CharacterStatus;
   active: boolean;
   avatarSrc?: string;
+  unreadCount?: number; // 已送达但未读的角色来信数，用于侧边栏红点
 };
 
 export type SessionItem = {
@@ -26,7 +27,8 @@ export type SessionGroup = {
 export function buildSidebarCharacters(
   cards: CharacterCard[],
   activeCharacterId: string,
-  preferences: CharacterPreferences = {}
+  preferences: CharacterPreferences = {},
+  unreadByCharacter: Record<string, number> = {}
 ): CompanionCharacter[] {
   return cards
     .filter((card) => isCharacterVisibleInSidebar(preferences, card.id))
@@ -35,7 +37,8 @@ export function buildSidebarCharacters(
     name: card.name,
     status: "online",
     active: card.id === activeCharacterId,
-    avatarSrc: card.assets.avatar
+    avatarSrc: card.assets.avatar,
+    unreadCount: unreadByCharacter[card.id] ?? 0
   }));
 }
 

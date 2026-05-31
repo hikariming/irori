@@ -183,6 +183,24 @@ button {
   background: var(--teal);
 }
 
+.avatar-wrap .letter-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 4px;
+  border: 2px solid var(--avatar-border);
+  border-radius: 999px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .character-copy {
   display: grid;
   min-width: 0;

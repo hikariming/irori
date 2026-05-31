@@ -20,6 +20,7 @@ function statusLabel(status: CompanionCharacter["status"]) {
 }
 
 function CharacterAvatar({ character, index }: { character: CompanionCharacter; index: number }) {
+  const unread = character.unreadCount ?? 0;
   return (
     <span className="avatar-wrap">
       <Avatar aria-label={`${character.name} ${statusLabel(character.status)}`} className={`character-avatar avatar-${index + 1}`}>
@@ -27,6 +28,11 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
         <Avatar.Fallback className="avatar-fallback">{character.name.slice(0, 1)}</Avatar.Fallback>
       </Avatar>
       <span className={`status-dot ${character.status}`} aria-label={statusLabel(character.status)} />
+      {unread > 0 ? (
+        <span className="letter-badge" aria-label={`${unread} 封未读信`}>
+          {unread > 9 ? "9+" : unread}
+        </span>
+      ) : null}
     </span>
   );
 }

@@ -50,6 +50,13 @@ test("buildSidebarCharacters maps name and avatar from the card", () => {
   assert.equal(lulin?.avatarSrc, "/characters/lulin.card/assets/avatar/avatar-circle.png");
 });
 
+test("buildSidebarCharacters maps unread letter counts and defaults to 0", () => {
+  const items = buildSidebarCharacters(cards, "shili", {}, { lulin: 3 });
+
+  assert.equal(items.find((item) => item.id === "lulin")?.unreadCount, 3);
+  assert.equal(items.find((item) => item.id === "shili")?.unreadCount, 0);
+});
+
 test("activateCharacter marks the requested character as active", () => {
   const items = buildSidebarCharacters(cards, "shili");
   const next = activateCharacter(items, "lulin");

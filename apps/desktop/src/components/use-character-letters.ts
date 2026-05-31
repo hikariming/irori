@@ -37,10 +37,22 @@ export function useCharacterLetters() {
     setLetters(next);
   }
 
-  const loadLetters = useCallback(async (characterId: string) => {
-    const loaded = await desktopBackend.listCharacterLetters(characterId).catch(() => [] as CharacterLetter[]);
+  // 加载所有角色的信件（启动时调用），用于跨角色统计未读、在侧边栏标红点。
+  const loadAllLetters = useCallback(async () => {
+    const loaded = await desktopBackend.listCharacterLetters().catch(() => [] as CharacterLetter[]);
     lettersRef.current = loaded;
     setLetters(loaded);
+    return loaded;
+  }, []);
+
+  // 加载某个角色的信件并合并进现有列表（替换该角色的旧条目，保留其他角色的），
+  // 这样切换角色刷新收件箱时不会丢掉别人未读信的红点状态。
+  const loadLetters = useCallback(async (characterId: string) => {
+    const loaded = await desktopBackend.listCharacterLetters(characterId).catch(() => [] as CharacterLetter[]);
+    const others = lettersRef.current.filter((letter) => letter.characterId !== characterId);
+    const next = [...loaded, ...others];
+    lettersRef.current = next;
+    setLetters(next);
     return loaded;
   }, []);
 
@@ -171,5 +183,14 @@ export function useCharacterLetters() {
     setLetters(next);
   }, []);
 
-  return { letters, writingIds, sendingIds, loadLetters, maybeWriteLetter, sendUserLetter, markRead } as const;
+  return {
+    letters,
+    writingIds,
+    sendingIds,
+    loadAllLetters,
+    loadLetters,
+    maybeWriteLetter,
+    sendUserLetter,
+    markRead
+  } as const;
 }
