@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
+import { CompanionLetters } from "./components/CompanionLetters";
+import { CompanionMomentsFeed } from "./components/CompanionMomentsFeed";
 import { CompanionSidebar } from "./components/CompanionSidebar";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
 import { desktopBackend } from "./components/desktop-backend";
@@ -44,6 +46,9 @@ import {
   type MemoryRunSnapshot
 } from "./components/memory-status-model";
 import { buildSidebarCharacters } from "./components/sidebar-model";
+import { getCharacterState } from "./components/character-state";
+import { useCharacterLetters } from "./components/use-character-letters";
+import { useCharacterMoments } from "./components/use-character-moments";
 import { useCharacterPreferences } from "./components/use-character-preferences";
 import { useCharacterState } from "./components/use-character-state";
 import { useTheme } from "./components/use-theme";
@@ -68,8 +73,11 @@ export function App() {
   const { theme, toggleTheme } = useTheme();
   const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
   const { states: characterStates, beginCharacterTurn, recordCharacterTurn } = useCharacterState();
+  const { moments, postingIds, loadMoments, maybePostMoment } = useCharacterMoments();
+  const { letters, writingIds, loadLetters, maybeWriteLetter, markRead } = useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
+  const [viewMode, setViewMode] = useState<"chat" | "feed" | "letters">("chat");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -361,6 +369,52 @@ export function App() {
     }
   }, [activeSessionId]);
 
+  // 打开动态流时加载该角色的历史动态，并在合适时机让它自己发一条新的。
+  useEffect(() => {
+    if (viewMode !== "feed" || !activeCard) {
+      return;
+    }
+
+    const card = activeCard;
+    let cancelled = false;
+
+    (async () => {
+      await loadMoments(card.id);
+      if (cancelled || !modelReady) {
+        return;
+      }
+      await maybePostMoment(card, getCharacterState(characterStates, card.id));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, activeCard?.id, modelReady]);
+
+  // 打开信件收件箱时加载历史信件，并在合适时机让角色写一封新的（延迟送达）。
+  useEffect(() => {
+    if (viewMode !== "letters" || !activeCard) {
+      return;
+    }
+
+    const card = activeCard;
+    let cancelled = false;
+
+    (async () => {
+      await loadLetters(card.id);
+      if (cancelled || !modelReady) {
+        return;
+      }
+      await maybeWriteLetter(card, getCharacterState(characterStates, card.id));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, activeCard?.id, modelReady]);
+
   async function refreshChatSessions(nextActiveSessionId: string | null = activeSessionId) {
     const sessions = await desktopBackend.listChatSessions();
     setChatSessions(sessions);
@@ -638,14 +692,60 @@ export function App() {
       />
       <section className="conversation-stage" aria-label="陪伴对话">
         {activeCharacter ? (
-          <CompanionChat
-            assistantProgress={assistantProgress}
-            character={activeCharacter}
-            isSending={isSending}
-            isCharacterOpen={isCharacterOpen}
-            messages={messages}
-            onCharacterClose={() => setIsCharacterOpen(false)}
-          />
+          <div className="stage-view-toggle" role="tablist" aria-label="切换聊天与动态">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "chat"}
+              className={viewMode === "chat" ? "is-active" : ""}
+              onClick={() => setViewMode("chat")}
+            >
+              聊天
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "feed"}
+              className={viewMode === "feed" ? "is-active" : ""}
+              onClick={() => setViewMode("feed")}
+            >
+              动态
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "letters"}
+              className={viewMode === "letters" ? "is-active" : ""}
+              onClick={() => setViewMode("letters")}
+            >
+              信件
+            </button>
+          </div>
+        ) : null}
+        {activeCharacter ? (
+          viewMode === "feed" ? (
+            <CompanionMomentsFeed
+              character={activeCharacter}
+              moments={moments.filter((moment) => moment.characterId === activeCharacter.character.id)}
+              isPosting={postingIds.includes(activeCharacter.character.id)}
+            />
+          ) : viewMode === "letters" ? (
+            <CompanionLetters
+              character={activeCharacter}
+              letters={letters.filter((letter) => letter.characterId === activeCharacter.character.id)}
+              writing={writingIds.includes(activeCharacter.character.id)}
+              onRead={markRead}
+            />
+          ) : (
+            <CompanionChat
+              assistantProgress={assistantProgress}
+              character={activeCharacter}
+              isSending={isSending}
+              isCharacterOpen={isCharacterOpen}
+              messages={messages}
+              onCharacterClose={() => setIsCharacterOpen(false)}
+            />
+          )
         ) : (
           <div className="conversation-loading" role="status">
             正在加载角色卡…
@@ -672,11 +772,13 @@ export function App() {
             </div>
           </div>
         ) : null}
-        <CompanionInput
-          disabled={isSending || !modelReady || !activeCharacter}
-          isSending={isSending}
-          onSend={sendPrompt}
-        />
+        {viewMode === "chat" ? (
+          <CompanionInput
+            disabled={isSending || !modelReady || !activeCharacter}
+            isSending={isSending}
+            onSend={sendPrompt}
+          />
+        ) : null}
         <SystemSettingsPanel
           activeCharacterId={activeCharacterId}
           cards={cards}

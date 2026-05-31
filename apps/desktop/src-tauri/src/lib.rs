@@ -186,6 +186,47 @@ struct ChatMessageRecord {
     created_at: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddCharacterMomentRequest {
+    character_id: String,
+    text: String,
+    mood: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterMomentRecord {
+    id: String,
+    character_id: String,
+    text: String,
+    mood: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddCharacterLetterRequest {
+    character_id: String,
+    subject: String,
+    body: String,
+    mood: Option<String>,
+    deliver_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterLetterRecord {
+    id: String,
+    character_id: String,
+    subject: String,
+    body: String,
+    mood: Option<String>,
+    created_at: String,
+    deliver_at: String,
+    read_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ChatSessionDetail {
@@ -335,6 +376,55 @@ fn save_character_states(
     states: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     save_character_states_to_path(&chat_history_path(&app)?, states, &current_timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_character_moment(
+    app: AppHandle,
+    request: AddCharacterMomentRequest,
+) -> Result<CharacterMomentRecord, String> {
+    insert_character_moment_to_path(&chat_history_path(&app)?, request, &current_timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_character_moments(
+    app: AppHandle,
+    character_id: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<CharacterMomentRecord>, String> {
+    let limit = limit.unwrap_or(50).clamp(1, 200);
+    list_character_moments_from_path(&chat_history_path(&app)?, character_id.as_deref(), limit)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_character_letter(
+    app: AppHandle,
+    request: AddCharacterLetterRequest,
+) -> Result<CharacterLetterRecord, String> {
+    insert_character_letter_to_path(&chat_history_path(&app)?, request, &current_timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_character_letters(
+    app: AppHandle,
+    character_id: Option<String>,
+    limit: Option<i64>,
+) -> Result<Vec<CharacterLetterRecord>, String> {
+    let limit = limit.unwrap_or(50).clamp(1, 200);
+    list_character_letters_from_path(&chat_history_path(&app)?, character_id.as_deref(), limit)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn mark_character_letter_read(
+    app: AppHandle,
+    letter_id: String,
+) -> Result<CharacterLetterRecord, String> {
+    mark_character_letter_read_to_path(&chat_history_path(&app)?, &letter_id, &current_timestamp())
         .map_err(|error| error.to_string())
 }
 
@@ -1190,11 +1280,36 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           updated_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS character_moment (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          text TEXT NOT NULL,
+          mood TEXT,
+          created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS character_letter (
+          id TEXT PRIMARY KEY,
+          character_id TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          body TEXT NOT NULL,
+          mood TEXT,
+          created_at TEXT NOT NULL,
+          deliver_at TEXT NOT NULL,
+          read_at TEXT
+        );
+
         CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated_at
           ON chat_sessions(updated_at DESC);
 
         CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created_at
           ON chat_messages(session_id, created_at ASC);
+
+        CREATE INDEX IF NOT EXISTS idx_character_moment_character_created_at
+          ON character_moment(character_id, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_character_letter_character_deliver_at
+          ON character_letter(character_id, deliver_at DESC);
         "#,
     )?;
 
@@ -1243,6 +1358,194 @@ fn save_character_states_to_path(
     }
 
     Ok(states)
+}
+
+fn insert_character_moment_to_path(
+    path: &Path,
+    request: AddCharacterMomentRequest,
+    now: &str,
+) -> Result<CharacterMomentRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let id = compact_id("moment", &format!("{}{}", now, request.character_id));
+
+    connection.execute(
+        "INSERT INTO character_moment (id, character_id, text, mood, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![id, request.character_id, request.text, request.mood, now],
+    )?;
+
+    get_character_moment_record(&connection, &id)?
+        .ok_or_else(|| "stored character moment could not be loaded".into())
+}
+
+fn list_character_moments_from_path(
+    path: &Path,
+    character_id: Option<&str>,
+    limit: i64,
+) -> Result<Vec<CharacterMomentRecord>, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let mut moments = Vec::new();
+
+    if let Some(character_id) = character_id {
+        let mut statement = connection.prepare(
+            "SELECT id, character_id, text, mood, created_at
+             FROM character_moment
+             WHERE character_id = ?1
+             ORDER BY created_at DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![character_id, limit], row_to_character_moment_record)?;
+        for row in rows {
+            moments.push(row?);
+        }
+    } else {
+        let mut statement = connection.prepare(
+            "SELECT id, character_id, text, mood, created_at
+             FROM character_moment
+             ORDER BY created_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![limit], row_to_character_moment_record)?;
+        for row in rows {
+            moments.push(row?);
+        }
+    }
+
+    Ok(moments)
+}
+
+fn get_character_moment_record(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<CharacterMomentRecord>, rusqlite::Error> {
+    connection
+        .query_row(
+            "SELECT id, character_id, text, mood, created_at
+             FROM character_moment
+             WHERE id = ?1",
+            params![id],
+            row_to_character_moment_record,
+        )
+        .optional()
+}
+
+fn row_to_character_moment_record(
+    row: &rusqlite::Row<'_>,
+) -> Result<CharacterMomentRecord, rusqlite::Error> {
+    Ok(CharacterMomentRecord {
+        id: row.get(0)?,
+        character_id: row.get(1)?,
+        text: row.get(2)?,
+        mood: row.get(3)?,
+        created_at: row.get(4)?,
+    })
+}
+
+fn insert_character_letter_to_path(
+    path: &Path,
+    request: AddCharacterLetterRequest,
+    now: &str,
+) -> Result<CharacterLetterRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let id = compact_id("letter", &format!("{}{}", now, request.character_id));
+
+    connection.execute(
+        "INSERT INTO character_letter (id, character_id, subject, body, mood, created_at, deliver_at, read_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+        params![
+            id,
+            request.character_id,
+            request.subject,
+            request.body,
+            request.mood,
+            now,
+            request.deliver_at
+        ],
+    )?;
+
+    get_character_letter_record(&connection, &id)?
+        .ok_or_else(|| "stored character letter could not be loaded".into())
+}
+
+fn list_character_letters_from_path(
+    path: &Path,
+    character_id: Option<&str>,
+    limit: i64,
+) -> Result<Vec<CharacterLetterRecord>, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    let mut letters = Vec::new();
+
+    if let Some(character_id) = character_id {
+        let mut statement = connection.prepare(
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+             FROM character_letter
+             WHERE character_id = ?1
+             ORDER BY deliver_at DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement.query_map(params![character_id, limit], row_to_character_letter_record)?;
+        for row in rows {
+            letters.push(row?);
+        }
+    } else {
+        let mut statement = connection.prepare(
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+             FROM character_letter
+             ORDER BY deliver_at DESC
+             LIMIT ?1",
+        )?;
+        let rows = statement.query_map(params![limit], row_to_character_letter_record)?;
+        for row in rows {
+            letters.push(row?);
+        }
+    }
+
+    Ok(letters)
+}
+
+fn mark_character_letter_read_to_path(
+    path: &Path,
+    letter_id: &str,
+    now: &str,
+) -> Result<CharacterLetterRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    connection.execute(
+        "UPDATE character_letter SET read_at = ?2 WHERE id = ?1 AND read_at IS NULL",
+        params![letter_id, now],
+    )?;
+
+    get_character_letter_record(&connection, letter_id)?
+        .ok_or_else(|| "character letter not found".into())
+}
+
+fn get_character_letter_record(
+    connection: &Connection,
+    id: &str,
+) -> Result<Option<CharacterLetterRecord>, rusqlite::Error> {
+    connection
+        .query_row(
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at
+             FROM character_letter
+             WHERE id = ?1",
+            params![id],
+            row_to_character_letter_record,
+        )
+        .optional()
+}
+
+fn row_to_character_letter_record(
+    row: &rusqlite::Row<'_>,
+) -> Result<CharacterLetterRecord, rusqlite::Error> {
+    Ok(CharacterLetterRecord {
+        id: row.get(0)?,
+        character_id: row.get(1)?,
+        subject: row.get(2)?,
+        body: row.get(3)?,
+        mood: row.get(4)?,
+        created_at: row.get(5)?,
+        deliver_at: row.get(6)?,
+        read_at: row.get(7)?,
+    })
 }
 
 fn open_chat_history(path: &Path) -> Result<Connection, Box<dyn std::error::Error>> {
@@ -1436,6 +1739,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(PromptStdinRegistry::default())
         .invoke_handler(tauri::generate_handler![
+            add_character_letter,
+            add_character_moment,
             append_chat_message,
             companion_status,
             create_chat_session,
@@ -1445,7 +1750,10 @@ pub fn run() {
             get_memory_status,
             get_model_settings,
             get_tool_policy_settings,
+            list_character_letters,
+            list_character_moments,
             list_chat_sessions,
+            mark_character_letter_read,
             respond_pi_tool_confirm,
             save_character_states,
             save_model_settings,
@@ -1469,13 +1777,17 @@ mod tests {
         append_chat_message_to_path, build_local_agent_prompt_payload,
         build_memory_backend_config_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
-        init_chat_history_at_path, list_chat_sessions_from_path, local_agent_prompt_command_args,
+        init_chat_history_at_path, insert_character_letter_to_path, insert_character_moment_to_path,
+        list_character_letters_from_path, list_character_moments_from_path,
+        list_chat_sessions_from_path, local_agent_prompt_command_args,
+        mark_character_letter_read_to_path,
         memory_status_from_paths, normalize_openai_compatible_settings, parse_local_agent_stream_line,
         read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
         read_tool_policy_settings_from_path,
         recent_memory_messages_from_path, save_character_states_to_path, save_model_settings_to_path,
         save_tool_policy_settings_to_path, set_active_model_profile_at_path,
-        AppendChatMessageRequest, CreateChatSessionRequest,
+        AddCharacterLetterRequest, AddCharacterMomentRequest, AppendChatMessageRequest,
+        CreateChatSessionRequest,
         LocalAgentStreamMessage,
         ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
     };
@@ -1743,6 +2055,144 @@ mod tests {
         let after = read_character_states_from_path(&path).expect("updated states should load");
         assert_eq!(after["lulin"]["affinity"], 50);
         assert_eq!(after["cenji"]["affinity"], 12);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_moments_default_to_empty_list() {
+        let path = temp_chat_history_path();
+
+        let moments = list_character_moments_from_path(&path, Some("lulin"), 50)
+            .expect("empty moments should load");
+        assert!(moments.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_moments_insert_filter_and_order_newest_first() {
+        let path = temp_chat_history_path();
+
+        insert_character_moment_to_path(
+            &path,
+            AddCharacterMomentRequest {
+                character_id: "lulin".into(),
+                text: "清晨的实验室很安静".into(),
+                mood: Some("calm".into()),
+            },
+            "1000",
+        )
+        .expect("first moment should save");
+        let second = insert_character_moment_to_path(
+            &path,
+            AddCharacterMomentRequest {
+                character_id: "lulin".into(),
+                text: "午后想喝杯咖啡".into(),
+                mood: Some("warm".into()),
+            },
+            "2000",
+        )
+        .expect("second moment should save");
+        insert_character_moment_to_path(
+            &path,
+            AddCharacterMomentRequest {
+                character_id: "cenji".into(),
+                text: "别人的动态".into(),
+                mood: None,
+            },
+            "1500",
+        )
+        .expect("other character moment should save");
+
+        let lulin = list_character_moments_from_path(&path, Some("lulin"), 50)
+            .expect("lulin moments should load");
+        assert_eq!(lulin.len(), 2);
+        assert_eq!(lulin[0].id, second.id);
+        assert_eq!(lulin[0].text, "午后想喝杯咖啡");
+        assert_eq!(lulin[0].mood.as_deref(), Some("warm"));
+
+        let all = list_character_moments_from_path(&path, None, 50).expect("all moments should load");
+        assert_eq!(all.len(), 3);
+
+        let limited = list_character_moments_from_path(&path, Some("lulin"), 1)
+            .expect("limited moments should load");
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited[0].id, second.id);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_letters_default_to_empty_list() {
+        let path = temp_chat_history_path();
+
+        let letters = list_character_letters_from_path(&path, Some("lulin"), 50)
+            .expect("empty letters should load");
+        assert!(letters.is_empty());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_letters_insert_order_by_deliver_at_and_mark_read() {
+        let path = temp_chat_history_path();
+
+        let first = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "好久不见".into(),
+                body: "最近天气转凉了，记得加衣。".into(),
+                mood: Some("warm".into()),
+                deliver_at: "2024-01-01T08:00:00Z".into(),
+            },
+            "2024-01-01T00:00:00Z",
+        )
+        .expect("first letter should save");
+        let later = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "今天的事".into(),
+                body: "我去了海边，想起了你。".into(),
+                mood: None,
+                deliver_at: "2024-01-02T08:00:00Z".into(),
+            },
+            "2024-01-01T01:00:00Z",
+        )
+        .expect("second letter should save");
+        insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "cenji".into(),
+                subject: "别人的信".into(),
+                body: "无关内容".into(),
+                mood: None,
+                deliver_at: "2024-01-03T08:00:00Z".into(),
+            },
+            "2024-01-01T02:00:00Z",
+        )
+        .expect("other character letter should save");
+
+        let lulin = list_character_letters_from_path(&path, Some("lulin"), 50)
+            .expect("lulin letters should load");
+        assert_eq!(lulin.len(), 2);
+        assert_eq!(lulin[0].id, later.id);
+        assert_eq!(lulin[0].subject, "今天的事");
+        assert!(lulin[0].read_at.is_none());
+
+        let all = list_character_letters_from_path(&path, None, 50).expect("all letters should load");
+        assert_eq!(all.len(), 3);
+
+        let marked = mark_character_letter_read_to_path(&path, &first.id, "2024-01-01T09:00:00Z")
+            .expect("letter should mark read");
+        assert_eq!(marked.read_at.as_deref(), Some("2024-01-01T09:00:00Z"));
+
+        // 二次标记不会覆盖首次已读时间。
+        let again = mark_character_letter_read_to_path(&path, &first.id, "2024-01-01T10:00:00Z")
+            .expect("second mark read should be a no-op update");
+        assert_eq!(again.read_at.as_deref(), Some("2024-01-01T09:00:00Z"));
 
         let _ = fs::remove_file(path);
     }
