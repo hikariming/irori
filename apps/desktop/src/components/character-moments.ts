@@ -41,8 +41,14 @@ const moodHint: Record<Mood, string> = {
 };
 
 // 生成「让角色发一条动态」的一次性 prompt。它独立于聊天，不应提到用户或对话。
-export function composeMomentPrompt(card: CharacterCard, state: CharacterState, now: number): string {
-  const beat = lifeBeatAt(new Date(now));
+// 传入 activity（来自当天作息脚本的「此刻在干嘛」）时，动态就围绕这件事写，让虚拟生活落到动态上。
+export function composeMomentPrompt(
+  card: CharacterCard,
+  state: CharacterState,
+  now: number,
+  activity?: string
+): string {
+  const situation = activity?.trim() || lifeBeatAt(new Date(now)).activity;
 
   return [
     `你是 ${card.name}。`,
@@ -50,12 +56,12 @@ export function composeMomentPrompt(card: CharacterCard, state: CharacterState, 
     `说话风格：${card.speakingStyle}`,
     "",
     "现在请你像发一条朋友圈/动态那样，写下此刻你自己的生活片段或心情。",
-    `此刻大致的情形：${beat.activity}`,
+    `此刻你正在：${situation}`,
     `此刻的心情：${moodHint[state.mood]}。`,
     "",
     "要求：",
     "- 用第一人称，像随手发的一条动态，1 到 2 句话，自然口语。",
-    "- 写你自己的生活、所见、所想或心情，不要提到「用户」「你」，也不要像在对谁说话。",
+    "- 围绕你此刻正在做的事来写，写你自己的生活、所见、所想或心情，不要提到「用户」「你」，也不要像在对谁说话。",
     "- 不要解释设定，不要出现任何数字或系统字样，不要用 Markdown。",
     "- 只输出动态正文本身。"
   ].join("\n");

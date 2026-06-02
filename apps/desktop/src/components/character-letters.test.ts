@@ -8,11 +8,14 @@ import {
   composeLetterReplyPrompt,
   formatLetterTime,
   isDelivered,
+  LETTER_TURN_THRESHOLD,
   MIN_LETTER_GAP_MS,
   parseLetterReply,
   pickDeliverAt,
   sanitizeLetters,
+  shouldTryLetterAfterChat,
   shouldWriteLetter,
+  summarizeRecentDialogue,
   type CharacterLetter
 } from "./character-letters.ts";
 
@@ -47,6 +50,37 @@ test("composeLetterPrompt is persona-aware and asks for the subject/body format"
   assert.match(prompt, /安静的研究者/);
   assert.match(prompt, /主题：/);
   assert.match(prompt, /正文：/);
+});
+
+test("composeLetterPrompt weaves in recent dialogue when provided", () => {
+  const dialogue = "ta：今天好累\n你：抱抱，早点休息";
+  const prompt = composeLetterPrompt(card, familiarState(), Date.now(), dialogue);
+  assert.match(prompt, /仅供你回味/);
+  assert.match(prompt, /今天好累/);
+  // 没传对话时不应出现「最近聊到」回味段落，也没有具体对话内容。
+  const noDialogue = composeLetterPrompt(card, familiarState(), Date.now());
+  assert.doesNotMatch(noDialogue, /仅供你回味/);
+  assert.doesNotMatch(noDialogue, /今天好累/);
+});
+
+test("shouldTryLetterAfterChat gates on turn count then a dice roll", () => {
+  // 没聊够轮数，骰子再小也不写。
+  assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD - 1, () => 0), false);
+  // 聊够了：骰子低于概率才写。
+  assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD, () => 0), true);
+  assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD, () => 0.99), false);
+});
+
+test("summarizeRecentDialogue keeps the tail, labels speakers, and trims long lines", () => {
+  const turns = Array.from({ length: 8 }, (_, i) => ({ user: `问题${i}`, reply: `回答${i}` }));
+  const summary = summarizeRecentDialogue(turns, 3);
+  // 只保留尾部 3 回合。
+  assert.doesNotMatch(summary, /问题4/);
+  assert.match(summary, /ta：问题7/);
+  assert.match(summary, /你：回答7/);
+  // 超长行被裁短。
+  const long = summarizeRecentDialogue([{ user: "好".repeat(100), reply: "" }], 1);
+  assert.ok(long.length <= "ta：".length + 60);
 });
 
 test("composeLetterReplyPrompt echoes the user letter and asks for memory markers", () => {

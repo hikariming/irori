@@ -1,4 +1,12 @@
 import type { CharacterCard } from "./character-cards.ts";
+import {
+  describeNowActivity,
+  minutesOfDay,
+  sanitizeDayScript,
+  toDateStr,
+  type DayScript,
+  type ScheduleItem
+} from "./character-schedule.ts";
 
 // 心情是快变量：由最近一回合的对话情绪决定，叠加精力低时的疲惫。
 export type Mood = "calm" | "warm" | "playful" | "tired" | "guarded";
@@ -23,6 +31,8 @@ export type CharacterState = {
   lastSeenAt: number; // 上次互动的时间戳（ms），0 表示从未
   meetCount: number; // 见过几次（按「间隔较久再开口」计一次）
   impressions: Impression[]; // 见面即记住 / 记仇：长期印象
+  schedule: DayScript | null; // 当天的虚拟生活作息脚本，驱动「此刻在干嘛」与状态推进
+  lastLifeTickAt: number; // 上次推进作息（执行条目 / 离线回放）的时间戳（ms），0 表示从未
 };
 
 export type CharacterStates = Record<string, CharacterState>;
@@ -44,7 +54,9 @@ export function defaultCharacterState(characterId: string): CharacterState {
     energy: 80,
     lastSeenAt: 0,
     meetCount: 0,
-    impressions: []
+    impressions: [],
+    schedule: null,
+    lastLifeTickAt: 0
   };
 }
 
@@ -118,8 +130,40 @@ export function beginEncounter(
       lastSeenAt: now,
       meetCount: state.meetCount + (isNewEncounter ? 1 : 0)
     },
-    context: { hoursSinceLastSeen, isNewEncounter, activity: beat.activity }
+    context: { hoursSinceLastSeen, isNewEncounter, activity: currentActivityLine(state, now) ?? beat.activity }
   };
+}
+
+// 当天作息里「此刻在干嘛」的短语，如「在阳台看会儿书」；没有当天脚本时返回 null。
+// 供动态/信件 prompt 的「此刻情形」注入。
+export function currentActivityPhrase(state: CharacterState, now: number): string | null {
+  const date = new Date(now);
+  if (!state.schedule || state.schedule.date !== toDateStr(date)) {
+    return null;
+  }
+  return describeNowActivity(state.schedule, minutesOfDay(date));
+}
+
+// 同上，但包成第一人称一句话「我此刻在阳台看会儿书。」，供聊天「此刻的我」心声注入。
+export function currentActivityLine(state: CharacterState, now: number): string | null {
+  const phrase = currentActivityPhrase(state, now);
+  return phrase ? `我此刻${phrase}。` : null;
+}
+
+// 把这次新「执行」的作息条目的效果落到状态上：累加精力增减、末项心情接管（夹紧 0-100）。
+export function applyScheduleEffects(state: CharacterState, executed: ScheduleItem[]): CharacterState {
+  if (executed.length === 0) {
+    return state;
+  }
+  let energy = state.energy;
+  let mood = state.mood;
+  for (const item of executed) {
+    energy += item.energyEffect;
+    if (item.moodShift) {
+      mood = item.moodShift;
+    }
+  }
+  return { ...state, energy: clamp(Math.round(energy), 0, 100), mood };
 }
 
 const positiveSignals = [
@@ -440,7 +484,9 @@ export function sanitizeCharacterStates(value: unknown): CharacterStates {
       energy: typeof entry.energy === "number" ? clamp(entry.energy, 0, 100) : base.energy,
       lastSeenAt: typeof entry.lastSeenAt === "number" ? entry.lastSeenAt : base.lastSeenAt,
       meetCount: typeof entry.meetCount === "number" && entry.meetCount >= 0 ? Math.floor(entry.meetCount) : base.meetCount,
-      impressions: sanitizeImpressions(entry.impressions, kinds)
+      impressions: sanitizeImpressions(entry.impressions, kinds),
+      schedule: sanitizeDayScript(entry.schedule),
+      lastLifeTickAt: typeof entry.lastLifeTickAt === "number" ? entry.lastLifeTickAt : base.lastLifeTickAt
     };
   }
   return result;

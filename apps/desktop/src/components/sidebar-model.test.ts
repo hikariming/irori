@@ -57,6 +57,33 @@ test("buildSidebarCharacters maps unread letter counts and defaults to 0", () =>
   assert.equal(items.find((item) => item.id === "shili")?.unreadCount, 0);
 });
 
+test("buildSidebarCharacters maps current activity labels", () => {
+  const items = buildSidebarCharacters(cards, "shili", {}, {}, { shili: "在阳台看会儿书" });
+
+  assert.equal(items.find((item) => item.id === "shili")?.activityStatus, "在阳台看会儿书");
+  assert.equal(items.find((item) => item.id === "lulin")?.activityStatus, undefined);
+});
+
+test("buildSidebarCharacters maps character state summaries for hover cards", () => {
+  const stateSummary = {
+    shili: {
+      affinity: 70,
+      affinityTierLabel: "亲近",
+      moodLabel: "温暖",
+      energy: 48,
+      energyLabel: "一般",
+      meetLabel: "见过 3 次"
+    }
+  };
+  const items = buildSidebarCharacters(cards, "shili", {}, {}, {}, stateSummary);
+  const shili = items.find((item) => item.id === "shili");
+  const lulin = items.find((item) => item.id === "lulin");
+
+  assert.deepEqual(shili?.stateSummary, stateSummary.shili);
+  assert.equal(shili?.themeColor, cards.find((card) => card.id === "shili")?.themeColor);
+  assert.equal(lulin?.stateSummary, undefined);
+});
+
 test("activateCharacter marks the requested character as active", () => {
   const items = buildSidebarCharacters(cards, "shili");
   const next = activateCharacter(items, "lulin");

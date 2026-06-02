@@ -118,6 +118,18 @@ export function buildCharacterChatPreview(card: CharacterCard): CharacterChatPre
   };
 }
 
+// 生活圈里一条动态/一封信的「发件人」信息：头像 + 名字。
+export type FeedAuthor = { name: string; avatar: string };
+
+// 由角色卡构建「角色 id → 头像/名字」映射，给聚合的生活圈按发件人显示。
+export function buildCharacterAuthors(cards: CharacterCard[]): Record<string, FeedAuthor> {
+  const map: Record<string, FeedAuthor> = {};
+  for (const card of cards) {
+    map[card.id] = { name: card.name, avatar: card.assets.avatar };
+  }
+  return map;
+}
+
 const fallbackCharacterCard: CharacterCard = parseCharacterCard("shili", {
   name: "示璃",
   identity: {

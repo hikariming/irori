@@ -57,53 +57,64 @@ export function useCharacterLetters() {
   }, []);
 
   // 关系够熟、距上次够久、精力够时，让角色写一封信，随机 1~24h 后送达。
-  const maybeWriteLetter = useCallback(async (card: CharacterCard, state: CharacterState) => {
-    if (inFlightRef.current.has(card.id)) {
-      return;
-    }
-
-    const now = Date.now();
-    // 用「写信时间」做节流，包含还在路上的信，避免连写好几封。
-    const lastLetterAt = lettersRef.current
-      .filter((letter) => letter.characterId === card.id)
-      .reduce<number | null>((latest, letter) => (latest === null ? letter.createdAt : Math.max(latest, letter.createdAt)), null);
-    if (!shouldWriteLetter(state, lastLetterAt, now)) {
-      return;
-    }
-
-    inFlightRef.current.add(card.id);
-    setWritingIds((current) => (current.includes(card.id) ? current : [...current, card.id]));
-    try {
-      // runId 不设为活跃 run：App 的进度/确认监听按 activePromptRunId 过滤，故不会渲染进聊天。
-      const response = await desktopBackend.sendPiPrompt({
-        characterId: card.id,
-        prompt: "（给 ta 写一封信）",
-        runId: createLetterRunId(),
-        sessionPrompt: composeLetterPrompt(card, state, now)
-      });
-
-      const { subject, body } = parseLetterReply(response.text ?? "");
-      if (!body) {
-        return;
+  // 传入 recentDialogue 让信接得上你们最近聊的事。返回是否真的写出了一封（供调用方重置节流计数）。
+  const maybeWriteLetter = useCallback(
+    async (
+      card: CharacterCard,
+      state: CharacterState,
+      recentDialogue?: string,
+      currentActivity?: string
+    ): Promise<boolean> => {
+      if (inFlightRef.current.has(card.id)) {
+        return false;
       }
 
-      const letter = await desktopBackend.addCharacterLetter({
-        characterId: card.id,
-        subject,
-        body,
-        mood: state.mood,
-        deliverAt: new Date(pickDeliverAt(now)).toISOString()
-      });
-      const next = [letter, ...lettersRef.current];
-      lettersRef.current = next;
-      setLetters(next);
-    } catch {
-      // 写信是锦上添花，失败就安静跳过。
-    } finally {
-      inFlightRef.current.delete(card.id);
-      setWritingIds((current) => current.filter((id) => id !== card.id));
-    }
-  }, []);
+      const now = Date.now();
+      // 用「写信时间」做节流，包含还在路上的信，避免连写好几封。
+      const lastLetterAt = lettersRef.current
+        .filter((letter) => letter.characterId === card.id)
+        .reduce<number | null>((latest, letter) => (latest === null ? letter.createdAt : Math.max(latest, letter.createdAt)), null);
+      if (!shouldWriteLetter(state, lastLetterAt, now)) {
+        return false;
+      }
+
+      inFlightRef.current.add(card.id);
+      setWritingIds((current) => (current.includes(card.id) ? current : [...current, card.id]));
+      try {
+        // runId 不设为活跃 run：App 的进度/确认监听按 activePromptRunId 过滤，故不会渲染进聊天。
+        const response = await desktopBackend.sendPiPrompt({
+          characterId: card.id,
+          prompt: "（给 ta 写一封信）",
+          runId: createLetterRunId(),
+          sessionPrompt: composeLetterPrompt(card, state, now, recentDialogue, currentActivity)
+        });
+
+        const { subject, body } = parseLetterReply(response.text ?? "");
+        if (!body) {
+          return false;
+        }
+
+        const letter = await desktopBackend.addCharacterLetter({
+          characterId: card.id,
+          subject,
+          body,
+          mood: state.mood,
+          deliverAt: new Date(pickDeliverAt(now)).toISOString()
+        });
+        const next = [letter, ...lettersRef.current];
+        lettersRef.current = next;
+        setLetters(next);
+        return true;
+      } catch {
+        // 写信是锦上添花，失败就安静跳过。
+        return false;
+      } finally {
+        inFlightRef.current.delete(card.id);
+        setWritingIds((current) => current.filter((id) => id !== card.id));
+      }
+    },
+    []
+  );
 
   // 用户主动写信或回信：先即时投递用户这封，再让角色生成一封延迟送达的回信，
   // 并把回信里沉淀的印象交给 onExchange 提升好感度、迭代记忆。

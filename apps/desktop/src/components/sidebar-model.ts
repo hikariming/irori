@@ -3,12 +3,24 @@ import { isCharacterVisibleInSidebar, type CharacterPreferences } from "./charac
 
 export type CharacterStatus = "online" | "idle";
 
+export type CompanionCharacterStateSummary = {
+  affinity: number;
+  affinityTierLabel: string;
+  moodLabel: string;
+  energy: number;
+  energyLabel: string;
+  meetLabel: string;
+};
+
 export type CompanionCharacter = {
   id: string;
   name: string;
   status: CharacterStatus;
   active: boolean;
+  activityStatus?: string;
   avatarSrc?: string;
+  stateSummary?: CompanionCharacterStateSummary;
+  themeColor?: string;
   unreadCount?: number; // 已送达但未读的角色来信数，用于侧边栏红点
 };
 
@@ -28,18 +40,23 @@ export function buildSidebarCharacters(
   cards: CharacterCard[],
   activeCharacterId: string,
   preferences: CharacterPreferences = {},
-  unreadByCharacter: Record<string, number> = {}
+  unreadByCharacter: Record<string, number> = {},
+  activityByCharacter: Record<string, string> = {},
+  stateSummaryByCharacter: Record<string, CompanionCharacterStateSummary> = {}
 ): CompanionCharacter[] {
   return cards
     .filter((card) => isCharacterVisibleInSidebar(preferences, card.id))
     .map((card) => ({
-    id: card.id,
-    name: card.name,
-    status: "online",
-    active: card.id === activeCharacterId,
-    avatarSrc: card.assets.avatar,
-    unreadCount: unreadByCharacter[card.id] ?? 0
-  }));
+      id: card.id,
+      name: card.name,
+      status: "online",
+      active: card.id === activeCharacterId,
+      activityStatus: activityByCharacter[card.id],
+      avatarSrc: card.assets.avatar,
+      stateSummary: stateSummaryByCharacter[card.id],
+      themeColor: card.themeColor,
+      unreadCount: unreadByCharacter[card.id] ?? 0
+    }));
 }
 
 export const sessionGroups: SessionGroup[] = [

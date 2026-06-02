@@ -1,55 +1,58 @@
 import { Avatar, ScrollShadow } from "@heroui/react";
 
+import type { FeedAuthor } from "./character-cards";
 import { formatMomentTime, moodLabel, type CharacterMoment } from "./character-moments";
-import type { CharacterChatPreview } from "./chat-model";
 
 type CompanionMomentsFeedProps = {
-  character: CharacterChatPreview;
   moments: CharacterMoment[];
-  isPosting?: boolean;
+  authors: Record<string, FeedAuthor>;
+  backgroundSrc?: string;
+  postingAuthors?: FeedAuthor[];
   now?: number;
 };
 
+const unknownAuthor: FeedAuthor = { name: "神秘角色", avatar: "" };
+
+function AuthorAvatar({ author, className }: { author: FeedAuthor; className: string }) {
+  return (
+    <Avatar className={className}>
+      {author.avatar ? <Avatar.Image alt={author.name} src={author.avatar} /> : null}
+      <Avatar.Fallback>{author.name.slice(0, 1)}</Avatar.Fallback>
+    </Avatar>
+  );
+}
+
+// 生活圈动态：把所有角色的动态汇成一条共享时间线，像朋友圈/Facebook 那样大家住在一起。
 export function CompanionMomentsFeed({
-  character: preview,
   moments,
-  isPosting = false,
+  authors,
+  backgroundSrc,
+  postingAuthors = [],
   now = Date.now()
 }: CompanionMomentsFeedProps) {
-  const name = preview.character.name;
-  const isEmpty = moments.length === 0 && !isPosting;
+  const isEmpty = moments.length === 0 && postingAuthors.length === 0;
 
   return (
-    <section className="moments-layout" aria-label={`${name}的动态`}>
-      <img
-        alt=""
-        aria-hidden="true"
-        className="moments-background"
-        src={preview.assets.background}
-      />
+    <section className="moments-layout" aria-label="生活圈动态">
+      {backgroundSrc ? (
+        <img alt="" aria-hidden="true" className="moments-background" src={backgroundSrc} />
+      ) : null}
       <div className="moments-background-wash" />
 
       <header className="moments-header">
-        <Avatar className="moments-header-avatar">
-          <Avatar.Image alt={name} src={preview.assets.avatar} />
-          <Avatar.Fallback>{name.slice(0, 1)}</Avatar.Fallback>
-        </Avatar>
         <div className="moments-header-copy">
-          <strong>{name}的动态</strong>
-          <span>她在自己的生活里随手记下的片段</span>
+          <strong>生活圈</strong>
+          <span>大家住在一起，随手记下的生活片段</span>
         </div>
       </header>
 
       <ScrollShadow className="moments-stream" hideScrollBar orientation="vertical">
-        {isPosting ? (
-          <article className="moment-card is-posting" aria-live="polite">
-            <Avatar className="moment-avatar">
-              <Avatar.Image alt={name} src={preview.assets.avatar} />
-              <Avatar.Fallback>{name.slice(0, 1)}</Avatar.Fallback>
-            </Avatar>
+        {postingAuthors.map((author) => (
+          <article className="moment-card is-posting" aria-live="polite" key={`posting-${author.name}`}>
+            <AuthorAvatar author={author} className="moment-avatar" />
             <div className="moment-body">
               <header>
-                <strong>{name}</strong>
+                <strong>{author.name}</strong>
                 <time>正在记录…</time>
               </header>
               <div className="moment-posting-pulse">
@@ -59,19 +62,17 @@ export function CompanionMomentsFeed({
               </div>
             </div>
           </article>
-        ) : null}
+        ))}
 
         {moments.map((moment) => {
+          const author = authors[moment.characterId] ?? unknownAuthor;
           const mood = moodLabel(moment.mood);
           return (
             <article className="moment-card" key={moment.id}>
-              <Avatar className="moment-avatar">
-                <Avatar.Image alt={name} src={preview.assets.avatar} />
-                <Avatar.Fallback>{name.slice(0, 1)}</Avatar.Fallback>
-              </Avatar>
+              <AuthorAvatar author={author} className="moment-avatar" />
               <div className="moment-body">
                 <header>
-                  <strong>{name}</strong>
+                  <strong>{author.name}</strong>
                   <time>{formatMomentTime(moment.createdAt, now)}</time>
                 </header>
                 <p>{moment.text}</p>
@@ -83,7 +84,7 @@ export function CompanionMomentsFeed({
 
         {isEmpty ? (
           <div className="moments-empty" role="status">
-            {name}还没有发过动态。等她有了心情，会在这里留下生活片段。
+            大家还没有发过动态。等谁有了心情，会在这里留下生活片段。
           </div>
         ) : null}
       </ScrollShadow>

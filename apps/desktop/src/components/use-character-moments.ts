@@ -28,32 +28,34 @@ export function useCharacterMoments() {
     return loaded;
   }, []);
 
-  // 距上次够久、精力没见底时，让角色用一次性 prompt 写一条动态并落库、前插。
-  const maybePostMoment = useCallback(async (card: CharacterCard, state: CharacterState) => {
+  // 加载所有角色的动态，按时间倒序汇成一条「大家住在一起」的共享时间线。
+  const loadAllMoments = useCallback(async () => {
+    const loaded = await desktopBackend.listCharacterMoments().catch(() => [] as CharacterMoment[]);
+    momentsRef.current = loaded;
+    setMoments(loaded);
+    return loaded;
+  }, []);
+
+  // 内部：生成并落库一条动态（around 当前活动 activity 写），前插到流里。返回是否成功。
+  const composeAndPost = useCallback(async (card: CharacterCard, state: CharacterState, activity?: string) => {
     if (inFlightRef.current.has(card.id)) {
-      return;
+      return false;
     }
-
-    const now = Date.now();
-    const lastMomentAt = momentsRef.current.find((moment) => moment.characterId === card.id)?.createdAt ?? null;
-    if (!shouldPostMoment(state, lastMomentAt, now)) {
-      return;
-    }
-
     inFlightRef.current.add(card.id);
     setPostingIds((current) => (current.includes(card.id) ? current : [...current, card.id]));
     try {
+      const now = Date.now();
       // runId 不设为活跃 run：App 的进度/确认监听会按 activePromptRunId 过滤，故不会渲染进聊天。
       const response = await desktopBackend.sendPiPrompt({
         characterId: card.id,
         prompt: "（写一条此刻的动态）",
         runId: createMomentRunId(),
-        sessionPrompt: composeMomentPrompt(card, state, now)
+        sessionPrompt: composeMomentPrompt(card, state, now, activity)
       });
 
       const text = parseMomentText(response.text ?? "");
       if (!text) {
-        return;
+        return false;
       }
 
       const moment = await desktopBackend.addCharacterMoment({
@@ -64,13 +66,34 @@ export function useCharacterMoments() {
       const next = [moment, ...momentsRef.current];
       momentsRef.current = next;
       setMoments(next);
+      return true;
     } catch {
       // 动态是锦上添花，失败就安静跳过，不打扰用户。
+      return false;
     } finally {
       inFlightRef.current.delete(card.id);
       setPostingIds((current) => current.filter((id) => id !== card.id));
     }
   }, []);
 
-  return { moments, postingIds, loadMoments, maybePostMoment } as const;
+  // 距上次够久、精力没见底时，让角色围绕「此刻在做的事」(activity，来自作息脚本) 发一条动态。
+  const maybePostMoment = useCallback(
+    async (card: CharacterCard, state: CharacterState, activity?: string) => {
+      const now = Date.now();
+      const lastMomentAt = momentsRef.current.find((moment) => moment.characterId === card.id)?.createdAt ?? null;
+      if (!shouldPostMoment(state, lastMomentAt, now)) {
+        return;
+      }
+      await composeAndPost(card, state, activity);
+    },
+    [composeAndPost]
+  );
+
+  // 离线回放：你不在时角色「做过」的某件事，补发一条动态（绕过频率闸，由 App 控制次数）。
+  const postCatchupMoment = useCallback(
+    async (card: CharacterCard, state: CharacterState, activity: string) => composeAndPost(card, state, activity),
+    [composeAndPost]
+  );
+
+  return { moments, postingIds, loadMoments, loadAllMoments, maybePostMoment, postCatchupMoment } as const;
 }

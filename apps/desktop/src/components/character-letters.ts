@@ -22,6 +22,10 @@ export type CharacterLetter = {
 export const MIN_LETTER_GAP_MS = 20 * 60 * 60 * 1000;
 // 精力低于这个值就没心力写信了。
 const LETTER_ENERGY_FLOOR = 25;
+// 聊够这么多个回合，角色才有可能在后台「偷偷」写信——太早写显得没由来。
+export const LETTER_TURN_THRESHOLD = 6;
+// 够轮数后也不是每回必写，掷一次骰子，更像「突然想给你写封信」的惊喜。
+const LETTER_CHANCE_AFTER_THRESHOLD = 0.35;
 // 送达延迟区间：写完后过 1~24 小时才送到，营造「被惦记」的等待感。
 const MIN_DELIVER_DELAY_MS = 1 * 60 * 60 * 1000;
 const MAX_DELIVER_DELAY_MS = 24 * 60 * 60 * 1000;
@@ -44,6 +48,39 @@ export function shouldWriteLetter(state: CharacterState, lastLetterAt: number | 
   return true;
 }
 
+// 一来一回的对话片段，用于给写信 prompt 喂「最近聊了什么」。
+export type DialogueTurn = { user: string; reply: string };
+
+// 聊完一回合后，是否该「试着」在后台偷偷写信：先看聊够轮数没、再掷一次骰子。
+// 这只是触发的前置闸；关系/精力/节流仍由 shouldWriteLetter 最终把关。
+export function shouldTryLetterAfterChat(
+  turnsSinceLastLetter: number,
+  random: () => number = Math.random
+): boolean {
+  if (turnsSinceLastLetter < LETTER_TURN_THRESHOLD) {
+    return false;
+  }
+  return random() < LETTER_CHANCE_AFTER_THRESHOLD;
+}
+
+// 把最近几回合对话压成一段简短摘要，供写信时「接得上」最近聊的内容。
+// 只取尾部若干回合，逐句裁短，避免把整段聊天塞进 prompt。
+export function summarizeRecentDialogue(turns: DialogueTurn[], limit = 5): string {
+  const recent = turns.slice(-limit);
+  const lines: string[] = [];
+  for (const turn of recent) {
+    const user = turn.user.replace(/\s+/g, " ").trim().slice(0, 60);
+    const reply = turn.reply.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (user) {
+      lines.push(`ta：${user}`);
+    }
+    if (reply) {
+      lines.push(`你：${reply}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 const moodHint: Record<Mood, string> = {
   calm: "心境平和",
   warm: "心里暖暖的，想对 ta 说点什么",
@@ -60,8 +97,20 @@ const tierHint: Record<ReturnType<typeof affinityTier>, string> = {
 };
 
 // 生成「让角色写一封信」的一次性 prompt。要求结构化输出主题与正文。
-export function composeLetterPrompt(card: CharacterCard, state: CharacterState, now: number): string {
-  const beat = lifeBeatAt(new Date(now));
+// 传入 recentDialogue（最近对话摘要）时，让信「接得上」你们刚聊过的事，惊喜才显得有由来。
+export function composeLetterPrompt(
+  card: CharacterCard,
+  state: CharacterState,
+  now: number,
+  recentDialogue?: string,
+  currentActivity?: string
+): string {
+  const situation = currentActivity?.trim() || lifeBeatAt(new Date(now)).activity;
+  const trimmedDialogue = recentDialogue?.trim();
+
+  const dialogueBlock = trimmedDialogue
+    ? ["", "你们最近聊到的（仅供你回味，不要逐句复述）：", trimmedDialogue]
+    : [];
 
   return [
     `你是 ${card.name}。`,
@@ -69,13 +118,14 @@ export function composeLetterPrompt(card: CharacterCard, state: CharacterState, 
     `说话风格：${card.speakingStyle}`,
     "",
     "现在请你给 ta（一直在和你聊天的那个人）写一封短信。",
-    `此刻大致的情形：${beat.activity}`,
+    `此刻大致的情形：${situation}`,
     `此刻的心情：${moodHint[state.mood]}。`,
     `你们的关系：${tierHint[affinityTier(state.affinity)]}。`,
+    ...dialogueBlock,
     "",
     "要求：",
     "- 用第一人称写给 ta，像一封真正的私人信件，自然真挚，不要客套话。",
-    "- 内容写你最近的生活、想法、或想对 ta 说的话，可以提到 ta，但不要复述聊天记录。",
+    "- 内容写你最近的生活、想法、或想对 ta 说的话；可以自然延续你们最近聊到的事，但不要复述聊天记录。",
     "- 不要解释设定，不要出现任何数字或系统字样，不要用 Markdown。",
     "- 严格按下面两行格式输出，不要有多余内容：",
     "主题：<一句话主题>",
