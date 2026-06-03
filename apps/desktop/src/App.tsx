@@ -12,6 +12,7 @@ import {
   type DialogueTurn
 } from "./components/character-letters";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
+import { WorkspacePanel } from "./components/WorkspacePanel";
 import { desktopBackend } from "./components/desktop-backend";
 import { formatUnknownError } from "./components/error-message";
 import { type ChatMessage } from "./components/chat-model";
@@ -103,6 +104,8 @@ export function App() {
   const [viewMode, setViewMode] = useState<"chat" | "feed" | "letters">("chat");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  const [reviewMode, setReviewMode] = useState<ReviewMode>(DEFAULT_REVIEW_MODE);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -994,6 +997,7 @@ export function App() {
           onModelSettingsChange={setModelSettings}
         />
       </section>
+      <WorkspacePanel isOpen={isWorkspaceOpen} onToggle={() => setIsWorkspaceOpen((open) => !open)} />
     </main>
   );
 }

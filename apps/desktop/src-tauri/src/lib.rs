@@ -285,6 +285,21 @@ struct MemoryChatMessage {
     created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceEntry {
+    /// Absolute filesystem path; doubles as the tree node id on the frontend.
+    id: String,
+    name: String,
+    /// "folder" | "file"
+    kind: String,
+    /// "workspace" | "computer"
+    root_id: String,
+    size: Option<u64>,
+    modified_at: Option<u64>,
+    has_children: bool,
+}
+
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL_NAME: &str = "gpt-5.5";
 
@@ -520,7 +535,47 @@ fn append_chat_message(
         .map_err(|error| error.to_string())
 }
 
-fn run_local_agent_prompt(
+#[tauri::command]
+fn list_workspace_roots(app: AppHandle) -> Result<Vec<WorkspaceEntry>, String> {
+    let mut roots = Vec::new();
+
+    if let Ok(workspace) = workspace_root_dir() {
+        // build_workspace_entry already names it after the cwd folder (e.g. the repo dir).
+        if let Some(entry) = build_workspace_entry(&workspace, "workspace") {
+            roots.push(entry);
+        }
+    }
+
+    if let Ok(home) = home_root_dir(&app) {
+        if let Some(mut entry) = build_workspace_entry(&home, "computer") {
+            entry.name = "这台电脑".to_string();
+            roots.push(entry);
+        }
+    }
+
+    Ok(roots)
+}
+
+#[tauri::command]
+fn list_workspace_dir(
+    app: AppHandle,
+    path: String,
+    root_id: String,
+) -> Result<Vec<WorkspaceEntry>, String> {
+    let canonical = fs::canonicalize(PathBuf::from(&path))
+        .map_err(|error| format!("无法访问该目录：{error}"))?;
+
+    if !workspace_path_allowed(&app, &canonical) {
+        return Err("该路径不在工作区或用户目录内。".to_string());
+    }
+    if !canonical.is_dir() {
+        return Err("该路径不是目录。".to_string());
+    }
+
+    read_workspace_dir(&canonical, &root_id)
+}
+
+fn run_sidecar_prompt(
     app: AppHandle,
     prompt: String,
     request: Option<SendPiPromptRequest>,
@@ -841,6 +896,76 @@ fn build_chat_history_memory_payload(
         "maxResults": 5,
         "messages": messages
     })))
+}
+
+fn workspace_root_dir() -> Result<PathBuf, String> {
+    std::env::current_dir().map_err(|error| error.to_string())
+}
+
+fn home_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path().home_dir().map_err(|error| error.to_string())
+}
+
+/// File browsing is scoped to the workspace (cwd) and the user's home dir, so a
+/// crafted path can't walk into arbitrary system locations. Both sides are
+/// canonicalized first so symlinks / `..` can't slip past the prefix check.
+fn workspace_path_allowed(app: &AppHandle, canonical: &Path) -> bool {
+    [workspace_root_dir().ok(), home_root_dir(app).ok()]
+        .into_iter()
+        .flatten()
+        .filter_map(|root| fs::canonicalize(root).ok())
+        .any(|root| canonical.starts_with(&root))
+}
+
+fn entry_modified_ms(metadata: &fs::Metadata) -> Option<u64> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|delta| delta.as_millis() as u64)
+}
+
+fn dir_has_children(path: &Path) -> bool {
+    fs::read_dir(path)
+        .map(|mut entries| entries.next().is_some())
+        .unwrap_or(false)
+}
+
+fn build_workspace_entry(path: &Path, root_id: &str) -> Option<WorkspaceEntry> {
+    let name = path.file_name()?.to_string_lossy().to_string();
+    let metadata = fs::metadata(path).ok()?;
+    let is_dir = metadata.is_dir();
+
+    Some(WorkspaceEntry {
+        id: path.to_string_lossy().to_string(),
+        name,
+        kind: if is_dir { "folder" } else { "file" }.to_string(),
+        root_id: root_id.to_string(),
+        size: if is_dir { None } else { Some(metadata.len()) },
+        modified_at: entry_modified_ms(&metadata),
+        has_children: is_dir && dir_has_children(path),
+    })
+}
+
+/// List one directory level: folders first, then files, each name-sorted.
+/// Unreadable entries are skipped rather than failing the whole listing.
+fn read_workspace_dir(dir: &Path, root_id: &str) -> Result<Vec<WorkspaceEntry>, String> {
+    let mut entries = Vec::new();
+
+    for dir_entry in fs::read_dir(dir).map_err(|error| format!("读取目录失败：{error}"))? {
+        let Ok(dir_entry) = dir_entry else { continue };
+        if let Some(entry) = build_workspace_entry(&dir_entry.path(), root_id) {
+            entries.push(entry);
+        }
+    }
+
+    entries.sort_by(|left, right| match (left.kind.as_str(), right.kind.as_str()) {
+        ("folder", "file") => std::cmp::Ordering::Less,
+        ("file", "folder") => std::cmp::Ordering::Greater,
+        _ => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+    });
+
+    Ok(entries)
 }
 
 fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -1969,18 +2094,23 @@ pub fn run() {
             get_chat_session,
             get_memory_status,
             get_model_settings,
+            get_review_mode,
             get_tool_policy_settings,
             list_character_letters,
             list_character_moments,
             list_chat_sessions,
+            list_workspace_dir,
+            list_workspace_roots,
             mark_character_letter_read,
             respond_pi_tool_confirm,
             save_character_states,
             save_model_settings,
             save_tool_policy_settings,
             set_active_model_profile,
+            set_review_mode,
             send_pi_prompt,
-            test_model_connection
+            test_model_connection,
+            toggle_character_moment_like
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Cockapoo Pi Companion");
@@ -2040,6 +2170,47 @@ mod tests {
 
     fn temp_tool_policy_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!("cockapoo-tool-policy-{}.json", temp_path_nonce()))
+    }
+
+    #[test]
+    fn review_mode_round_trips_and_sanitizes() {
+        let path = std::env::temp_dir().join(format!("cockapoo-review-mode-{}.json", temp_path_nonce()));
+
+        // Missing file → safe default.
+        assert_eq!(read_review_mode_from_path(&path).expect("default"), "default");
+
+        // Valid modes persist and read back.
+        assert_eq!(save_review_mode_to_path(&path, "auto").expect("save"), "auto");
+        assert_eq!(read_review_mode_from_path(&path).expect("read"), "auto");
+        assert_eq!(save_review_mode_to_path(&path, "all").expect("save"), "all");
+        assert_eq!(read_review_mode_from_path(&path).expect("read"), "all");
+
+        // Bogus input is coerced to the safe default before writing.
+        assert_eq!(save_review_mode_to_path(&path, "bogus").expect("save"), "default");
+        assert_eq!(read_review_mode_from_path(&path).expect("read"), "default");
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn read_workspace_dir_sorts_folders_first_and_reports_sizes() {
+        let base = std::env::temp_dir().join(format!("cockapoo-ws-{}", temp_path_nonce()));
+        fs::create_dir_all(base.join("zeta-dir")).expect("subdir should create");
+        fs::write(base.join("alpha.txt"), b"hello").expect("file should write");
+
+        let entries = read_workspace_dir(&base, "workspace").expect("dir should list");
+
+        assert_eq!(entries.len(), 2);
+        // Folder sorts before the file even though "alpha" < "zeta" alphabetically.
+        assert_eq!(entries[0].name, "zeta-dir");
+        assert_eq!(entries[0].kind, "folder");
+        assert_eq!(entries[0].size, None);
+        assert_eq!(entries[1].name, "alpha.txt");
+        assert_eq!(entries[1].kind, "file");
+        assert_eq!(entries[1].size, Some(5));
+        assert!(entries[1].id.ends_with("alpha.txt"));
+
+        fs::remove_dir_all(&base).ok();
     }
 
     #[test]

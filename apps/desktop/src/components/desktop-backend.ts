@@ -32,8 +32,10 @@ import {
 import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "./memory-status-model.ts";
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
 import { sanitizeCharacterStates, type CharacterStates, type Mood } from "./character-state.ts";
-import { sanitizeMoments, type CharacterMoment } from "./character-moments.ts";
+import { sanitizeMoments, type CharacterMoment, type MomentActorType } from "./character-moments.ts";
 import { sanitizeLetters, type CharacterLetter, type LetterSender } from "./character-letters.ts";
+import type { WorkspaceNode, WorkspaceRootId } from "./workspace-model.ts";
+import { sanitizeReviewMode, type ReviewMode } from "./review-mode-model.ts";
 
 export type SaveModelSettingsRequest = {
   profileId: string;
@@ -150,7 +152,11 @@ export type DesktopBackend = {
   getMemoryStatus: () => Promise<MemoryStatus>;
   getToolPolicySettings: () => Promise<ToolPolicySettings>;
   listChatSessions: () => Promise<ChatSessionSummary[]>;
+  listWorkspaceRoots: () => Promise<WorkspaceNode[]>;
+  listWorkspaceDir: (path: string, rootId: WorkspaceRootId) => Promise<WorkspaceNode[]>;
   loadModelSettings: () => Promise<ModelSettingsState>;
+  loadReviewMode: () => Promise<ReviewMode>;
+  saveReviewMode: (mode: ReviewMode) => Promise<ReviewMode>;
   onPiPromptProgress: (callback: (event: PiPromptProgressEvent) => void) => Promise<() => void>;
   onPiToolConfirm: (callback: (request: PiToolConfirmRequest) => void) => Promise<() => void>;
   respondPiToolConfirm: (request: RespondPiToolConfirmRequest) => Promise<void>;
@@ -173,6 +179,62 @@ type StoredChatMessageRecord = {
   providerId?: string;
   createdAt: string;
 };
+
+type WorkspaceEntryRecord = {
+  id: string;
+  name: string;
+  kind: string;
+  rootId: string;
+  size?: number | null;
+  modifiedAt?: number | null;
+  hasChildren?: boolean;
+};
+
+function workspaceNodeFromRecord(record: WorkspaceEntryRecord): WorkspaceNode {
+  return {
+    id: record.id,
+    name: record.name,
+    kind: record.kind === "folder" ? "folder" : "file",
+    rootId: record.rootId === "computer" ? "computer" : "workspace",
+    size: typeof record.size === "number" ? record.size : undefined,
+    modifiedAt: typeof record.modifiedAt === "number" ? record.modifiedAt : undefined,
+    hasChildren: Boolean(record.hasChildren)
+  };
+}
+
+// 浏览器预览没有文件系统：用一棵静态树按层喂给面板，让原型在 Vite 里也能点。
+// key 为父路径（根用 "__roots__"），值为这一层的条目。
+const previewBase = 1_700_000_000_000;
+const previewWorkspaceTree: Record<string, WorkspaceNode[]> = {
+  __roots__: [
+    { id: "/workspace", name: "cockapoo-pi-companion", kind: "folder", rootId: "workspace", hasChildren: true },
+    { id: "/home", name: "这台电脑", kind: "folder", rootId: "computer", hasChildren: true }
+  ],
+  "/workspace": [
+    { id: "/workspace/apps", name: "apps", kind: "folder", rootId: "workspace", hasChildren: true },
+    { id: "/workspace/README.md", name: "README.md", kind: "file", rootId: "workspace", size: 6_400, modifiedAt: previewBase, hasChildren: false },
+    { id: "/workspace/package.json", name: "package.json", kind: "file", rootId: "workspace", size: 980, modifiedAt: previewBase, hasChildren: false }
+  ],
+  "/workspace/apps": [
+    { id: "/workspace/apps/desktop", name: "desktop", kind: "folder", rootId: "workspace", hasChildren: true }
+  ],
+  "/workspace/apps/desktop": [
+    { id: "/workspace/apps/desktop/App.tsx", name: "App.tsx", kind: "file", rootId: "workspace", size: 38_220, modifiedAt: previewBase, hasChildren: false },
+    { id: "/workspace/apps/desktop/styles.css", name: "styles.css", kind: "file", rootId: "workspace", size: 96_540, modifiedAt: previewBase, hasChildren: false }
+  ],
+  "/home": [
+    { id: "/home/Documents", name: "Documents", kind: "folder", rootId: "computer", hasChildren: true },
+    { id: "/home/Downloads", name: "Downloads", kind: "folder", rootId: "computer", hasChildren: false }
+  ],
+  "/home/Documents": [
+    { id: "/home/Documents/notes.md", name: "notes.md", kind: "file", rootId: "computer", size: 2_100, modifiedAt: previewBase, hasChildren: false },
+    { id: "/home/Documents/budget.csv", name: "budget.csv", kind: "file", rootId: "computer", size: 18_500, modifiedAt: previewBase, hasChildren: false }
+  ]
+};
+
+function previewWorkspaceChildren(path: string): WorkspaceNode[] {
+  return previewWorkspaceTree[path] ?? [];
+}
 
 function isTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -465,6 +527,19 @@ export function createPreviewBackend(): DesktopBackend {
     async listChatSessions() {
       return [...sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     },
+    async listWorkspaceRoots() {
+      return previewWorkspaceChildren("__roots__");
+    },
+    async listWorkspaceDir(path) {
+      return previewWorkspaceChildren(path);
+    },
+    async loadReviewMode() {
+      return reviewMode;
+    },
+    async saveReviewMode(mode) {
+      reviewMode = sanitizeReviewMode(mode);
+      return reviewMode;
+    },
     async loadModelSettings() {
       state = mergeSavedModelSettings(buildInitialModelSettings(), savedSettings);
       return state;
@@ -587,9 +662,23 @@ export function createTauriBackend(): DesktopBackend {
     async listChatSessions() {
       return invoke<ChatSessionSummary[]>("list_chat_sessions");
     },
+    async listWorkspaceRoots() {
+      const records = await invoke<WorkspaceEntryRecord[]>("list_workspace_roots");
+      return records.map(workspaceNodeFromRecord);
+    },
+    async listWorkspaceDir(path, rootId) {
+      const records = await invoke<WorkspaceEntryRecord[]>("list_workspace_dir", { path, rootId });
+      return records.map(workspaceNodeFromRecord);
+    },
     async loadModelSettings() {
       const saved = await invoke<SavedModelSettings>("get_model_settings");
       return mergeSavedModelSettings(buildInitialModelSettings(), saved);
+    },
+    async loadReviewMode() {
+      return sanitizeReviewMode(await invoke<string>("get_review_mode"));
+    },
+    async saveReviewMode(mode) {
+      return sanitizeReviewMode(await invoke<string>("set_review_mode", { mode }));
     },
     async onPiPromptProgress(callback) {
       return listen<PiPromptProgressEvent>("pi_prompt_progress", (event) => {
