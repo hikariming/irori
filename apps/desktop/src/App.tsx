@@ -94,7 +94,8 @@ export function App() {
   const { states: characterStates, beginCharacterTurn, recordCharacterTurn, setCharacterSchedule, advanceCharacterLife } =
     useCharacterState();
   const { ensureDayScript } = useCharacterLife();
-  const { moments, postingIds, loadAllMoments, maybePostMoment, postCatchupMoment } = useCharacterMoments();
+  const { moments, postingIds, loadAllMoments, maybePostMoment, postCatchupMoment, toggleMomentLike, addMomentComment } =
+    useCharacterMoments();
   const { letters, writingIds, sendingIds, loadAllLetters, maybeWriteLetter, sendUserLetter, markRead } =
     useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
@@ -889,6 +890,12 @@ export function App() {
               backgroundSrc={activeCharacter.assets.background}
               postingAuthors={postingIds.map((id) => characterAuthors[id]).filter(Boolean)}
               now={letterClock}
+              onToggleLike={(momentId, liked) => {
+                void toggleMomentLike(momentId, { actorType: "user", actorId: "self" }, liked);
+              }}
+              onComment={(momentId, text) => {
+                void addMomentComment(momentId, { actorType: "user", actorId: "self" }, text);
+              }}
             />
           ) : viewMode === "letters" ? (
             <CompanionLetters

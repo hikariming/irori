@@ -6,8 +6,8 @@ import { defaultCharacterState } from "./character-state.ts";
 import {
   composeMomentPrompt,
   formatMomentTime,
+  hasMomentLike,
   MIN_MOMENT_GAP_MS,
-  moodLabel,
   parseMomentText,
   sanitizeMoments,
   shouldPostMoment
@@ -60,12 +60,7 @@ test("formatMomentTime renders relative labels", () => {
   assert.equal(formatMomentTime(now - 2 * 86_400_000, now), "2 天前");
 });
 
-test("moodLabel maps enum to readable label or null", () => {
-  assert.equal(moodLabel("warm"), "温暖");
-  assert.equal(moodLabel(null), null);
-});
-
-test("sanitizeMoments drops invalid entries and sorts newest first", () => {
+test("sanitizeMoments drops invalid entries, strips mood from life-circle data, and sorts newest first", () => {
   const result = sanitizeMoments([
     { id: "a", characterId: "lulin", text: "早", mood: "calm", createdAt: 100 },
     { id: "b", characterId: "lulin", text: "  ", mood: "warm", createdAt: 200 },
@@ -74,11 +69,53 @@ test("sanitizeMoments drops invalid entries and sorts newest first", () => {
   ]);
   assert.equal(result.length, 2);
   assert.equal(result[0].id, "c");
-  assert.equal(result[0].mood, null);
+  assert.equal("mood" in result[0], false);
   assert.equal(result[1].id, "a");
 });
 
 test("sanitizeMoments accepts numeric-string createdAt", () => {
   const result = sanitizeMoments([{ id: "a", characterId: "lulin", text: "x", mood: null, createdAt: "150" }]);
   assert.equal(result[0].createdAt, 150);
+});
+
+test("sanitizeMoments keeps valid likes and comments newest first", () => {
+  const result = sanitizeMoments([
+    {
+      id: "a",
+      characterId: "lulin",
+      text: "今天阳光很好",
+      createdAt: 150,
+      likes: [
+        { actorType: "user", actorId: "self", createdAt: 200 },
+        { actorType: "bot", actorId: "bad", createdAt: 210 },
+        { actorType: "character", actorId: "", createdAt: 220 }
+      ],
+      comments: [
+        { id: "old", actorType: "character", actorId: "shili", text: "确实", createdAt: 300 },
+        { id: "empty", actorType: "user", actorId: "self", text: " ", createdAt: 400 },
+        { id: "new", actorType: "user", actorId: "self", text: "我也喜欢这样的天。", createdAt: 500 }
+      ]
+    }
+  ]);
+
+  assert.equal(result[0].likes.length, 1);
+  assert.deepEqual(result[0].likes[0], { actorType: "user", actorId: "self", createdAt: 200 });
+  assert.equal(result[0].comments.length, 2);
+  assert.equal(result[0].comments[0].id, "old");
+  assert.equal(result[0].comments[1].id, "new");
+});
+
+test("hasMomentLike checks likes by actor identity", () => {
+  const [moment] = sanitizeMoments([
+    {
+      id: "a",
+      characterId: "lulin",
+      text: "今天阳光很好",
+      createdAt: 150,
+      likes: [{ actorType: "user", actorId: "self", createdAt: 200 }]
+    }
+  ]);
+
+  assert.equal(hasMomentLike(moment, { actorType: "user", actorId: "self" }), true);
+  assert.equal(hasMomentLike(moment, { actorType: "character", actorId: "self" }), false);
 });

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { CharacterCard } from "./character-cards";
-import { composeMomentPrompt, parseMomentText, shouldPostMoment, type CharacterMoment } from "./character-moments";
+import { composeMomentPrompt, parseMomentText, shouldPostMoment, type CharacterMoment, type MomentActorRef } from "./character-moments";
 import type { CharacterState } from "./character-state";
 import { desktopBackend } from "./desktop-backend";
 
@@ -20,6 +20,12 @@ export function useCharacterMoments() {
   momentsRef.current = moments;
   // 正在生成动态的角色 id，避免同一角色并发触发刷屏。
   const inFlightRef = useRef<Set<string>>(new Set());
+
+  function replaceMoment(updated: CharacterMoment) {
+    const next = momentsRef.current.map((moment) => (moment.id === updated.id ? updated : moment));
+    momentsRef.current = next;
+    setMoments(next);
+  }
 
   const loadMoments = useCallback(async (characterId: string) => {
     const loaded = await desktopBackend.listCharacterMoments(characterId).catch(() => [] as CharacterMoment[]);
@@ -60,8 +66,7 @@ export function useCharacterMoments() {
 
       const moment = await desktopBackend.addCharacterMoment({
         characterId: card.id,
-        text,
-        mood: state.mood
+        text
       });
       const next = [moment, ...momentsRef.current];
       momentsRef.current = next;
@@ -95,5 +100,27 @@ export function useCharacterMoments() {
     [composeAndPost]
   );
 
-  return { moments, postingIds, loadMoments, loadAllMoments, maybePostMoment, postCatchupMoment } as const;
+  const toggleMomentLike = useCallback(async (momentId: string, actor: MomentActorRef, liked: boolean) => {
+    const updated = await desktopBackend.toggleCharacterMomentLike({
+      momentId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      liked
+    });
+    replaceMoment(updated);
+    return updated;
+  }, []);
+
+  const addMomentComment = useCallback(async (momentId: string, actor: MomentActorRef, text: string) => {
+    const updated = await desktopBackend.addCharacterMomentComment({
+      momentId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      text
+    });
+    replaceMoment(updated);
+    return updated;
+  }, []);
+
+  return { moments, postingIds, loadMoments, loadAllMoments, maybePostMoment, postCatchupMoment, toggleMomentLike, addMomentComment } as const;
 }

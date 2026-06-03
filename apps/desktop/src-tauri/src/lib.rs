@@ -191,7 +191,42 @@ struct ChatMessageRecord {
 struct AddCharacterMomentRequest {
     character_id: String,
     text: String,
-    mood: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToggleCharacterMomentLikeRequest {
+    moment_id: String,
+    actor_type: String,
+    actor_id: String,
+    liked: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddCharacterMomentCommentRequest {
+    moment_id: String,
+    actor_type: String,
+    actor_id: String,
+    text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterMomentLikeRecord {
+    actor_type: String,
+    actor_id: String,
+    created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CharacterMomentCommentRecord {
+    id: String,
+    actor_type: String,
+    actor_id: String,
+    text: String,
+    created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -200,8 +235,9 @@ struct CharacterMomentRecord {
     id: String,
     character_id: String,
     text: String,
-    mood: Option<String>,
     created_at: String,
+    likes: Vec<CharacterMomentLikeRecord>,
+    comments: Vec<CharacterMomentCommentRecord>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -402,6 +438,24 @@ fn list_character_moments(
 ) -> Result<Vec<CharacterMomentRecord>, String> {
     let limit = limit.unwrap_or(50).clamp(1, 200);
     list_character_moments_from_path(&chat_history_path(&app)?, character_id.as_deref(), limit)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn toggle_character_moment_like(
+    app: AppHandle,
+    request: ToggleCharacterMomentLikeRequest,
+) -> Result<CharacterMomentRecord, String> {
+    toggle_character_moment_like_to_path(&chat_history_path(&app)?, request, &current_timestamp())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_character_moment_comment(
+    app: AppHandle,
+    request: AddCharacterMomentCommentRequest,
+) -> Result<CharacterMomentRecord, String> {
+    add_character_moment_comment_to_path(&chat_history_path(&app)?, request, &current_timestamp())
         .map_err(|error| error.to_string())
 }
 
@@ -1294,6 +1348,25 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS character_moment_like (
+          moment_id TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          actor_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY(moment_id, actor_type, actor_id),
+          FOREIGN KEY(moment_id) REFERENCES character_moment(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS character_moment_comment (
+          id TEXT PRIMARY KEY,
+          moment_id TEXT NOT NULL,
+          actor_type TEXT NOT NULL,
+          actor_id TEXT NOT NULL,
+          text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(moment_id) REFERENCES character_moment(id)
+        );
+
         CREATE TABLE IF NOT EXISTS character_letter (
           id TEXT PRIMARY KEY,
           character_id TEXT NOT NULL,
@@ -1315,6 +1388,12 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
 
         CREATE INDEX IF NOT EXISTS idx_character_moment_character_created_at
           ON character_moment(character_id, created_at DESC);
+
+        CREATE INDEX IF NOT EXISTS idx_character_moment_like_moment
+          ON character_moment_like(moment_id, created_at ASC);
+
+        CREATE INDEX IF NOT EXISTS idx_character_moment_comment_moment
+          ON character_moment_comment(moment_id, created_at ASC);
 
         CREATE INDEX IF NOT EXISTS idx_character_letter_character_deliver_at
           ON character_letter(character_id, deliver_at DESC);
@@ -1385,9 +1464,9 @@ fn insert_character_moment_to_path(
     let id = compact_id("moment", &format!("{}{}", now, request.character_id));
 
     connection.execute(
-        "INSERT INTO character_moment (id, character_id, text, mood, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![id, request.character_id, request.text, request.mood, now],
+        "INSERT INTO character_moment (id, character_id, text, created_at)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![id, request.character_id, request.text, now],
     )?;
 
     get_character_moment_record(&connection, &id)?
@@ -1404,7 +1483,7 @@ fn list_character_moments_from_path(
 
     if let Some(character_id) = character_id {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, text, mood, created_at
+            "SELECT id, character_id, text, created_at
              FROM character_moment
              WHERE character_id = ?1
              ORDER BY created_at DESC
@@ -1412,18 +1491,18 @@ fn list_character_moments_from_path(
         )?;
         let rows = statement.query_map(params![character_id, limit], row_to_character_moment_record)?;
         for row in rows {
-            moments.push(row?);
+            moments.push(hydrate_character_moment_record(&connection, row?)?);
         }
     } else {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, text, mood, created_at
+            "SELECT id, character_id, text, created_at
              FROM character_moment
              ORDER BY created_at DESC
              LIMIT ?1",
         )?;
         let rows = statement.query_map(params![limit], row_to_character_moment_record)?;
         for row in rows {
-            moments.push(row?);
+            moments.push(hydrate_character_moment_record(&connection, row?)?);
         }
     }
 
@@ -1436,13 +1515,15 @@ fn get_character_moment_record(
 ) -> Result<Option<CharacterMomentRecord>, rusqlite::Error> {
     connection
         .query_row(
-            "SELECT id, character_id, text, mood, created_at
+            "SELECT id, character_id, text, created_at
              FROM character_moment
              WHERE id = ?1",
             params![id],
             row_to_character_moment_record,
         )
-        .optional()
+        .optional()?
+        .map(|record| hydrate_character_moment_record(connection, record))
+        .transpose()
 }
 
 fn row_to_character_moment_record(
@@ -1452,9 +1533,123 @@ fn row_to_character_moment_record(
         id: row.get(0)?,
         character_id: row.get(1)?,
         text: row.get(2)?,
-        mood: row.get(3)?,
-        created_at: row.get(4)?,
+        created_at: row.get(3)?,
+        likes: Vec::new(),
+        comments: Vec::new(),
     })
+}
+
+fn hydrate_character_moment_record(
+    connection: &Connection,
+    mut record: CharacterMomentRecord,
+) -> Result<CharacterMomentRecord, rusqlite::Error> {
+    let mut likes_statement = connection.prepare(
+        "SELECT actor_type, actor_id, created_at
+         FROM character_moment_like
+         WHERE moment_id = ?1
+         ORDER BY created_at ASC",
+    )?;
+    let like_rows = likes_statement.query_map(params![&record.id], |row| {
+        Ok(CharacterMomentLikeRecord {
+            actor_type: row.get(0)?,
+            actor_id: row.get(1)?,
+            created_at: row.get(2)?,
+        })
+    })?;
+    for row in like_rows {
+        record.likes.push(row?);
+    }
+
+    let mut comments_statement = connection.prepare(
+        "SELECT id, actor_type, actor_id, text, created_at
+         FROM character_moment_comment
+         WHERE moment_id = ?1
+         ORDER BY created_at ASC",
+    )?;
+    let comment_rows = comments_statement.query_map(params![&record.id], |row| {
+        Ok(CharacterMomentCommentRecord {
+            id: row.get(0)?,
+            actor_type: row.get(1)?,
+            actor_id: row.get(2)?,
+            text: row.get(3)?,
+            created_at: row.get(4)?,
+        })
+    })?;
+    for row in comment_rows {
+        record.comments.push(row?);
+    }
+
+    Ok(record)
+}
+
+fn normalize_moment_actor(
+    actor_type: &str,
+    actor_id: &str,
+) -> Result<(String, String), Box<dyn std::error::Error>> {
+    let actor_type = actor_type.trim();
+    let actor_id = actor_id.trim();
+    if actor_type != "user" && actor_type != "character" {
+        return Err("动态互动来源不合法。".into());
+    }
+    if actor_id.is_empty() {
+        return Err("动态互动来源缺少 id。".into());
+    }
+    Ok((actor_type.to_string(), actor_id.to_string()))
+}
+
+fn toggle_character_moment_like_to_path(
+    path: &Path,
+    request: ToggleCharacterMomentLikeRequest,
+    now: &str,
+) -> Result<CharacterMomentRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    if get_character_moment_record(&connection, &request.moment_id)?.is_none() {
+        return Err("动态不存在。".into());
+    }
+    let (actor_type, actor_id) = normalize_moment_actor(&request.actor_type, &request.actor_id)?;
+
+    if request.liked {
+        connection.execute(
+            "INSERT OR IGNORE INTO character_moment_like (moment_id, actor_type, actor_id, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![request.moment_id, actor_type, actor_id, now],
+        )?;
+    } else {
+        connection.execute(
+            "DELETE FROM character_moment_like
+             WHERE moment_id = ?1 AND actor_type = ?2 AND actor_id = ?3",
+            params![request.moment_id, actor_type, actor_id],
+        )?;
+    }
+
+    get_character_moment_record(&connection, &request.moment_id)?
+        .ok_or_else(|| "updated character moment could not be loaded".into())
+}
+
+fn add_character_moment_comment_to_path(
+    path: &Path,
+    request: AddCharacterMomentCommentRequest,
+    now: &str,
+) -> Result<CharacterMomentRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    if get_character_moment_record(&connection, &request.moment_id)?.is_none() {
+        return Err("动态不存在。".into());
+    }
+    let (actor_type, actor_id) = normalize_moment_actor(&request.actor_type, &request.actor_id)?;
+    let text = request.text.trim();
+    if text.is_empty() {
+        return Err("评论不能为空。".into());
+    }
+    let id = compact_id("moment-comment", &format!("{}{}", now, request.moment_id));
+
+    connection.execute(
+        "INSERT INTO character_moment_comment (id, moment_id, actor_type, actor_id, text, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, request.moment_id, actor_type, actor_id, text, now],
+    )?;
+
+    get_character_moment_record(&connection, &request.moment_id)?
+        .ok_or_else(|| "updated character moment could not be loaded".into())
 }
 
 fn insert_character_letter_to_path(
@@ -1765,6 +1960,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             add_character_letter,
             add_character_moment,
+            add_character_moment_comment,
             append_chat_message,
             companion_status,
             create_chat_session,
@@ -2103,7 +2299,6 @@ mod tests {
             AddCharacterMomentRequest {
                 character_id: "lulin".into(),
                 text: "清晨的实验室很安静".into(),
-                mood: Some("calm".into()),
             },
             "1000",
         )
@@ -2113,7 +2308,6 @@ mod tests {
             AddCharacterMomentRequest {
                 character_id: "lulin".into(),
                 text: "午后想喝杯咖啡".into(),
-                mood: Some("warm".into()),
             },
             "2000",
         )
@@ -2123,7 +2317,6 @@ mod tests {
             AddCharacterMomentRequest {
                 character_id: "cenji".into(),
                 text: "别人的动态".into(),
-                mood: None,
             },
             "1500",
         )
@@ -2134,7 +2327,8 @@ mod tests {
         assert_eq!(lulin.len(), 2);
         assert_eq!(lulin[0].id, second.id);
         assert_eq!(lulin[0].text, "午后想喝杯咖啡");
-        assert_eq!(lulin[0].mood.as_deref(), Some("warm"));
+        assert!(lulin[0].likes.is_empty());
+        assert!(lulin[0].comments.is_empty());
 
         let all = list_character_moments_from_path(&path, None, 50).expect("all moments should load");
         assert_eq!(all.len(), 3);
@@ -2143,6 +2337,70 @@ mod tests {
             .expect("limited moments should load");
         assert_eq!(limited.len(), 1);
         assert_eq!(limited[0].id, second.id);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_moment_interactions_round_trip_with_moments() {
+        let path = temp_chat_history_path();
+        let moment = insert_character_moment_to_path(
+            &path,
+            AddCharacterMomentRequest {
+                character_id: "lulin".into(),
+                text: "午后想喝杯咖啡".into(),
+            },
+            "2000",
+        )
+        .expect("moment should save");
+
+        let liked = toggle_character_moment_like_to_path(
+            &path,
+            ToggleCharacterMomentLikeRequest {
+                moment_id: moment.id.clone(),
+                actor_type: "user".into(),
+                actor_id: "self".into(),
+                liked: true,
+            },
+            "2100",
+        )
+        .expect("like should save");
+        assert_eq!(liked.likes.len(), 1);
+        assert_eq!(liked.likes[0].actor_type, "user");
+        assert_eq!(liked.likes[0].actor_id, "self");
+
+        let commented = add_character_moment_comment_to_path(
+            &path,
+            AddCharacterMomentCommentRequest {
+                moment_id: moment.id.clone(),
+                actor_type: "character".into(),
+                actor_id: "shili".into(),
+                text: "我也想喝。".into(),
+            },
+            "2200",
+        )
+        .expect("comment should save");
+        assert_eq!(commented.comments.len(), 1);
+        assert_eq!(commented.comments[0].actor_id, "shili");
+        assert_eq!(commented.comments[0].text, "我也想喝。");
+
+        let listed = list_character_moments_from_path(&path, None, 50).expect("moments should load");
+        assert_eq!(listed[0].likes.len(), 1);
+        assert_eq!(listed[0].comments.len(), 1);
+
+        let unliked = toggle_character_moment_like_to_path(
+            &path,
+            ToggleCharacterMomentLikeRequest {
+                moment_id: moment.id.clone(),
+                actor_type: "user".into(),
+                actor_id: "self".into(),
+                liked: false,
+            },
+            "2300",
+        )
+        .expect("unlike should save");
+        assert!(unliked.likes.is_empty());
+        assert_eq!(unliked.comments.len(), 1);
 
         let _ = fs::remove_file(path);
     }

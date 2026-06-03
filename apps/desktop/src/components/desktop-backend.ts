@@ -69,15 +69,29 @@ export type RespondPiToolConfirmRequest = {
 export type AddCharacterMomentRequest = {
   characterId: string;
   text: string;
-  mood?: Mood | null;
+};
+
+export type ToggleCharacterMomentLikeRequest = {
+  momentId: string;
+  actorType: MomentActorType;
+  actorId: string;
+  liked: boolean;
+};
+
+export type AddCharacterMomentCommentRequest = {
+  momentId: string;
+  actorType: MomentActorType;
+  actorId: string;
+  text: string;
 };
 
 type CharacterMomentRecord = {
   id: string;
   characterId: string;
   text: string;
-  mood: string | null;
   createdAt: string;
+  likes?: Array<{ actorType: string; actorId: string; createdAt: string }>;
+  comments?: Array<{ id: string; actorType: string; actorId: string; text: string; createdAt: string }>;
 };
 
 export type AddCharacterLetterRequest = {
@@ -118,10 +132,11 @@ export type PiPromptResponse = {
   };
 };
 
-const previewRuntimeMessage = "浏览器预览不会调用真实 LLM。请在 Tauri 桌面客户端里运行并发送消息，那里会通过 Rust command 调用 local-agent / Pi。";
+const previewRuntimeMessage = "浏览器预览不会调用真实 LLM。请在 Tauri 桌面客户端里运行并发送消息，那里会通过 Rust command 调用 sidecar / Pi。";
 
 export type DesktopBackend = {
   addCharacterLetter: (request: AddCharacterLetterRequest) => Promise<CharacterLetter>;
+  addCharacterMomentComment: (request: AddCharacterMomentCommentRequest) => Promise<CharacterMoment>;
   addCharacterMoment: (request: AddCharacterMomentRequest) => Promise<CharacterMoment>;
   appendChatMessage: (request: AppendChatMessageRequest) => Promise<ChatMessage>;
   createChatSession: (request: CreateChatSessionRequest) => Promise<ChatSessionSummary>;
@@ -144,6 +159,7 @@ export type DesktopBackend = {
   sendPiPrompt: (request: SendPiPromptRequest) => Promise<PiPromptResponse>;
   setActiveModelProfile: (profileId: string) => Promise<ModelSettingsState>;
   testModelConnection: (request?: TestModelConnectionRequest) => Promise<PiPromptResponse>;
+  toggleCharacterMomentLike: (request: ToggleCharacterMomentLikeRequest) => Promise<CharacterMoment>;
 };
 
 type StoredChatMessageRecord = {
@@ -183,8 +199,20 @@ function momentFromRecord(record: CharacterMomentRecord) {
     id: record.id,
     characterId: record.characterId,
     text: record.text,
-    mood: record.mood,
-    createdAt: parseStoredTimestamp(record.createdAt).getTime()
+    createdAt: parseStoredTimestamp(record.createdAt).getTime(),
+    likes: record.likes ?? [],
+    comments: record.comments ?? []
+  };
+}
+
+function fallbackMomentFromRecord(record: CharacterMomentRecord): CharacterMoment {
+  return {
+    id: record.id,
+    characterId: record.characterId,
+    text: record.text.trim() || "动态",
+    createdAt: parseStoredTimestamp(record.createdAt).getTime(),
+    likes: [],
+    comments: []
   };
 }
 
@@ -279,8 +307,9 @@ export function createPreviewBackend(): DesktopBackend {
         id: previewId("moment"),
         characterId: request.characterId,
         text: request.text,
-        mood: request.mood ?? null,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        likes: [],
+        comments: []
       };
       characterMoments = [moment, ...characterMoments];
       return moment;
@@ -291,6 +320,40 @@ export function createPreviewBackend(): DesktopBackend {
         .filter((moment) => (characterId ? moment.characterId === characterId : true))
         .sort((left, right) => right.createdAt - left.createdAt)
         .slice(0, max);
+    },
+    async toggleCharacterMomentLike(request) {
+      const target = characterMoments.find((moment) => moment.id === request.momentId);
+      if (!target) {
+        throw new Error("动态不存在。");
+      }
+      const exists = target.likes.some((like) => like.actorType === request.actorType && like.actorId === request.actorId);
+      if (request.liked && !exists) {
+        target.likes = [...target.likes, { actorType: request.actorType, actorId: request.actorId, createdAt: Date.now() }];
+      } else if (!request.liked) {
+        target.likes = target.likes.filter((like) => like.actorType !== request.actorType || like.actorId !== request.actorId);
+      }
+      return target;
+    },
+    async addCharacterMomentComment(request) {
+      const target = characterMoments.find((moment) => moment.id === request.momentId);
+      const text = request.text.trim();
+      if (!target) {
+        throw new Error("动态不存在。");
+      }
+      if (!text) {
+        throw new Error("评论不能为空。");
+      }
+      target.comments = [
+        ...target.comments,
+        {
+          id: previewId("moment-comment"),
+          actorType: request.actorType,
+          actorId: request.actorId,
+          text,
+          createdAt: Date.now()
+        }
+      ];
+      return target;
     },
     async addCharacterLetter(request) {
       const now = Date.now();
@@ -459,7 +522,17 @@ export function createTauriBackend(): DesktopBackend {
     async addCharacterMoment(request) {
       const record = await invoke<CharacterMomentRecord>("add_character_moment", { request });
       const [moment] = sanitizeMoments([momentFromRecord(record)]);
-      return moment ?? momentFromRecord(record);
+      return moment ?? fallbackMomentFromRecord(record);
+    },
+    async toggleCharacterMomentLike(request) {
+      const record = await invoke<CharacterMomentRecord>("toggle_character_moment_like", { request });
+      const [moment] = sanitizeMoments([momentFromRecord(record)]);
+      return moment ?? fallbackMomentFromRecord(record);
+    },
+    async addCharacterMomentComment(request) {
+      const record = await invoke<CharacterMomentRecord>("add_character_moment_comment", { request });
+      const [moment] = sanitizeMoments([momentFromRecord(record)]);
+      return moment ?? fallbackMomentFromRecord(record);
     },
     async listCharacterMoments(characterId, limit) {
       const records = await invoke<CharacterMomentRecord[]>("list_character_moments", { characterId, limit });

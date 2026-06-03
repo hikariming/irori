@@ -2,12 +2,30 @@ import type { CharacterCard } from "./character-cards.ts";
 import { lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
 
 // 角色自己发的一条「朋友圈/动态」。结构化、可序列化、无向量（保持 FTS-only 理念）。
+export type MomentActorType = "user" | "character";
+
+export type MomentActorRef = {
+  actorType: MomentActorType;
+  actorId: string;
+};
+
+export type MomentLike = MomentActorRef & {
+  createdAt: number;
+};
+
+export type MomentComment = MomentActorRef & {
+  id: string;
+  text: string;
+  createdAt: number;
+};
+
 export type CharacterMoment = {
   id: string;
   characterId: string;
   text: string;
-  mood: Mood | null; // 发这条时的心情，用于展示，可为空
   createdAt: number; // 发布时间戳（ms）
+  likes: MomentLike[];
+  comments: MomentComment[];
 };
 
 // 两条动态之间至少间隔这么久，避免一打开就刷屏。
@@ -105,19 +123,72 @@ export function formatMomentTime(createdAt: number, now: number): string {
   return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(new Date(createdAt));
 }
 
-const moodLabels: Record<Mood, string> = {
-  calm: "平静",
-  warm: "温暖",
-  playful: "俏皮",
-  tired: "疲惫",
-  guarded: "戒备"
-};
+const actorTypes: MomentActorType[] = ["user", "character"];
 
-export function moodLabel(mood: Mood | null): string | null {
-  return mood ? moodLabels[mood] : null;
+function toFiniteNumber(value: unknown, fallback: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : fallback;
 }
 
-const moods: Mood[] = ["calm", "warm", "playful", "tired", "guarded"];
+function sanitizeActor(entry: Record<string, unknown>): MomentActorRef | null {
+  if (!actorTypes.includes(entry.actorType as MomentActorType) || typeof entry.actorId !== "string" || !entry.actorId.trim()) {
+    return null;
+  }
+  return {
+    actorType: entry.actorType as MomentActorType,
+    actorId: entry.actorId.trim()
+  };
+}
+
+function sanitizeLikes(value: unknown): MomentLike[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const likes: MomentLike[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const entry = raw as Record<string, unknown>;
+    const actor = sanitizeActor(entry);
+    if (!actor) {
+      continue;
+    }
+    likes.push({ ...actor, createdAt: toFiniteNumber(entry.createdAt, 0) });
+  }
+  return likes.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+function sanitizeComments(value: unknown): MomentComment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const comments: MomentComment[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") {
+      continue;
+    }
+    const entry = raw as Record<string, unknown>;
+    const actor = sanitizeActor(entry);
+    const text = typeof entry.text === "string" ? entry.text.trim() : "";
+    if (!actor || typeof entry.id !== "string" || !entry.id || !text) {
+      continue;
+    }
+    comments.push({
+      ...actor,
+      id: entry.id,
+      text,
+      createdAt: toFiniteNumber(entry.createdAt, 0)
+    });
+  }
+  return comments.sort((a, b) => a.createdAt - b.createdAt);
+}
+
+export function hasMomentLike(moment: CharacterMoment, actor: MomentActorRef): boolean {
+  return moment.likes.some((like) => like.actorType === actor.actorType && like.actorId === actor.actorId);
+}
 
 // 校验后端返回的动态数组，丢弃无效项，按时间倒序。
 export function sanitizeMoments(value: unknown): CharacterMoment[] {
@@ -138,13 +209,14 @@ export function sanitizeMoments(value: unknown): CharacterMoment[] {
     if (!text) {
       continue;
     }
-    const createdAt = typeof entry.createdAt === "number" ? entry.createdAt : Number(entry.createdAt);
+    const createdAt = toFiniteNumber(entry.createdAt, 0);
     result.push({
       id: entry.id,
       characterId: entry.characterId,
       text,
-      mood: moods.includes(entry.mood as Mood) ? (entry.mood as Mood) : null,
-      createdAt: Number.isFinite(createdAt) ? createdAt : 0
+      createdAt,
+      likes: sanitizeLikes(entry.likes),
+      comments: sanitizeComments(entry.comments)
     });
   }
 

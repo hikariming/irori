@@ -1,7 +1,9 @@
+import { useState } from "react";
+
 import { Avatar, ScrollShadow } from "@heroui/react";
 
 import type { FeedAuthor } from "./character-cards";
-import { formatMomentTime, moodLabel, type CharacterMoment } from "./character-moments";
+import { formatMomentTime, hasMomentLike, type CharacterMoment, type MomentActorRef } from "./character-moments";
 
 type CompanionMomentsFeedProps = {
   moments: CharacterMoment[];
@@ -9,9 +11,12 @@ type CompanionMomentsFeedProps = {
   backgroundSrc?: string;
   postingAuthors?: FeedAuthor[];
   now?: number;
+  onToggleLike?: (momentId: string, liked: boolean) => void;
+  onComment?: (momentId: string, text: string) => void;
 };
 
 const unknownAuthor: FeedAuthor = { name: "神秘角色", avatar: "" };
+const currentUserActor: MomentActorRef = { actorType: "user", actorId: "self" };
 
 function AuthorAvatar({ author, className }: { author: FeedAuthor; className: string }) {
   return (
@@ -22,15 +27,36 @@ function AuthorAvatar({ author, className }: { author: FeedAuthor; className: st
   );
 }
 
+function actorName(actor: MomentActorRef, authors: Record<string, FeedAuthor>) {
+  if (actor.actorType === "user") {
+    return "你";
+  }
+  return authors[actor.actorId]?.name ?? unknownAuthor.name;
+}
+
 // 生活圈动态：把所有角色的动态汇成一条共享时间线，像朋友圈/Facebook 那样大家住在一起。
 export function CompanionMomentsFeed({
   moments,
   authors,
   backgroundSrc,
   postingAuthors = [],
-  now = Date.now()
+  now = Date.now(),
+  onToggleLike,
+  onComment
 }: CompanionMomentsFeedProps) {
+  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const isEmpty = moments.length === 0 && postingAuthors.length === 0;
+
+  function submitComment(momentId: string) {
+    const text = (commentDrafts[momentId] ?? "").trim();
+    if (!text || !onComment) {
+      return;
+    }
+    onComment(momentId, text);
+    setCommentDrafts((current) => ({ ...current, [momentId]: "" }));
+    setCommentingId(null);
+  }
 
   return (
     <section className="moments-layout" aria-label="生活圈动态">
@@ -66,7 +92,9 @@ export function CompanionMomentsFeed({
 
         {moments.map((moment) => {
           const author = authors[moment.characterId] ?? unknownAuthor;
-          const mood = moodLabel(moment.mood);
+          const liked = hasMomentLike(moment, currentUserActor);
+          const likeNames = moment.likes.map((like) => actorName(like, authors));
+          const commentDraft = commentDrafts[moment.id] ?? "";
           return (
             <article className="moment-card" key={moment.id}>
               <AuthorAvatar author={author} className="moment-avatar" />
@@ -76,7 +104,56 @@ export function CompanionMomentsFeed({
                   <time>{formatMomentTime(moment.createdAt, now)}</time>
                 </header>
                 <p>{moment.text}</p>
-                {mood ? <span className="moment-mood">{mood}</span> : null}
+                <div className="moment-actions">
+                  <button
+                    type="button"
+                    className={liked ? "is-liked" : ""}
+                    onClick={() => onToggleLike?.(moment.id, !liked)}
+                  >
+                    <span className="moment-action-icon" aria-hidden="true">{liked ? "♥" : "♡"}</span>
+                    <span>{liked ? "已赞" : "赞"}{moment.likes.length > 0 ? ` ${moment.likes.length}` : ""}</span>
+                  </button>
+                  <button type="button" onClick={() => setCommentingId((current) => (current === moment.id ? null : moment.id))}>
+                    <span className="moment-action-icon" aria-hidden="true">✎</span>
+                    <span>评论{moment.comments.length > 0 ? ` ${moment.comments.length}` : ""}</span>
+                  </button>
+                </div>
+                {moment.likes.length > 0 || moment.comments.length > 0 || commentingId === moment.id ? (
+                  <div className="moment-interactions">
+                    {moment.likes.length > 0 ? (
+                      <div className="moment-likes">
+                        <span aria-hidden="true">♥</span>
+                        <span>{likeNames.join("、")}</span>
+                      </div>
+                    ) : null}
+                    {moment.comments.length > 0 ? (
+                      <div className="moment-comments">
+                        {moment.comments.map((comment) => (
+                          <p key={comment.id}>
+                            <strong>{actorName(comment, authors)}</strong>
+                            <span>{comment.text}</span>
+                          </p>
+                        ))}
+                      </div>
+                    ) : null}
+                    {commentingId === moment.id ? (
+                      <form className="moment-comment-form" onSubmit={(event) => {
+                        event.preventDefault();
+                        submitComment(moment.id);
+                      }}>
+                        <input
+                          placeholder="写评论…"
+                          value={commentDraft}
+                          maxLength={180}
+                          onChange={(event) => setCommentDrafts((current) => ({ ...current, [moment.id]: event.target.value }))}
+                        />
+                        <button type="submit" disabled={!commentDraft.trim() || !onComment}>
+                          发送
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             </article>
           );

@@ -2294,7 +2294,7 @@ button {
 .moment-card {
   display: flex;
   gap: 10px;
-  width: min(560px, 100%);
+  width: min(720px, 100%);
   align-self: center;
   margin-bottom: 14px;
 }
@@ -2346,20 +2346,139 @@ button {
   white-space: pre-wrap;
 }
 
-.moment-mood {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 2px 9px;
-  border-radius: 999px;
-  background: rgba(47, 174, 145, 0.14);
-  color: #2e7c70;
-  font-size: 10px;
-  font-weight: 800;
-}
-
 .moment-card.is-posting .moment-body {
   border-style: dashed;
   background: rgba(255, 255, 255, 0.56);
+}
+
+.moment-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 11px;
+}
+
+.moment-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(47, 50, 59, 0.045);
+  padding: 4px 9px;
+  color: rgba(84, 88, 100, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.moment-actions button:hover {
+  background: rgba(47, 174, 145, 0.1);
+  color: #1f7a64;
+}
+
+.moment-actions button.is-liked {
+  background: rgba(47, 174, 145, 0.14);
+  color: #1f7a64;
+}
+
+.moment-action-icon {
+  display: inline-grid;
+  place-items: center;
+  min-width: 13px;
+  color: currentColor;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.moment-interactions {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: rgba(47, 50, 59, 0.055);
+}
+
+.moment-likes {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: rgba(47, 50, 59, 0.82);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.moment-likes span:first-child {
+  color: #2fae91;
+}
+
+.moment-comments {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.moment-likes + .moment-comments {
+  padding-top: 8px;
+  border-top: 1px solid rgba(42, 47, 61, 0.08);
+}
+
+.moment-comments p {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.moment-comments strong {
+  flex: 0 0 auto;
+  color: #1f7a64;
+  font-size: 12px;
+}
+
+.moment-comments span {
+  min-width: 0;
+  color: rgba(47, 50, 59, 0.86);
+}
+
+.moment-comment-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.moment-comment-form input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(42, 47, 61, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  padding: 7px 9px;
+  color: #333640;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.moment-comment-form input:focus {
+  outline: none;
+  border-color: rgba(47, 174, 145, 0.5);
+}
+
+.moment-comment-form button {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 8px;
+  background: rgba(47, 174, 145, 0.16);
+  padding: 0 12px;
+  color: #1f7a64;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.moment-comment-form button:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .moment-posting-pulse {
