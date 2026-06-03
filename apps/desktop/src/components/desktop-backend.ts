@@ -60,6 +60,7 @@ export type SendPiPromptRequest = {
   runId?: string;
   sessionId?: string;
   sessionPrompt?: string;
+  reviewMode?: ReviewMode;
 };
 
 export type RespondPiToolConfirmRequest = {
@@ -354,6 +355,7 @@ export function createPreviewBackend(): DesktopBackend {
   let characterStates: CharacterStates = {};
   let characterMoments: CharacterMoment[] = [];
   let characterLetters: CharacterLetter[] = [];
+  let reviewMode: ReviewMode = "default";
   const sessions: ChatSessionSummary[] = [];
   const messagesBySession = new Map<string, StoredChatMessageRecord[]>();
 

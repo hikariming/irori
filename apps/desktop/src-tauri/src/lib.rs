@@ -96,6 +96,9 @@ struct SendPiPromptRequest {
     run_id: Option<String>,
     session_prompt: Option<String>,
     session_id: Option<String>,
+    /// 工具审核模式："default"（用户手动）| "auto"（大模型审查）| "all"（全部通过）。
+    #[serde(default)]
+    review_mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -527,6 +530,16 @@ fn save_tool_policy_settings(
 }
 
 #[tauri::command]
+fn get_review_mode(app: AppHandle) -> Result<String, String> {
+    read_review_mode_from_path(&review_mode_path(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_review_mode(app: AppHandle, mode: String) -> Result<String, String> {
+    save_review_mode_to_path(&review_mode_path(&app)?, &mode).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn append_chat_message(
     app: AppHandle,
     request: AppendChatMessageRequest,
@@ -612,28 +625,35 @@ fn run_sidecar_prompt(
         chat_history_memory,
         tool_policy_settings,
     );
-    if request.is_some() {
+    if let Some(request) = request.as_ref() {
         let memory_dir = memory_backend_dir(&app)?;
         fs::create_dir_all(&memory_dir).map_err(|error| format!("初始化记忆目录失败：{error}"))?;
         payload["memoryBackendConfig"] =
             build_memory_backend_config_payload(&memory_dir, &resolved);
+        // 审核模式只对真实聊天（streaming）有意义。请求没带就读持久化设置，
+        // 再没有就回落到最安全的「用户手动」。
+        let review_mode = match request.review_mode.clone() {
+            Some(mode) => sanitize_review_mode(Some(&mode)),
+            None => read_review_mode_from_path(&review_mode_path(&app)?).unwrap_or_else(|_| "default".to_string()),
+        };
+        payload["reviewMode"] = serde_json::Value::String(review_mode);
     }
 
     if let Some(run_id) = request.as_ref().and_then(|request| request.run_id.clone()) {
         payload["streamEvents"] = serde_json::Value::Bool(true);
         payload["runId"] = serde_json::Value::String(run_id);
-        return execute_local_agent_prompt_streaming(app, agent_dir, payload);
+        return execute_sidecar_prompt_streaming(app, agent_dir, payload);
     }
 
-    execute_local_agent_prompt(agent_dir, payload)
+    execute_sidecar_prompt(agent_dir, payload)
 }
 
-fn execute_local_agent_prompt(
+fn execute_sidecar_prompt(
     agent_dir: PathBuf,
     payload: serde_json::Value,
 ) -> Result<PiPromptResponse, String> {
     let mut command = Command::new("pnpm");
-    for arg in local_agent_prompt_command_args(&agent_dir) {
+    for arg in sidecar_prompt_command_args(&agent_dir) {
         command.arg(arg);
     }
 
@@ -1000,6 +1020,14 @@ fn tool_policy_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join("tool-policy-settings.json"))
 }
 
+fn review_mode_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("review-mode.json"))
+}
+
 fn build_memory_backend_config_payload(
     memory_dir: &Path,
     stored: &StoredModelProfile,
@@ -1360,6 +1388,40 @@ fn default_tool_policy_settings() -> serde_json::Value {
             "node_modules"
         ]
     })
+}
+
+fn sanitize_review_mode(value: Option<&str>) -> String {
+    match value {
+        Some("auto") => "auto",
+        Some("all") => "all",
+        _ => "default",
+    }
+    .to_string()
+}
+
+fn read_review_mode_from_path(path: &Path) -> Result<String, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Ok("default".to_string());
+    }
+
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path)?)?;
+    Ok(sanitize_review_mode(
+        value.get("mode").and_then(|mode| mode.as_str()),
+    ))
+}
+
+fn save_review_mode_to_path(
+    path: &Path,
+    mode: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mode = sanitize_review_mode(Some(mode));
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(&serde_json::json!({ "mode": mode }))?)?;
+
+    Ok(mode)
 }
 
 fn read_tool_policy_settings_from_path(

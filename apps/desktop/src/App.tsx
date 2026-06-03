@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
@@ -54,6 +54,7 @@ import {
   type MemoryRunSnapshot
 } from "./components/memory-status-model";
 import { buildSidebarCharacters } from "./components/sidebar-model";
+import { DEFAULT_REVIEW_MODE, type ReviewMode } from "./components/review-mode-model";
 import {
   buildCharacterStateView,
   currentActivityPhrase,
@@ -380,6 +381,33 @@ export function App() {
     };
   }, []);
 
+  // 恢复上次选择的工具审核模式（持久化在 review-mode.json）。
+  useEffect(() => {
+    let isMounted = true;
+
+    desktopBackend.loadReviewMode()
+      .then((mode) => {
+        if (isMounted) {
+          setReviewMode(mode);
+        }
+      })
+      .catch(() => {
+        // 读不到就保持默认（手动审核），不打断启动。
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 切换审核模式：立即生效并持久化（写失败也保留本次会话的选择）。
+  function changeReviewMode(mode: ReviewMode) {
+    setReviewMode(mode);
+    void desktopBackend.saveReviewMode(mode).catch(() => {
+      // 持久化失败不影响本次会话使用，下次启动会回到上次成功保存的值。
+    });
+  }
+
   useEffect(() => {
     let isMounted = true;
     let unlisten: (() => void) | null = null;
@@ -702,7 +730,8 @@ export function App() {
         prompt,
         runId,
         sessionId,
-        sessionPrompt
+        sessionPrompt,
+        reviewMode
       });
       const memoryRun = {
         memoryBackendSource: response.memoryBackendSource,
@@ -958,6 +987,14 @@ export function App() {
         )}
         {pendingConfirm ? (
           <div className="tool-confirm" role="alertdialog" aria-label="工具操作确认">
+            {activeCharacter?.assets.portrait ? (
+              <figure
+                className="tool-confirm__portrait"
+                style={{ "--portrait-ring": activeCard?.themeColor ?? "#d68e23" } as CSSProperties}
+              >
+                <img src={activeCharacter.assets.portrait} alt={activeCharacter.character.name} />
+              </figure>
+            ) : null}
             <div className="tool-confirm__body">
               <p className="tool-confirm__title">
                 {activeCharacter?.character.name ?? "角色"} 想执行 {pendingConfirm.tool.name}
@@ -981,6 +1018,8 @@ export function App() {
           <CompanionInput
             disabled={isSending || !modelReady || !activeCharacter}
             isSending={isSending}
+            reviewMode={reviewMode}
+            onReviewModeChange={changeReviewMode}
             onSend={sendPrompt}
           />
         ) : null}
