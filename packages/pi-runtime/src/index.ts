@@ -1,4 +1,4 @@
-export type LocalAgentEvent =
+export type SidecarEvent =
   | { type: "assistant_text_delta"; sessionId: string; delta: string }
   | { type: "thinking_delta"; sessionId: string; delta: string }
   | { type: "tool_started"; sessionId: string; toolCallId: string; name: string; summary: string }

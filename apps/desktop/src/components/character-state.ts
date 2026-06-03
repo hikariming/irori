@@ -138,7 +138,9 @@ export function beginEncounter(
 // 供动态/信件 prompt 的「此刻情形」注入。
 export function currentActivityPhrase(state: CharacterState, now: number): string | null {
   const date = new Date(now);
-  if (!state.schedule || state.schedule.date !== toDateStr(date)) {
+  // 仅 LLM 生成的个性化作息才对外显示「此刻在干嘛」；兜底骨架对所有角色逐字相同，
+  // 会让不同角色看起来「活动串了」，故 skeleton 状态下不显示，等模型生成后再亮出来。
+  if (!state.schedule || state.schedule.date !== toDateStr(date) || state.schedule.source === "skeleton") {
     return null;
   }
   return describeNowActivity(state.schedule, minutesOfDay(date));

@@ -7,6 +7,7 @@ export type ComposeCharacterSessionPromptInput = {
   history: ChatMessage[];
   userPrompt: string;
   selfState?: string;
+  timeContext?: string;
   memories?: string[];
 };
 
@@ -78,6 +79,7 @@ export function composeCharacterSessionPrompt({
   history,
   userPrompt,
   selfState,
+  timeContext,
   memories
 }: ComposeCharacterSessionPromptInput) {
   return [
@@ -92,6 +94,7 @@ export function composeCharacterSessionPrompt({
     `说话风格：${card.speakingStyle}`,
     `互动原则：${card.interactionPrinciples.join("；")}`,
     "",
+    ...(timeContext ? ["## 当前真实时间", timeContext, ""] : []),
     ...(selfState ? ["## 此刻的我", selfState, ""] : []),
     ...(memories && memories.length > 0
       ? ["## 我还记得关于 ta 的事", ...memories.map((memory) => `- ${memory}`), ""]

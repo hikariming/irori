@@ -10,7 +10,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Keeps the local-agent child's stdin open for streaming runs so the desktop
+/// Keeps the sidecar child's stdin open for streaming runs so the desktop
 /// can answer confirm_request prompts mid-run. Keyed by runId; the entry is
 /// removed (closing stdin) when the run finishes.
 #[derive(Default)]
@@ -113,7 +113,7 @@ struct PiPromptResponse {
 }
 
 #[derive(Debug)]
-enum LocalAgentStreamMessage {
+enum SidecarStreamMessage {
     Progress(serde_json::Value),
     ConfirmRequest(serde_json::Value),
     Final(PiPromptResponse),
@@ -353,10 +353,10 @@ async fn send_pi_prompt(
             .clone()
             .unwrap_or_else(|| format!("[character:{}]\n{}", request.character_id, request.prompt));
 
-        run_local_agent_prompt(app, prompt, Some(request), None)
+        run_sidecar_prompt(app, prompt, Some(request), None)
     })
     .await
-    .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
+    .map_err(|error| format!("等待 sidecar 后台任务失败：{error}"))?
 }
 
 #[tauri::command]
@@ -365,7 +365,7 @@ async fn test_model_connection(
     request: Option<TestModelConnectionRequest>,
 ) -> Result<PiPromptResponse, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        run_local_agent_prompt(
+        run_sidecar_prompt(
             app,
             "请只回复两个字母：OK。不要解释，不要使用 Markdown。".to_string(),
             None,
@@ -373,7 +373,7 @@ async fn test_model_connection(
         )
     })
     .await
-    .map_err(|error| format!("等待 local-agent 后台任务失败：{error}"))?
+    .map_err(|error| format!("等待 sidecar 后台任务失败：{error}"))?
 }
 
 #[tauri::command]
@@ -510,7 +510,7 @@ fn mark_character_letter_read(
 fn get_memory_status(app: AppHandle) -> Result<MemoryStatus, String> {
     Ok(memory_status_from_paths(
         &memory_backend_dir(&app)?,
-        &local_agent_dir(),
+        &sidecar_dir(),
     ))
 }
 
@@ -606,7 +606,7 @@ fn run_sidecar_prompt(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "请先在模型接入里保存或填写 Token。".to_string())?;
-    let agent_dir = local_agent_dir();
+    let agent_dir = sidecar_dir();
     let chat_history_memory = build_chat_history_memory_payload(&app, request.as_ref())?;
     let tool_policy_settings =
         read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
@@ -615,7 +615,7 @@ fn run_sidecar_prompt(
         token: Some(token),
         ..stored
     };
-    let mut payload = build_local_agent_prompt_payload(
+    let mut payload = build_sidecar_prompt_payload(
         std::env::current_dir()
             .map_err(|error| error.to_string())?
             .to_string_lossy()
@@ -662,7 +662,7 @@ fn execute_sidecar_prompt(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("启动 local-agent 失败：{error}"))?;
+        .map_err(|error| format!("启动 sidecar 失败：{error}"))?;
 
     if let Some(stdin) = child.stdin.as_mut() {
         stdin
@@ -672,19 +672,19 @@ fn execute_sidecar_prompt(
 
     let output = child
         .wait_with_output()
-        .map_err(|error| format!("等待 local-agent 失败：{error}"))?;
+        .map_err(|error| format!("等待 sidecar 失败：{error}"))?;
 
     if !output.status.success() {
         let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if error.is_empty() {
-            "local-agent prompt 执行失败。".to_string()
+            "sidecar prompt 执行失败。".to_string()
         } else {
             error
         });
     }
 
     let response: PiPromptResponse = serde_json::from_slice(&output.stdout)
-        .map_err(|error| format!("解析 local-agent 响应失败：{error}"))?;
+        .map_err(|error| format!("解析 sidecar 响应失败：{error}"))?;
 
     if response.text.trim().is_empty() {
         return Err("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。".to_string());
@@ -693,37 +693,37 @@ fn execute_sidecar_prompt(
     Ok(response)
 }
 
-fn parse_local_agent_stream_line(line: &str) -> Result<LocalAgentStreamMessage, String> {
+fn parse_sidecar_stream_line(line: &str) -> Result<SidecarStreamMessage, String> {
     let value: serde_json::Value = serde_json::from_str(line)
-        .map_err(|error| format!("解析 local-agent 流式响应失败：{error}"))?;
+        .map_err(|error| format!("解析 sidecar 流式响应失败：{error}"))?;
 
     match value.get("type").and_then(|item| item.as_str()) {
         Some("progress") => {
             let event = value
                 .get("event")
                 .cloned()
-                .ok_or_else(|| "local-agent 进度事件缺少 event 字段。".to_string())?;
+                .ok_or_else(|| "sidecar 进度事件缺少 event 字段。".to_string())?;
 
-            Ok(LocalAgentStreamMessage::Progress(event))
+            Ok(SidecarStreamMessage::Progress(event))
         }
-        Some("confirm_request") => Ok(LocalAgentStreamMessage::ConfirmRequest(value)),
+        Some("confirm_request") => Ok(SidecarStreamMessage::ConfirmRequest(value)),
         Some("final") => {
             let response = value
                 .get("response")
                 .cloned()
-                .ok_or_else(|| "local-agent 最终响应缺少 response 字段。".to_string())?;
+                .ok_or_else(|| "sidecar 最终响应缺少 response 字段。".to_string())?;
 
             serde_json::from_value(response)
-                .map(LocalAgentStreamMessage::Final)
-                .map_err(|error| format!("解析 local-agent 最终响应失败：{error}"))
+                .map(SidecarStreamMessage::Final)
+                .map_err(|error| format!("解析 sidecar 最终响应失败：{error}"))
         }
         _ => serde_json::from_value(value)
-            .map(LocalAgentStreamMessage::Final)
-            .map_err(|error| format!("解析 local-agent 响应失败：{error}")),
+            .map(SidecarStreamMessage::Final)
+            .map_err(|error| format!("解析 sidecar 响应失败：{error}")),
     }
 }
 
-fn read_local_agent_stream(
+fn read_sidecar_stream(
     app: &AppHandle,
     stdout: std::process::ChildStdout,
 ) -> Result<Option<PiPromptResponse>, String> {
@@ -731,23 +731,23 @@ fn read_local_agent_stream(
     let reader = BufReader::new(stdout);
 
     for line in reader.lines() {
-        let line = line.map_err(|error| format!("读取 local-agent 流式响应失败：{error}"))?;
+        let line = line.map_err(|error| format!("读取 sidecar 流式响应失败：{error}"))?;
         let line = line.trim();
 
         if line.is_empty() {
             continue;
         }
 
-        match parse_local_agent_stream_line(line)? {
-            LocalAgentStreamMessage::Progress(event) => {
+        match parse_sidecar_stream_line(line)? {
+            SidecarStreamMessage::Progress(event) => {
                 app.emit("pi_prompt_progress", event)
                     .map_err(|error| format!("推送模型进度失败：{error}"))?;
             }
-            LocalAgentStreamMessage::ConfirmRequest(request) => {
+            SidecarStreamMessage::ConfirmRequest(request) => {
                 app.emit("pi_tool_confirm", request)
                     .map_err(|error| format!("推送工具确认请求失败：{error}"))?;
             }
-            LocalAgentStreamMessage::Final(response) => {
+            SidecarStreamMessage::Final(response) => {
                 final_response = Some(response);
             }
         }
@@ -756,13 +756,13 @@ fn read_local_agent_stream(
     Ok(final_response)
 }
 
-fn execute_local_agent_prompt_streaming(
+fn execute_sidecar_prompt_streaming(
     app: AppHandle,
     agent_dir: PathBuf,
     payload: serde_json::Value,
 ) -> Result<PiPromptResponse, String> {
     let mut command = Command::new("pnpm");
-    for arg in local_agent_prompt_command_args(&agent_dir) {
+    for arg in sidecar_prompt_command_args(&agent_dir) {
         command.arg(arg);
     }
 
@@ -771,7 +771,7 @@ fn execute_local_agent_prompt_streaming(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|error| format!("启动 local-agent 失败：{error}"))?;
+        .map_err(|error| format!("启动 sidecar 失败：{error}"))?;
 
     let run_id = payload
         .get("runId")
@@ -781,17 +781,17 @@ fn execute_local_agent_prompt_streaming(
     let mut stdin = child
         .stdin
         .take()
-        .ok_or_else(|| "local-agent stdin 不可用。".to_string())?;
+        .ok_or_else(|| "sidecar stdin 不可用。".to_string())?;
     // Take the output handles before parking stdin in the registry, so an
     // unexpected failure here can't leave a dangling confirm channel behind.
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "local-agent stdout 不可用。".to_string())?;
+        .ok_or_else(|| "sidecar stdout 不可用。".to_string())?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "local-agent stderr 不可用。".to_string())?;
+        .ok_or_else(|| "sidecar stderr 不可用。".to_string())?;
 
     // Newline-terminate the request so the agent's line reader can start work
     // while stdin stays open for confirm_response messages.
@@ -819,7 +819,7 @@ fn execute_local_agent_prompt_streaming(
         text
     });
 
-    let stream_result = read_local_agent_stream(&app, stdout);
+    let stream_result = read_sidecar_stream(&app, stdout);
 
     // Always close stdin (drop the parked handle) before returning, so a failed
     // read loop can't leave a dangling confirm channel in the registry.
@@ -833,20 +833,20 @@ fn execute_local_agent_prompt_streaming(
 
     let output_status = child
         .wait()
-        .map_err(|error| format!("等待 local-agent 失败：{error}"))?;
+        .map_err(|error| format!("等待 sidecar 失败：{error}"))?;
     let stderr = stderr_reader.join().unwrap_or_default();
 
     if !output_status.success() {
         let error = stderr.trim().to_string();
         return Err(if error.is_empty() {
-            "local-agent prompt 执行失败。".to_string()
+            "sidecar prompt 执行失败。".to_string()
         } else {
             error
         });
     }
 
     let response = final_response
-        .ok_or_else(|| "local-agent prompt 没有返回最终响应。".to_string())?;
+        .ok_or_else(|| "sidecar prompt 没有返回最终响应。".to_string())?;
 
     if response.text.trim().is_empty() {
         return Err("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。".to_string());
@@ -855,7 +855,7 @@ fn execute_local_agent_prompt_streaming(
     Ok(response)
 }
 
-fn local_agent_prompt_command_args(agent_dir: &Path) -> Vec<String> {
+fn sidecar_prompt_command_args(agent_dir: &Path) -> Vec<String> {
     vec![
         "--silent".to_string(),
         "--dir".to_string(),
@@ -864,7 +864,7 @@ fn local_agent_prompt_command_args(agent_dir: &Path) -> Vec<String> {
     ]
 }
 
-fn build_local_agent_prompt_payload(
+fn build_sidecar_prompt_payload(
     cwd: String,
     stored: &StoredModelProfile,
     prompt: String,
@@ -1074,13 +1074,15 @@ fn memory_status_from_paths(memory_dir: &Path, agent_dir: &Path) -> MemoryStatus
     }
 }
 
-fn local_agent_dir() -> PathBuf {
+// The Pi sidecar lives alongside the Tauri crate at apps/desktop/sidecar; the
+// backend spawns it on demand (see run_sidecar_prompt). CARGO_MANIFEST_DIR
+// is apps/desktop/src-tauri, so its parent is apps/desktop.
+fn sidecar_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
-        .and_then(Path::parent)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("local-agent")
+        .join("sidecar")
 }
 
 fn default_stored_model_profile() -> StoredModelProfile {
@@ -2186,22 +2188,25 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        append_chat_message_to_path, build_local_agent_prompt_payload,
+        append_chat_message_to_path, build_sidecar_prompt_payload,
         build_memory_backend_config_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
         init_chat_history_at_path, insert_character_letter_to_path, insert_character_moment_to_path,
+        add_character_moment_comment_to_path, toggle_character_moment_like_to_path,
         list_character_letters_from_path, list_character_moments_from_path,
-        list_chat_sessions_from_path, local_agent_prompt_command_args,
+        list_chat_sessions_from_path, sidecar_prompt_command_args,
         mark_character_letter_read_to_path,
-        memory_status_from_paths, normalize_openai_compatible_settings, parse_local_agent_stream_line,
+        memory_status_from_paths, normalize_openai_compatible_settings, parse_sidecar_stream_line,
         read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
-        read_tool_policy_settings_from_path,
+        read_review_mode_from_path, read_tool_policy_settings_from_path, read_workspace_dir,
+        save_review_mode_to_path,
         recent_memory_messages_from_path, save_character_states_to_path, save_model_settings_to_path,
         save_tool_policy_settings_to_path, set_active_model_profile_at_path,
-        AddCharacterLetterRequest, AddCharacterMomentRequest, AppendChatMessageRequest,
-        CreateChatSessionRequest,
-        LocalAgentStreamMessage,
+        AddCharacterLetterRequest, AddCharacterMomentCommentRequest, AddCharacterMomentRequest,
+        AppendChatMessageRequest, CreateChatSessionRequest,
+        SidecarStreamMessage,
         ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
+        ToggleCharacterMomentLikeRequest,
     };
 
     static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -2453,7 +2458,7 @@ mod tests {
     fn memory_status_reports_local_backend_paths() {
         let status = memory_status_from_paths(
             PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
-            PathBuf::from("/tmp/cockapoo-local-agent").as_path(),
+            PathBuf::from("/tmp/cockapoo-sidecar").as_path(),
         );
 
         assert_eq!(status.configured_backend, "tencentdb");
@@ -2778,7 +2783,7 @@ mod tests {
     }
 
     #[test]
-    fn local_agent_prompt_payload_includes_tool_policy_settings() {
+    fn sidecar_prompt_payload_includes_tool_policy_settings() {
         let stored = StoredModelProfile {
             id: "default".to_string(),
             name: "OpenAI".to_string(),
@@ -2793,7 +2798,7 @@ mod tests {
             "protectedPaths": [".env"]
         });
 
-        let payload = build_local_agent_prompt_payload(
+        let payload = build_sidecar_prompt_payload(
             "/tmp/cockapoo-workspace".into(),
             &stored,
             "你好".to_string(),
@@ -2807,26 +2812,26 @@ mod tests {
     }
 
     #[test]
-    fn local_agent_prompt_command_suppresses_pnpm_script_output() {
-        let args = local_agent_prompt_command_args(
-            PathBuf::from("/tmp/cockapoo-local-agent").as_path(),
+    fn sidecar_prompt_command_suppresses_pnpm_script_output() {
+        let args = sidecar_prompt_command_args(
+            PathBuf::from("/tmp/cockapoo-sidecar").as_path(),
         );
 
         assert_eq!(args[0], "--silent");
         assert_eq!(args[1], "--dir");
-        assert_eq!(args[2], "/tmp/cockapoo-local-agent");
+        assert_eq!(args[2], "/tmp/cockapoo-sidecar");
         assert_eq!(args[3], "prompt");
     }
 
     #[test]
-    fn local_agent_stream_lines_parse_progress_and_final_records() {
-        let progress = parse_local_agent_stream_line(
+    fn sidecar_stream_lines_parse_progress_and_final_records() {
+        let progress = parse_sidecar_stream_line(
             r#"{"type":"progress","event":{"runId":"run-1","phase":"thinking","delta":"先想一下"}}"#,
         )
         .expect("progress line should parse");
 
         match progress {
-            LocalAgentStreamMessage::Progress(event) => {
+            SidecarStreamMessage::Progress(event) => {
                 assert_eq!(event["runId"], "run-1");
                 assert_eq!(event["phase"], "thinking");
                 assert_eq!(event["delta"], "先想一下");
@@ -2834,13 +2839,13 @@ mod tests {
             _ => panic!("expected progress record"),
         }
 
-        let final_record = parse_local_agent_stream_line(
+        let final_record = parse_sidecar_stream_line(
             r#"{"type":"final","response":{"providerId":"openai-compatible","modelRoute":"POST http://localhost:11434/v1/chat/completions · body.model = qwen","text":"你好"}}"#,
         )
         .expect("final line should parse");
 
         match final_record {
-            LocalAgentStreamMessage::Final(response) => {
+            SidecarStreamMessage::Final(response) => {
                 assert_eq!(response.provider_id, "openai-compatible");
                 assert_eq!(response.model_route, "POST http://localhost:11434/v1/chat/completions · body.model = qwen");
                 assert_eq!(response.text, "你好");
@@ -2850,14 +2855,14 @@ mod tests {
     }
 
     #[test]
-    fn local_agent_stream_lines_parse_confirm_request_records() {
-        let confirm = parse_local_agent_stream_line(
+    fn sidecar_stream_lines_parse_confirm_request_records() {
+        let confirm = parse_sidecar_stream_line(
             r#"{"type":"confirm_request","confirmId":"run-1-confirm-1","runId":"run-1","tool":{"name":"edit","target":"src/app.ts","reason":"需要确认"}}"#,
         )
         .expect("confirm line should parse");
 
         match confirm {
-            LocalAgentStreamMessage::ConfirmRequest(request) => {
+            SidecarStreamMessage::ConfirmRequest(request) => {
                 assert_eq!(request["confirmId"], "run-1-confirm-1");
                 assert_eq!(request["runId"], "run-1");
                 assert_eq!(request["tool"]["name"], "edit");
@@ -2999,7 +3004,7 @@ mod tests {
     }
 
     #[test]
-    fn model_profile_keeps_local_agent_prompt_payload_single_active_shape() {
+    fn model_profile_keeps_sidecar_prompt_payload_single_active_shape() {
         let stored = StoredModelProfile {
             id: "glm".to_string(),
             name: "智谱 GLM".to_string(),
@@ -3008,7 +3013,7 @@ mod tests {
             token: Some("sk-glm-123456".to_string()),
         };
 
-        let payload = build_local_agent_prompt_payload(
+        let payload = build_sidecar_prompt_payload(
             "/tmp/cockapoo-workspace".into(),
             &stored,
             "请只回复 OK".to_string(),

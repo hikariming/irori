@@ -10,6 +10,8 @@ import {
   formatOpenAiCompatibleRequestPreview,
   formatOpenAiCompatibleRoute,
   getActiveModelProfile,
+  getPresetProvidersByGroup,
+  getTokenReadyModelProfiles,
   isModelConfigured,
   mergeSavedModelSettings,
   normalizeOpenAiCompatibleSettings,
@@ -222,6 +224,52 @@ test("shouldMakeSavedProfileActive keeps the active profile active while saving 
   };
 
   assert.equal(shouldMakeSavedProfileActive(settings, draft), true);
+});
+
+test("getTokenReadyModelProfiles returns only saved profiles with usable token-backed settings", () => {
+  const settings = mergeSavedModelSettings(buildInitialModelSettings(), {
+    activeModelId: "kimi",
+    profiles: [
+      {
+        id: "openai",
+        name: "OpenAI",
+        baseUrl: "https://api.openai.com/v1",
+        hasToken: false,
+        modelName: "gpt-5.5"
+      },
+      {
+        id: "kimi",
+        name: "Kimi",
+        baseUrl: "https://api.moonshot.cn/v1",
+        hasToken: true,
+        modelName: "kimi-k2.6",
+        tokenHint: "••••1234"
+      },
+      {
+        id: "empty-model",
+        name: "Missing model",
+        baseUrl: "https://example.com/v1",
+        hasToken: true,
+        modelName: ""
+      }
+    ]
+  });
+
+  assert.deepEqual(
+    getTokenReadyModelProfiles(settings).map((profile) => profile.id),
+    ["kimi"]
+  );
+});
+
+test("getPresetProvidersByGroup separates official API providers from coding plan providers", () => {
+  const officialIds = getPresetProvidersByGroup("official").map((provider) => provider.id);
+  const codingPlanIds = getPresetProvidersByGroup("coding-plan").map((provider) => provider.id);
+
+  assert.ok(officialIds.includes("openai"));
+  assert.ok(officialIds.includes("custom"));
+  assert.ok(codingPlanIds.includes("zhipu-coding"));
+  assert.ok(codingPlanIds.includes("alibaba-coding"));
+  assert.equal(codingPlanIds.includes("openai"), false);
 });
 
 test("deleteModelProfile removes a profile, keeps the last one, and selects a remaining active profile", () => {

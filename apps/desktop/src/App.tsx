@@ -41,6 +41,7 @@ import {
   type ChatSessionSummary
 } from "./components/chat-history-model";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
+import { buildCharacterTimeContext } from "./components/character-time-context";
 import {
   buildInitialModelSettings,
   getActiveModelProfile,
@@ -716,6 +717,7 @@ export function App() {
         card,
         history: promptHistory,
         userPrompt: prompt,
+        timeContext: buildCharacterTimeContext(),
         selfState,
         memories
       });

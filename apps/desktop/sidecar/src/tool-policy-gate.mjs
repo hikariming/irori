@@ -1,4 +1,4 @@
-import { evaluateToolCall } from "../../../packages/safety/src/runtime.mjs";
+import { evaluateToolCall } from "../../../../packages/safety/src/runtime.mjs";
 
 function toolTargetSummary(toolName, input = {}) {
   if (!input || typeof input !== "object") {

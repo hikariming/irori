@@ -75,6 +75,24 @@ test("composeCharacterSessionPrompt uses the selected character card", async () 
   assert.doesNotMatch(prompt, /名字：示璃/);
 });
 
+test("composeCharacterSessionPrompt can include current time perception", () => {
+  const prompt = composeCharacterSessionPrompt({
+    card,
+    history: [],
+    userPrompt: "我还在改东西",
+    timeContext: [
+      "系统记录的本地时间：2026年6月3日 星期三 02:48",
+      "时区：Asia/Shanghai",
+      "时间氛围：都快凌晨三点了。"
+    ].join("\n")
+  });
+
+  assert.match(prompt, /## 当前真实时间/);
+  assert.match(prompt, /系统记录的本地时间：2026年6月3日 星期三 02:48/);
+  assert.match(prompt, /时区：Asia\/Shanghai/);
+  assert.match(prompt, /时间氛围：都快凌晨三点了。/);
+});
+
 test("parseCharacterReply extracts one allowed sticker marker and removes it from text", () => {
   const reply = parseCharacterReply("先把范围缩小到输入框和保存按钮。\n[sticker:focused]", card.stickers);
 

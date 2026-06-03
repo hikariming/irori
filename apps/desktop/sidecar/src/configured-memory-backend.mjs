@@ -1,4 +1,4 @@
-import { createTencentDbMemoryBackend } from "../../../packages/memory/src/runtime.mjs";
+import { createTencentDbMemoryBackend } from "../../../../packages/memory/src/runtime.mjs";
 
 // The upstream package is an OpenClaw plugin with no in-process client factory,
 // so the default points at our bundled gateway adapter, which spawns the engine's

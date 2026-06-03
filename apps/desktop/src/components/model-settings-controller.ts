@@ -436,6 +436,16 @@ export function getActiveModelProfile(settings: SavedModelSettings): SavedModelP
   return settings.profiles.find((profile) => profile.id === settings.activeModelId) ?? firstProfile;
 }
 
+export function getTokenReadyModelProfiles(settings: SavedModelSettings): SavedModelProfile[] {
+  return settings.profiles
+    .filter((profile) => profile.hasToken && profile.baseUrl.trim() && profile.modelName.trim())
+    .map(cloneProfile);
+}
+
+export function getPresetProvidersByGroup(group: PresetProvider["group"]): PresetProvider[] {
+  return presetProviders.filter((provider) => provider.group === group);
+}
+
 export function setActiveModelProfile(settings: SavedModelSettings, profileId: string): ModelSettingsState {
   if (!settings.profiles.some((profile) => profile.id === profileId)) {
     return normalizeModelSettings(settings.activeModelId, settings.profiles);

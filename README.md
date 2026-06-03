@@ -8,8 +8,8 @@ Cockapoo Pi Companion is a local-first desktop companion client built around the
 
 ```text
 apps/
-  desktop/       Tauri + React desktop shell
-  local-agent/   Node daemon that embeds the Pi SDK
+  desktop/         Tauri + React desktop shell
+    sidecar/       Node sidecar embedding the Pi SDK, spawned by the Tauri backend over stdio
 packages/
   character-card/ Character schema and prompt composition
   pi-runtime/     Pi SDK wrapper and local event adapter

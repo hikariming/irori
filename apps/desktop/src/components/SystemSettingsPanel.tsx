@@ -17,8 +17,9 @@ import {
   detectPresetProvider,
   formatOpenAiCompatibleRequestPreview,
   getActiveModelProfile,
+  getPresetProvidersByGroup,
+  getTokenReadyModelProfiles,
   normalizeOpenAiCompatibleSettings,
-  presetProviders,
   shouldMakeSavedProfileActive,
   type ModelSettingsState,
   type PresetProvider,
@@ -68,7 +69,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
-  const [showPresetPicker, setShowPresetPicker] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<PresetProvider | null>(null);
   const [selectedModelSuggestion, setSelectedModelSuggestion] = useState("");
   const modelOperationIdRef = useRef(0);
@@ -199,6 +199,11 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     : true;
   const canChangeModelProfile = !hasUnsavedModelDraft && !isModelActionBusy;
   const detectedPreset = detectPresetProvider(draftProfile);
+  const tokenReadyProfiles = getTokenReadyModelProfiles(modelSettings);
+  const tokenReadyProfileIds = new Set(tokenReadyProfiles.map((profile) => profile.id));
+  const tokenPendingProfiles = modelSettings.profiles.filter((profile) => !tokenReadyProfileIds.has(profile.id));
+  const officialPresetProviders = getPresetProvidersByGroup("official");
+  const codingPlanProviders = getPresetProvidersByGroup("coding-plan");
 
   async function saveModelSettings(options: { makeActive?: boolean } = {}) {
     if (isModelActionBusy) {
@@ -295,24 +300,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     }
   }
 
-  function addModelProfile() {
-    if (!canChangeModelProfile) {
-      return;
-    }
-
-    const id = `profile-${Date.now()}`;
-    const draft = buildDraftModelProfile(id);
-
-    modelOperationIdRef.current += 1;
-    setSelectedProfileId(id);
-    setDraftProfile(draft);
-    syncPresetSelectionForProfile(draft);
-    setToken("");
-    setSaveState("idle");
-    setTestState("idle");
-    setTestMessage("");
-  }
-
   function selectModelProfile(profileId: string) {
     if (!canChangeModelProfile || profileId === selectedProfileId) {
       return;
@@ -328,22 +315,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     setSaveState("idle");
     setTestState("idle");
     setTestMessage("");
-  }
-
-  function openPresetPicker() {
-    if (!canChangeModelProfile) {
-      return;
-    }
-
-    setSelectedPreset(null);
-    setSelectedModelSuggestion("");
-    setShowPresetPicker(true);
-  }
-
-  function closePresetPicker() {
-    setShowPresetPicker(false);
-    setSelectedPreset(null);
-    setSelectedModelSuggestion("");
   }
 
   function savedProfileForPresetDraft(profileId: string) {
@@ -368,6 +339,10 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   }
 
   function selectPreset(preset: PresetProvider) {
+    if (!canChangeModelProfile) {
+      return;
+    }
+
     applyPresetSelection(preset);
   }
 
@@ -377,30 +352,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     }
 
     applyPresetSelection(selectedPreset, modelValue);
-  }
-
-  function confirmPresetSelection() {
-    if (!selectedPreset) {
-      return;
-    }
-
-    const profile = buildProfileFromPreset(
-      selectedPreset,
-      selectedModelSuggestion || undefined,
-      draftProfile.id,
-      savedProfileForPresetDraft(draftProfile.id)
-    );
-
-    modelOperationIdRef.current += 1;
-    setSelectedProfileId(profile.id);
-    setDraftProfile(profile);
-    setToken("");
-    setSaveState("idle");
-    setTestState("idle");
-    setTestMessage("");
-    if (showPresetPicker) {
-      closePresetPicker();
-    }
   }
 
   async function testModelConnection() {
@@ -476,6 +427,61 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     );
   }
 
+  function renderProfileSourceButton(profile: SavedModelProfile, tokenReady: boolean) {
+    const profilePreset = detectPresetProvider(profile);
+    const disabled = isModelActionBusy || (hasUnsavedModelDraft && selectedProfileId !== profile.id);
+
+    return (
+      <button
+        className={`model-source-item ${selectedProfileId === profile.id ? "selected" : ""}`}
+        disabled={disabled}
+        key={profile.id}
+        onClick={() => selectModelProfile(profile.id)}
+        type="button"
+      >
+        {profilePreset ? (
+          <span className="model-profile-icon" style={{ background: profilePreset.accentColor }}>
+            {profilePreset.iconLabel}
+          </span>
+        ) : (
+          <span className="model-profile-icon custom">
+            {profile.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="model-source-item-copy">
+          <strong>{profile.name}</strong>
+          <small>{profile.modelName || "未填写模型名"}</small>
+          <span className={`token-status ${tokenReady ? "has-token" : ""}`}>
+            {tokenReady ? `Token ${profile.tokenHint ?? "已保存"}` : "需要 Token"}
+          </span>
+        </span>
+        {modelSettings.activeModelId === profile.id ? (
+          <Chip className="provider-status model-source-current" size="sm" variant="soft">当前</Chip>
+        ) : null}
+      </button>
+    );
+  }
+
+  function renderPresetSourceButton(preset: PresetProvider) {
+    return (
+      <button
+        className={`model-source-item preset ${preset.group === "coding-plan" ? "coding-plan" : ""} ${selectedPreset?.id === preset.id ? "selected" : ""}`}
+        disabled={!canChangeModelProfile}
+        key={preset.id}
+        onClick={() => selectPreset(preset)}
+        type="button"
+      >
+        <span className="model-profile-icon" style={{ background: preset.accentColor }}>
+          {preset.iconLabel}
+        </span>
+        <span className="model-source-item-copy">
+          <strong>{preset.name}</strong>
+          <small>{preset.description}</small>
+        </span>
+      </button>
+    );
+  }
+
   return (
     <aside className="system-settings-panel" aria-label="系统设置">
       <div className="settings-page-inner">
@@ -511,300 +517,27 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
               </Chip>
             </header>
 
-            <div className="preset-provider-section">
-              <h4>官方 API 直连</h4>
-              <div className="preset-provider-grid">
-                {presetProviders.filter((p) => p.group === "official").map((preset) => (
-                  <button
-                    className={`preset-provider-card ${selectedPreset?.id === preset.id ? "selected" : ""}`}
-                    disabled={isModelActionBusy}
-                    key={preset.id}
-                    onClick={() => selectPreset(preset)}
-                    type="button"
-                  >
-                    <span className="preset-provider-icon" style={{ background: preset.accentColor }}>
-                      {preset.iconLabel}
-                    </span>
-                    <span className="preset-provider-name">{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="preset-provider-section">
-              <h4>编码套餐 Coding Plan</h4>
-              <div className="preset-provider-grid">
-                {presetProviders.filter((p) => p.group === "coding-plan").map((preset) => (
-                  <button
-                    className={`preset-provider-card coding-plan ${selectedPreset?.id === preset.id ? "selected" : ""}`}
-                    disabled={isModelActionBusy}
-                    key={preset.id}
-                    onClick={() => selectPreset(preset)}
-                    type="button"
-                  >
-                    <span className="preset-provider-icon" style={{ background: preset.accentColor }}>
-                      {preset.iconLabel}
-                    </span>
-                    <span className="preset-provider-name">{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {selectedPreset ? (
-              <div className="preset-quick-setup">
-                <div className="preset-quick-setup-header">
-                  <span className="preset-provider-icon small" style={{ background: selectedPreset.accentColor }}>
-                    {selectedPreset.iconLabel}
-                  </span>
-                  <div>
-                    <strong>{selectedPreset.name}</strong>
-                    <p>{selectedPreset.description}</p>
-                  </div>
-                </div>
-                {selectedPreset.modelSuggestions.length > 0 ? (
-                  <div className="preset-model-suggestions">
-                    <span>推荐模型</span>
-                    <div className="preset-model-chips">
-                      {selectedPreset.modelSuggestions.map((model) => (
-                        <button
-                          className={`preset-model-chip ${selectedModelSuggestion === model.value ? "selected" : ""}`}
-                          key={model.value}
-                          onClick={() => selectPresetModel(model.value)}
-                          type="button"
-                        >
-                          {model.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-                <div className="preset-quick-setup-actions">
-                  <Button className="settings-secondary-action" onPress={confirmPresetSelection} type="button">
-                    使用此配置
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="model-profile-layout">
-              <div className="model-profile-list" aria-label="模型配置档案">
-                <h4 className="profile-list-title">已保存配置</h4>
-                {modelSettings.profiles.map((profile) => {
-                  const profilePreset = detectPresetProvider(profile);
-                  return (
-                    <button
-                      className={`model-profile-item ${selectedProfileId === profile.id ? "selected" : ""}`}
-                      disabled={isModelActionBusy || (hasUnsavedModelDraft && selectedProfileId !== profile.id)}
-                      key={profile.id}
-                      onClick={() => selectModelProfile(profile.id)}
-                      type="button"
-                    >
-                      <div className="model-profile-item-header">
-                        {profilePreset ? (
-                          <span className="model-profile-icon" style={{ background: profilePreset.accentColor }}>
-                            {profilePreset.iconLabel}
-                          </span>
-                        ) : (
-                          <span className="model-profile-icon custom">
-                            {profile.name.charAt(0).toUpperCase()}
-                          </span>
-                        )}
-                        <div className="model-profile-item-info">
-                          <span>{profile.name}</span>
-                          <small>{profile.modelName || "未填写模型名"}</small>
-                        </div>
-                        {modelSettings.activeModelId === profile.id ? (
-                          <Chip className="provider-status" size="sm" variant="soft">当前</Chip>
-                        ) : null}
-                      </div>
-                      <div className="model-profile-item-meta">
-                        <span className={`token-status ${profile.hasToken ? "has-token" : ""}`}>
-                          {profile.hasToken ? `🔑 ${profile.tokenHint ?? "已保存"}` : "⚠️ 未配置 Token"}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-                <Button className="settings-secondary-action add-profile-button" isDisabled={!canChangeModelProfile} onPress={openPresetPicker} type="button">
-                  + 新增模型
-                </Button>
-              </div>
-
-              <div className="openai-compatible-form">
-                <div className="form-section-header">
-                  <h4>配置详情</h4>
-                  {detectedPreset ? (
-                    <Chip className="provider-status" size="sm" variant="soft">
-                      {detectedPreset.name}
-                    </Chip>
-                  ) : null}
-                </div>
-
-                <label className="settings-input">
-                  <span>配置名称</span>
-                  <input
-                    aria-label="模型配置名称"
-                    disabled={isModelActionBusy}
-                    onChange={(event) => updateDraftProfile({ name: event.target.value })}
-                    placeholder="例如：OpenAI GPT-4o / 智谱 GLM-4"
-                    value={draftProfile.name}
-                  />
-                </label>
-                <label className="settings-input">
-                  <span>Base URL</span>
-                  <input
-                    aria-label="OpenAI 兼容接口 Base URL"
-                    disabled={isModelActionBusy}
-                    onChange={(event) => updateDraftProfile({ baseUrl: event.target.value })}
-                    placeholder="https://api.openai.com/v1"
-                    value={draftProfile.baseUrl}
-                  />
-                </label>
-                <label className="settings-input">
-                  <span>API Key / Token</span>
-                  <div className="token-input-row">
-                    <input
-                      aria-label="OpenAI 兼容接口 Token"
-                      disabled={isModelActionBusy}
-                      onChange={(event) => updateToken(event.target.value)}
-                      placeholder={draftProfile.hasToken ? "留空则继续使用已保存 Token" : (detectedPreset?.tokenPlaceholder ?? "sk-...")}
-                      type="password"
-                      value={token}
-                    />
-                    {draftProfile.hasToken ? (
-                      <span className="token-saved-badge">✓ 已保存</span>
-                    ) : null}
-                  </div>
-                </label>
-                <label className="settings-input">
-                  <span>模型名</span>
-                  <input
-                    aria-label="OpenAI 兼容接口模型名"
-                    disabled={isModelActionBusy}
-                    onChange={(event) => updateDraftProfile({ modelName: event.target.value })}
-                    placeholder="gpt-4o / glm-4-plus / qwen-max"
-                    value={draftProfile.modelName}
-                  />
-                </label>
-
-                <div className="provider-route-row">
-                  <code className="provider-route">{routePreview}</code>
-                </div>
-
-                <div className="provider-actions">
-                  <Button
-                    className="settings-secondary-action"
-                    isDisabled={!canUseDraft || isModelActionBusy}
-                    onPress={testModelConnection}
-                    type="button"
-                  >
-                    {testState === "testing" ? "测试中…" : "测试连接"}
-                  </Button>
-                  <Button
-                    className="settings-secondary-action"
-                    isDisabled={!canUseDraft || isModelActionBusy || modelSettings.activeModelId === draftProfile.id}
-                    onPress={() => saveModelSettings({ makeActive: true })}
-                    type="button"
-                  >
-                    设为当前
-                  </Button>
-                  <Button
-                    className="settings-primary-action"
-                    isDisabled={!canUseDraft || isModelActionBusy}
-                    onPress={() => saveModelSettings({ makeActive: shouldMakeSavedProfileActive(modelSettings, draftProfile) })}
-                    type="button"
-                  >
-                    {saveState === "saving" ? "保存中…" : "保存配置"}
-                  </Button>
-                </div>
-                <div className="provider-actions secondary">
-                  <Button
-                    className="settings-secondary-action danger"
-                    isDisabled={isModelActionBusy || (!isUnsavedProfileDraft && modelSettings.profiles.length <= 1)}
-                    onPress={deleteSelectedProfile}
-                    type="button"
-                  >
-                    {isUnsavedProfileDraft ? "放弃新增" : "删除配置"}
-                  </Button>
-                </div>
-
-                {saveState === "saved" ? <p className="settings-save-note">✓ 已保存，下一次发送会使用当前模型配置。</p> : null}
-                {saveState === "error" ? <p className="settings-save-note error">保存失败，请稍后再试。</p> : null}
-                {testState === "passed" ? <p className="settings-save-note">✓ {testMessage}</p> : null}
-                {testState === "error" ? <p className="settings-save-note error">{testMessage}</p> : null}
-                {hasUnsavedModelDraft && !isModelActionBusy ? (
-                  <p className="settings-save-note">
-                    {isUnsavedProfileDraft ? "请先保存这个新模型，或放弃新增后再切换。" : "请先保存配置后再切换或新增模型。"}
-                  </p>
-                ) : null}
-                {didNormalizeBaseUrl ? (
-                  <p className="settings-save-note">
-                    已识别到 Base URL 里带了模型名或 /chat/completions，保存/测试时会自动改为 {normalizedDraft.baseUrl}。
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </section>
-
-          {showPresetPicker ? (
-            <div className="preset-picker-overlay" onClick={closePresetPicker} role="presentation">
-              <div className="preset-picker-dialog" onClick={(event) => event.stopPropagation()} role="dialog" aria-label="选择模型供应商">
-                <div className="preset-picker-header">
-                  <h3>选择模型供应商</h3>
-                  <button className="preset-picker-close" onClick={closePresetPicker} type="button">×</button>
-                </div>
-                <div className="preset-picker-section">
-                  <h4>官方 API 直连</h4>
-                  <div className="preset-picker-grid">
-                    {presetProviders.filter((p) => p.group === "official").map((preset) => (
-                      <button
-                        className={`preset-picker-item ${selectedPreset?.id === preset.id ? "selected" : ""}`}
-                        key={preset.id}
-                        onClick={() => selectPreset(preset)}
-                        type="button"
-                      >
-                        <span className="preset-provider-icon" style={{ background: preset.accentColor }}>
-                          {preset.iconLabel}
-                        </span>
-                        <div>
-                          <strong>{preset.name}</strong>
-                          <small>{preset.description}</small>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="preset-picker-section">
-                  <h4>编码套餐 Coding Plan</h4>
-                  <div className="preset-picker-grid">
-                    {presetProviders.filter((p) => p.group === "coding-plan").map((preset) => (
-                      <button
-                        className={`preset-picker-item ${selectedPreset?.id === preset.id ? "selected" : ""}`}
-                        key={preset.id}
-                        onClick={() => selectPreset(preset)}
-                        type="button"
-                      >
-                        <span className="preset-provider-icon" style={{ background: preset.accentColor }}>
-                          {preset.iconLabel}
-                        </span>
-                        <div>
-                          <strong>{preset.name}</strong>
-                          <small>{preset.description}</small>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+            <div className="model-access-layout">
+              <div className="model-config-detail">
                 {selectedPreset ? (
-                  <div className="preset-picker-footer">
+                  <div className="preset-quick-setup">
+                    <div className="preset-quick-setup-header">
+                      <span className="preset-provider-icon small" style={{ background: selectedPreset.accentColor }}>
+                        {selectedPreset.iconLabel}
+                      </span>
+                      <div>
+                        <strong>{selectedPreset.name}</strong>
+                        <p>{selectedPreset.description}</p>
+                      </div>
+                    </div>
                     {selectedPreset.modelSuggestions.length > 0 ? (
-                      <label className="settings-input">
+                      <div className="preset-model-suggestions">
                         <span>选择模型</span>
                         <div className="preset-model-chips">
                           {selectedPreset.modelSuggestions.map((model) => (
                             <button
                               className={`preset-model-chip ${selectedModelSuggestion === model.value ? "selected" : ""}`}
+                              disabled={isModelActionBusy}
                               key={model.value}
                               onClick={() => selectPresetModel(model.value)}
                               type="button"
@@ -813,16 +546,173 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                             </button>
                           ))}
                         </div>
-                      </label>
+                      </div>
                     ) : null}
-                    <Button className="settings-primary-action" onPress={confirmPresetSelection} type="button">
-                      确认添加
-                    </Button>
                   </div>
                 ) : null}
+
+                <div className="openai-compatible-form">
+                  <div className="form-section-header">
+                    <h4>配置详情</h4>
+                    {detectedPreset ? (
+                      <Chip className="provider-status" size="sm" variant="soft">
+                        {detectedPreset.name}
+                      </Chip>
+                    ) : null}
+                  </div>
+
+                  <label className="settings-input">
+                    <span>配置名称</span>
+                    <input
+                      aria-label="模型配置名称"
+                      disabled={isModelActionBusy}
+                      onChange={(event) => updateDraftProfile({ name: event.target.value })}
+                      placeholder="例如：OpenAI GPT-4o / 智谱 GLM-4"
+                      value={draftProfile.name}
+                    />
+                  </label>
+                  <label className="settings-input">
+                    <span>Base URL</span>
+                    <input
+                      aria-label="OpenAI 兼容接口 Base URL"
+                      disabled={isModelActionBusy}
+                      onChange={(event) => updateDraftProfile({ baseUrl: event.target.value })}
+                      placeholder="https://api.openai.com/v1"
+                      value={draftProfile.baseUrl}
+                    />
+                  </label>
+                  <label className="settings-input">
+                    <span>API Key / Token</span>
+                    <div className="token-input-row">
+                      <input
+                        aria-label="OpenAI 兼容接口 Token"
+                        disabled={isModelActionBusy}
+                        onChange={(event) => updateToken(event.target.value)}
+                        placeholder={draftProfile.hasToken ? "留空则继续使用已保存 Token" : (detectedPreset?.tokenPlaceholder ?? "sk-...")}
+                        type="password"
+                        value={token}
+                      />
+                      {draftProfile.hasToken ? (
+                        <span className="token-saved-badge">已保存</span>
+                      ) : null}
+                    </div>
+                  </label>
+                  <label className="settings-input">
+                    <span>模型名</span>
+                    <input
+                      aria-label="OpenAI 兼容接口模型名"
+                      disabled={isModelActionBusy}
+                      onChange={(event) => updateDraftProfile({ modelName: event.target.value })}
+                      placeholder="gpt-4o / glm-4-plus / qwen-max"
+                      value={draftProfile.modelName}
+                    />
+                  </label>
+
+                  <div className="provider-route-row">
+                    <code className="provider-route">{routePreview}</code>
+                  </div>
+
+                  <div className="provider-actions">
+                    <Button
+                      className="settings-secondary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy}
+                      onPress={testModelConnection}
+                      type="button"
+                    >
+                      {testState === "testing" ? "测试中…" : "测试连接"}
+                    </Button>
+                    <Button
+                      className="settings-secondary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy || modelSettings.activeModelId === draftProfile.id}
+                      onPress={() => saveModelSettings({ makeActive: true })}
+                      type="button"
+                    >
+                      设为当前
+                    </Button>
+                    <Button
+                      className="settings-primary-action"
+                      isDisabled={!canUseDraft || isModelActionBusy}
+                      onPress={() => saveModelSettings({ makeActive: shouldMakeSavedProfileActive(modelSettings, draftProfile) })}
+                      type="button"
+                    >
+                      {saveState === "saving" ? "保存中…" : "保存配置"}
+                    </Button>
+                  </div>
+                  <div className="provider-actions secondary">
+                    <Button
+                      className="settings-secondary-action danger"
+                      isDisabled={isModelActionBusy || (!isUnsavedProfileDraft && modelSettings.profiles.length <= 1)}
+                      onPress={deleteSelectedProfile}
+                      type="button"
+                    >
+                      {isUnsavedProfileDraft ? "放弃新增" : "删除配置"}
+                    </Button>
+                  </div>
+
+                  {saveState === "saved" ? <p className="settings-save-note">已保存，下一次发送会使用当前模型配置。</p> : null}
+                  {saveState === "error" ? <p className="settings-save-note error">保存失败，请稍后再试。</p> : null}
+                  {testState === "passed" ? <p className="settings-save-note">{testMessage}</p> : null}
+                  {testState === "error" ? <p className="settings-save-note error">{testMessage}</p> : null}
+                  {hasUnsavedModelDraft && !isModelActionBusy ? (
+                    <p className="settings-save-note">
+                      {isUnsavedProfileDraft ? "请先保存这个新模型，或放弃新增后再切换。" : "请先保存配置后再切换或新增模型。"}
+                    </p>
+                  ) : null}
+                  {didNormalizeBaseUrl ? (
+                    <p className="settings-save-note">
+                      已识别到 Base URL 里带了模型名或 /chat/completions，保存/测试时会自动改为 {normalizedDraft.baseUrl}。
+                    </p>
+                  ) : null}
+                </div>
               </div>
+
+              <aside className="model-source-sidebar" aria-label="模型来源与配置">
+                <div className="model-source-section">
+                  <div className="model-source-section-title">
+                    <h4>可用配置</h4>
+                    <span>{tokenReadyProfiles.length}</span>
+                  </div>
+                  <div className="model-source-list">
+                    {tokenReadyProfiles.length > 0 ? (
+                      tokenReadyProfiles.map((profile) => renderProfileSourceButton(profile, true))
+                    ) : (
+                      <p className="model-source-empty">还没有保存 Token 的配置。</p>
+                    )}
+                  </div>
+                </div>
+
+                {tokenPendingProfiles.length > 0 ? (
+                  <div className="model-source-section compact">
+                    <div className="model-source-section-title">
+                      <h4>待补全配置</h4>
+                      <span>{tokenPendingProfiles.length}</span>
+                    </div>
+                    <div className="model-source-list">
+                      {tokenPendingProfiles.map((profile) => renderProfileSourceButton(profile, false))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="model-source-section">
+                  <div className="model-source-section-title">
+                    <h4>官方 API</h4>
+                  </div>
+                  <div className="model-source-list">
+                    {officialPresetProviders.map(renderPresetSourceButton)}
+                  </div>
+                </div>
+
+                <div className="model-source-section">
+                  <div className="model-source-section-title">
+                    <h4>Coding Plan</h4>
+                  </div>
+                  <div className="model-source-list">
+                    {codingPlanProviders.map(renderPresetSourceButton)}
+                  </div>
+                </div>
+              </aside>
             </div>
-          ) : null}
+          </section>
         </Tabs.Panel>
 
         <Tabs.Panel className="settings-tab-panel" id="character-card">

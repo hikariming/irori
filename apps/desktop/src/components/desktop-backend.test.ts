@@ -216,6 +216,36 @@ test("preview backend exposes memory status", async () => {
   assert.equal(status.tencentDbPackageAvailable, true);
 });
 
+test("preview backend updates moment likes and comments", async () => {
+  const backend = createPreviewBackend();
+  const moment = await backend.addCharacterMoment({
+    characterId: "lulin",
+    text: "午后想喝杯咖啡"
+  });
+
+  const liked = await backend.toggleCharacterMomentLike({
+    momentId: moment.id,
+    actorType: "user",
+    actorId: "self",
+    liked: true
+  });
+  assert.equal(liked.likes.length, 1);
+  assert.equal(liked.likes[0].actorId, "self");
+
+  const commented = await backend.addCharacterMomentComment({
+    momentId: moment.id,
+    actorType: "character",
+    actorId: "shili",
+    text: "我也想喝。"
+  });
+  assert.equal(commented.comments.length, 1);
+  assert.equal(commented.comments[0].text, "我也想喝。");
+
+  const listed = await backend.listCharacterMoments();
+  assert.equal(listed[0].likes.length, 1);
+  assert.equal(listed[0].comments.length, 1);
+});
+
 test("preview backend stores chat sessions and messages in memory", async () => {
   const backend = createPreviewBackend();
   const session = await backend.createChatSession({

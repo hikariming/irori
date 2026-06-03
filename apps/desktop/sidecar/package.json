@@ -1,11 +1,10 @@
 {
-  "name": "@cockapoo-pi-companion/local-agent",
+  "name": "@cockapoo-pi-companion/desktop-sidecar",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local Node daemon that will embed the Pi coding-agent SDK.",
+  "description": "Desktop sidecar: a Node process embedding the Pi coding-agent SDK. Spawned on demand by the Tauri backend (apps/desktop/src-tauri) via the `prompt` script over stdio.",
   "scripts": {
-    "dev": "echo \"Local agent daemon will be wired in the next implementation phase.\"",
     "prompt": "node bin/pi-prompt.mjs",
     "test": "node --test test/*.test.mjs"
   },

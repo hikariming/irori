@@ -5,6 +5,7 @@
   "description": "Local-first desktop companion client built around the Pi coding-agent SDK.",
   "type": "module",
   "scripts": {
+    "dev": "pnpm --dir apps/desktop dev",
     "desktop:dev": "pnpm --dir apps/desktop dev",
     "desktop:vite": "pnpm --dir apps/desktop dev:vite",
     "desktop:build": "pnpm --dir apps/desktop build",

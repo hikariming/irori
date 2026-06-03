@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-test("local-agent runtime modules load without requiring Node to import TypeScript source", async () => {
+test("sidecar runtime modules load without requiring Node to import TypeScript source", async () => {
   const modules = await Promise.all([
     import("../src/configured-memory-backend.mjs"),
     import("../src/memory-bridge.mjs"),

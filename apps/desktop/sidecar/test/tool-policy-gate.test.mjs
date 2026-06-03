@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { defaultProtectedPaths } from "../../../packages/safety/src/runtime.mjs";
+import { defaultProtectedPaths } from "../../../../packages/safety/src/runtime.mjs";
 import { createToolPolicyGateExtension } from "../src/tool-policy-gate.mjs";
 
 const gatePolicy = {
