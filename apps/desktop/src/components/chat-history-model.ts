@@ -27,6 +27,9 @@ export type AppendChatMessageRequest = {
   stickerId?: string;
   modelRoute?: string;
   providerId?: string;
+  // 该消息所属角色 id：用于把返回消息的表情解析到正确角色的素材，
+  // 避免实时聊天时表情包混成默认角色（Rust 端忽略未知字段，故不影响持久化）。
+  characterId?: string;
 };
 
 export type GroupChatSessionsOptions = {

@@ -759,7 +759,8 @@ export function App() {
         text: replyText,
         stickerId: parsedReply.sticker?.id,
         modelRoute: response.modelRoute,
-        providerId: response.providerId
+        providerId: response.providerId,
+        characterId: card.id
       });
 
       const reasoningText = activeReasoningTextRef.current.trim();

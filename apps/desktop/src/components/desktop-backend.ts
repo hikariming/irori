@@ -631,7 +631,7 @@ export function createTauriBackend(): DesktopBackend {
     },
     async appendChatMessage(request) {
       const record = await invoke<StoredChatMessageRecord>("append_chat_message", { request });
-      return chatMessageFromRecord(record);
+      return chatMessageFromRecord(record, request.characterId);
     },
     async createChatSession(request) {
       return invoke<ChatSessionSummary>("create_chat_session", { request });
