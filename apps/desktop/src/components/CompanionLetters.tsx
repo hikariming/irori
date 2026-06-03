@@ -3,21 +3,29 @@ import { useState } from "react";
 import { Avatar, Button, ScrollShadow } from "@heroui/react";
 
 import type { FeedAuthor } from "./character-cards";
-import { formatLetterTime, isDelivered, type CharacterLetter } from "./character-letters";
+import {
+  canSubmitLetterDraft,
+  createInitialLetterDraft,
+  formatLetterTime,
+  isDelivered,
+  toggleLetterDraftRecipient,
+  type CharacterLetter,
+  type CharacterLetterDraft
+} from "./character-letters";
 
-type LetterDraft = { characterId: string; subject: string; body: string; replyTo: string | null };
 type ComposeTarget = FeedAuthor & { id: string };
 
 type CompanionLettersProps = {
   letters: CharacterLetter[];
   authors: Record<string, FeedAuthor>;
   composeTarget: ComposeTarget | null;
+  composeTargets?: ComposeTarget[];
   writingNames?: string[];
   sendingNames?: string[];
   backgroundSrc?: string;
   now?: number;
   onRead: (letterId: string) => void;
-  onSend: (draft: LetterDraft) => void;
+  onSend: (draft: CharacterLetterDraft) => void;
 };
 
 const unknownAuthor: FeedAuthor = { name: "神秘角色", avatar: "" };
@@ -36,6 +44,7 @@ export function CompanionLetters({
   letters,
   authors,
   composeTarget,
+  composeTargets,
   writingNames = [],
   sendingNames = [],
   backgroundSrc,
@@ -44,13 +53,22 @@ export function CompanionLetters({
   onSend
 }: CompanionLettersProps) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<LetterDraft | null>(null);
+  const [draft, setDraft] = useState<CharacterLetterDraft | null>(null);
+  const effectiveNow = Math.max(now, Date.now());
 
-  const delivered = letters.filter((letter) => isDelivered(letter, now));
+  const delivered = letters.filter((letter) => isDelivered(letter, effectiveNow));
   const inTransitCount = letters.length - delivered.length;
   const isEmpty = delivered.length === 0 && writingNames.length === 0 && inTransitCount === 0;
-
-  const draftTarget = draft ? authors[draft.characterId] ?? composeTarget ?? unknownAuthor : null;
+  const recipientOptions =
+    composeTargets && composeTargets.length > 0
+      ? composeTargets
+      : Object.entries(authors).map(([id, author]) => ({ id, ...author }));
+  const draftRecipients = draft
+    ? draft.recipientIds.map((id) => ({ id, ...(authors[id] ?? unknownAuthor) }))
+    : [];
+  const draftRecipientNames = draftRecipients.map((recipient) => recipient.name);
+  const draftRecipientLabel =
+    draftRecipientNames.length > 0 ? draftRecipientNames.join("、") : "先选择收信人";
 
   function openLetter(letter: CharacterLetter) {
     setOpenId((current) => (current === letter.id ? null : letter.id));
@@ -59,12 +77,12 @@ export function CompanionLetters({
     }
   }
 
-  function startCompose(characterId: string, replyTo: string | null, subjectSeed = "") {
-    setDraft({ characterId, subject: subjectSeed, body: "", replyTo });
+  function startCompose(characterId: string | null, replyTo: string | null, subjectSeed = "") {
+    setDraft(createInitialLetterDraft(characterId, { replyTo, subject: subjectSeed }));
   }
 
   function submitDraft() {
-    if (!draft || !draft.body.trim() || sendingNames.length > 0) {
+    if (!draft || !canSubmitLetterDraft(draft) || sendingNames.length > 0) {
       return;
     }
     onSend(draft);
@@ -98,9 +116,9 @@ export function CompanionLetters({
             size="sm"
             variant="primary"
             onPress={() => startCompose(composeTarget.id, null)}
-            isDisabled={draft !== null}
+            isDisabled={draft !== null || recipientOptions.length === 0}
           >
-            写信给{composeTarget.name}
+            写信
           </Button>
         ) : null}
       </header>
@@ -108,6 +126,27 @@ export function CompanionLetters({
       <ScrollShadow className="letters-stream" hideScrollBar orientation="vertical">
         {draft ? (
           <article className="letter-composer">
+            <div className="letter-recipient-picker" aria-label="选择收信人">
+              <span>收信人</span>
+              <div className="letter-recipient-options">
+                {recipientOptions.map((target) => {
+                  const selected = draft.recipientIds.includes(target.id);
+                  return (
+                    <button
+                      type="button"
+                      className={`letter-recipient-chip ${selected ? "is-selected" : ""}`}
+                      key={target.id}
+                      onClick={() => setDraft(toggleLetterDraftRecipient(draft, target.id))}
+                      aria-pressed={selected}
+                      disabled={Boolean(draft.replyTo)}
+                    >
+                      <AuthorAvatar author={target} className="letter-recipient-avatar" />
+                      <span>{target.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <input
               className="letter-composer-subject"
               placeholder="主题（可留空）"
@@ -117,7 +156,7 @@ export function CompanionLetters({
             />
             <textarea
               className="letter-composer-body"
-              placeholder={`写点什么给${draftTarget?.name ?? "ta"}…`}
+              placeholder={`写点什么给${draftRecipientLabel}…`}
               value={draft.body}
               maxLength={600}
               rows={5}
@@ -132,9 +171,9 @@ export function CompanionLetters({
                 size="sm"
                 variant="primary"
                 onPress={submitDraft}
-                isDisabled={!draft.body.trim() || sendingNames.length > 0}
+                isDisabled={!canSubmitLetterDraft(draft) || sendingNames.length > 0}
               >
-                {draft.replyTo ? "回信" : "寄出"}
+                {draft.replyTo ? "回信" : draft.recipientIds.length > 1 ? `寄给 ${draft.recipientIds.length} 人` : "寄出"}
               </Button>
             </div>
           </article>
@@ -155,7 +194,7 @@ export function CompanionLetters({
                 <AuthorAvatar author={author} className="letter-author-avatar" />
                 <span className="letter-sender-tag">{fromUser ? `你寄给${author.name}` : `${author.name}写来`}</span>
                 <span className="letter-subject">{letter.subject}</span>
-                <time className="letter-time">{formatLetterTime(letter.deliverAt, now)}</time>
+                <time className="letter-time">{formatLetterTime(letter.deliverAt, effectiveNow)}</time>
               </button>
               {isOpen ? (
                 <div className="letter-body">

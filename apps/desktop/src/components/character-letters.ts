@@ -18,8 +18,18 @@ export type CharacterLetter = {
   replyTo: string | null; // 若是回信，这里是被回复那封信的 id
 };
 
+export type CharacterLetterDraft = {
+  recipientIds: string[];
+  subject: string;
+  body: string;
+  replyTo: string | null;
+};
+
 // 两封信之间至少间隔这么久：写信比发动态郑重，别太频繁。
 export const MIN_LETTER_GAP_MS = 20 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 // 精力低于这个值就没心力写信了。
 const LETTER_ENERGY_FLOOR = 25;
 // 聊够这么多个回合，角色才有可能在后台「偷偷」写信——太早写显得没由来。
@@ -32,6 +42,40 @@ const MAX_DELIVER_DELAY_MS = 24 * 60 * 60 * 1000;
 // 主题/正文长度上限。
 const MAX_SUBJECT_LENGTH = 40;
 const MAX_BODY_LENGTH = 600;
+const MIN_REPLY_DELAY_MS = 30 * MINUTE_MS;
+const MAX_REPLY_DELAY_MS = 7 * DAY_MS;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function createInitialLetterDraft(
+  recipientId: string | null,
+  options: { replyTo?: string | null; subject?: string } = {}
+): CharacterLetterDraft {
+  return {
+    recipientIds: recipientId ? [recipientId] : [],
+    subject: options.subject ?? "",
+    body: "",
+    replyTo: options.replyTo ?? null
+  };
+}
+
+export function toggleLetterDraftRecipient(draft: CharacterLetterDraft, recipientId: string): CharacterLetterDraft {
+  if (draft.replyTo) {
+    return draft;
+  }
+
+  const exists = draft.recipientIds.includes(recipientId);
+  return {
+    ...draft,
+    recipientIds: exists ? draft.recipientIds.filter((id) => id !== recipientId) : [...draft.recipientIds, recipientId]
+  };
+}
+
+export function canSubmitLetterDraft(draft: CharacterLetterDraft): boolean {
+  return draft.recipientIds.length > 0 && draft.body.trim().length > 0;
+}
 
 // 决定此刻这个角色要不要写信：关系够熟、距上次够久、精力还够。
 export function shouldWriteLetter(state: CharacterState, lastLetterAt: number | null, now: number): boolean {
@@ -208,6 +252,53 @@ export function parseLetterReply(reply: string): { subject: string; body: string
 export function pickDeliverAt(now: number, random: () => number = Math.random): number {
   const span = MAX_DELIVER_DELAY_MS - MIN_DELIVER_DELAY_MS;
   return now + MIN_DELIVER_DELAY_MS + Math.floor(random() * span);
+}
+
+export function pickReplyDeliverAt(
+  now: number,
+  state: CharacterState,
+  userLetter: { subject: string; body: string },
+  random: () => number = Math.random
+): number {
+  const tier = affinityTier(state.affinity);
+  const baseWindow: Record<ReturnType<typeof affinityTier>, { min: number; max: number }> = {
+    stranger: { min: DAY_MS, max: 5 * DAY_MS },
+    familiar: { min: 8 * HOUR_MS, max: 3 * DAY_MS },
+    close: { min: 3 * HOUR_MS, max: 36 * HOUR_MS },
+    trusted: { min: HOUR_MS, max: 18 * HOUR_MS }
+  };
+
+  let adjustment = 0;
+  if (state.energy < 30) {
+    adjustment += 18 * HOUR_MS;
+  } else if (state.energy >= 80) {
+    adjustment -= 2 * HOUR_MS;
+  }
+
+  const moodAdjustment: Record<Mood, number> = {
+    calm: 0,
+    warm: -HOUR_MS,
+    playful: -2 * HOUR_MS,
+    tired: 12 * HOUR_MS,
+    guarded: 18 * HOUR_MS
+  };
+  adjustment += moodAdjustment[state.mood];
+
+  const rememberedGoodFacts = state.impressions.filter((entry) => entry.kind === "like" || entry.kind === "fact").length;
+  const sharedHistoryHours = Math.min(12, Math.max(0, state.meetCount) + rememberedGoodFacts);
+  adjustment -= sharedHistoryHours * HOUR_MS;
+
+  const hardFeelings = state.impressions.filter((entry) => entry.kind === "dislike" || entry.kind === "grudge").length;
+  adjustment += hardFeelings * 8 * HOUR_MS;
+
+  const letterLength = `${userLetter.subject}\n${userLetter.body}`.trim().length;
+  adjustment += Math.min(10, Math.floor(letterLength / 160) * 2) * HOUR_MS;
+
+  const base = baseWindow[tier];
+  const minDelay = clamp(base.min + adjustment, MIN_REPLY_DELAY_MS, MAX_REPLY_DELAY_MS);
+  const maxDelay = clamp(base.max + adjustment, minDelay + HOUR_MS, MAX_REPLY_DELAY_MS);
+  const span = maxDelay - minDelay;
+  return now + minDelay + Math.floor(random() * span);
 }
 
 // 这封信此刻是否已送达（在收件箱可见）。

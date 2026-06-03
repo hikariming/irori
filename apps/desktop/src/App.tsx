@@ -133,6 +133,7 @@ export function App() {
   const modelReady = isModelConfigured(modelSettings);
   const activeModelProfile = getActiveModelProfile(modelSettings);
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
+  const effectiveLetterClock = Math.max(letterClock, Date.now());
   const canStartNewSession = canStartNewDraftSession({
     activeSessionId,
     isDraftPending: isNewDraftSessionPending,
@@ -144,12 +145,12 @@ export function App() {
   const unreadLettersByCharacter = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const letter of letters) {
-      if (letter.sender === "character" && letter.readAt === null && isDelivered(letter, letterClock)) {
+      if (letter.sender === "character" && letter.readAt === null && isDelivered(letter, effectiveLetterClock)) {
         counts[letter.characterId] = (counts[letter.characterId] ?? 0) + 1;
       }
     }
     return counts;
-  }, [letters, letterClock]);
+  }, [letters, effectiveLetterClock]);
   const activityByCharacter = useMemo(() => {
     const activities: Record<string, string> = {};
     for (const card of cards) {
@@ -906,26 +907,35 @@ export function App() {
                   ? { id: activeCard.id, ...(characterAuthors[activeCard.id] ?? { name: activeCard.name, avatar: "" }) }
                   : null
               }
+              composeTargets={cards.map((card) => ({
+                id: card.id,
+                ...(characterAuthors[card.id] ?? { name: card.name, avatar: "" })
+              }))}
               writingNames={writingIds.map((id) => characterAuthors[id]?.name).filter((name): name is string => Boolean(name))}
               sendingNames={sendingIds.map((id) => characterAuthors[id]?.name).filter((name): name is string => Boolean(name))}
               backgroundSrc={activeCharacter.assets.background}
-              now={letterClock}
+              now={effectiveLetterClock}
               onRead={markRead}
               onSend={(draft) => {
-                const card = findCharacterCard(cards, draft.characterId);
-                if (!card) {
-                  return;
-                }
-                void sendUserLetter({
-                  card,
-                  state: getCharacterState(characterStates, card.id),
-                  subject: draft.subject,
-                  body: draft.body,
-                  replyTo: draft.replyTo,
-                  generateReply: modelReady,
-                  onExchange: ({ userText, replyText, impressions }) =>
-                    recordCharacterTurn(card.id, { userText, replyText, impressions })
-                });
+                const jobs = draft.recipientIds
+                  .map((characterId) => {
+                    const card = findCharacterCard(cards, characterId);
+                    if (!card) {
+                      return null;
+                    }
+                    return sendUserLetter({
+                      card,
+                      state: getCharacterState(characterStates, card.id),
+                      subject: draft.subject,
+                      body: draft.body,
+                      replyTo: draft.replyTo,
+                      generateReply: modelReady,
+                      onExchange: ({ userText, replyText, impressions }) =>
+                        recordCharacterTurn(card.id, { userText, replyText, impressions })
+                    });
+                  })
+                  .filter((job): job is Promise<void> => job !== null);
+                void Promise.all(jobs);
               }}
             />
           ) : (

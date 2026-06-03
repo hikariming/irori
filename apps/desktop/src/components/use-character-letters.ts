@@ -6,6 +6,7 @@ import {
   composeLetterReplyPrompt,
   parseLetterReply,
   pickDeliverAt,
+  pickReplyDeliverAt,
   shouldWriteLetter,
   type CharacterLetter
 } from "./character-letters";
@@ -154,11 +155,12 @@ export function useCharacterLetters() {
 
       setSendingIds((current) => (current.includes(card.id) ? current : [...current, card.id]));
       try {
+        const replyDeliverAt = pickReplyDeliverAt(now, state, { subject: trimmedSubject, body: trimmedBody });
         const response = await desktopBackend.sendPiPrompt({
           characterId: card.id,
           prompt: "（读用户的信并回信）",
           runId: createLetterRunId(),
-          sessionPrompt: composeLetterReplyPrompt(card, state, { subject: trimmedSubject, body: trimmedBody }, now)
+          sessionPrompt: composeLetterReplyPrompt(card, state, { subject: trimmedSubject, body: trimmedBody }, replyDeliverAt)
         });
 
         const rawText = response.text ?? "";
@@ -170,7 +172,7 @@ export function useCharacterLetters() {
             subject: replySubject,
             body: replyBody,
             mood: state.mood,
-            deliverAt: new Date(pickDeliverAt(now)).toISOString(),
+            deliverAt: new Date(replyDeliverAt).toISOString(),
             sender: "character",
             replyTo: userLetter.id
           });

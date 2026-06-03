@@ -4,18 +4,22 @@ import { test } from "node:test";
 import type { CharacterCard } from "./character-cards.ts";
 import { defaultCharacterState } from "./character-state.ts";
 import {
+  canSubmitLetterDraft,
   composeLetterPrompt,
   composeLetterReplyPrompt,
+  createInitialLetterDraft,
   formatLetterTime,
   isDelivered,
   LETTER_TURN_THRESHOLD,
   MIN_LETTER_GAP_MS,
   parseLetterReply,
   pickDeliverAt,
+  pickReplyDeliverAt,
   sanitizeLetters,
   shouldTryLetterAfterChat,
   shouldWriteLetter,
   summarizeRecentDialogue,
+  toggleLetterDraftRecipient,
   type CharacterLetter
 } from "./character-letters.ts";
 
@@ -119,6 +123,69 @@ test("pickDeliverAt lands within the 1-24h delay window", () => {
   const late = pickDeliverAt(now, () => 0.999999);
   assert.ok(late > now + 23 * 60 * 60 * 1000);
   assert.ok(late <= now + 24 * 60 * 60 * 1000);
+});
+
+test("pickReplyDeliverAt shortens replies for close, energetic characters with shared history", () => {
+  const now = 1_000_000_000_000;
+  const quickState = {
+    ...familiarState(),
+    affinity: 92,
+    energy: 95,
+    mood: "warm",
+    meetCount: 8,
+    impressions: [
+      { id: "a", kind: "like", text: "ta 喜欢安静的夜晚", weight: 2, createdAt: now - 1 },
+      { id: "b", kind: "fact", text: "ta 最近在写论文", weight: 1, createdAt: now - 2 }
+    ]
+  };
+  const slowState = {
+    ...familiarState(),
+    affinity: 24,
+    energy: 18,
+    mood: "guarded",
+    meetCount: 1,
+    impressions: [{ id: "g", kind: "grudge", text: "ta 上次语气很冲", weight: 4, createdAt: now - 3 }]
+  };
+
+  const quick = pickReplyDeliverAt(now, quickState, { subject: "今晚", body: "想和你说句话。" }, () => 0);
+  const slow = pickReplyDeliverAt(now, slowState, { subject: "很长的信", body: "慢慢读。".repeat(180) }, () => 0);
+
+  assert.ok(quick >= now + 30 * 60 * 1000);
+  assert.ok(quick <= now + 3 * 60 * 60 * 1000);
+  assert.ok(slow >= now + 24 * 60 * 60 * 1000);
+  assert.ok(slow <= now + 7 * 24 * 60 * 60 * 1000);
+});
+
+test("pickReplyDeliverAt keeps deterministic random placement inside the dynamic window", () => {
+  const now = 1_000_000_000_000;
+  const state = { ...familiarState(), affinity: 60, energy: 60, mood: "calm", meetCount: 3 };
+  const earliest = pickReplyDeliverAt(now, state, { subject: "早", body: "今天好吗" }, () => 0);
+  const latest = pickReplyDeliverAt(now, state, { subject: "早", body: "今天好吗" }, () => 0.999999);
+
+  assert.ok(latest > earliest);
+  assert.ok(latest - earliest >= 12 * 60 * 60 * 1000);
+});
+
+test("letter draft starts from the focused character but supports multiple recipients", () => {
+  const draft = createInitialLetterDraft("lulin");
+  assert.deepEqual(draft.recipientIds, ["lulin"]);
+  assert.equal(canSubmitLetterDraft(draft), false);
+
+  const withSecond = toggleLetterDraftRecipient(draft, "sakuramio");
+  assert.deepEqual(withSecond.recipientIds, ["lulin", "sakuramio"]);
+
+  const withoutFirst = toggleLetterDraftRecipient(withSecond, "lulin");
+  assert.deepEqual(withoutFirst.recipientIds, ["sakuramio"]);
+
+  assert.equal(canSubmitLetterDraft({ ...withoutFirst, body: "晚安，今天也辛苦了。" }), true);
+});
+
+test("reply drafts keep a single locked recipient", () => {
+  const draft = createInitialLetterDraft("lulin", { replyTo: "letter-a", subject: "回复：晚安" });
+  assert.deepEqual(draft.recipientIds, ["lulin"]);
+  assert.equal(draft.replyTo, "letter-a");
+  assert.equal(draft.subject, "回复：晚安");
+  assert.deepEqual(toggleLetterDraftRecipient(draft, "sakuramio").recipientIds, ["lulin"]);
 });
 
 test("isDelivered gates on deliverAt", () => {
