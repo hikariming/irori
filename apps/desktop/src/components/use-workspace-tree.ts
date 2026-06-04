@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { desktopBackend } from "./desktop-backend";
 import { formatUnknownError } from "./error-message";
@@ -6,12 +6,13 @@ import {
   flattenVisibleNodes,
   searchLoadedTree,
   toggleExpanded,
+  workspaceTreeScopeChanged,
   type WorkspaceNode,
   type WorkspaceRow
 } from "./workspace-model";
 
 // 懒加载文件树的状态机：首屏拉两个根，展开文件夹时按层取子节点并缓存。
-export function useWorkspaceTree(enabled: boolean) {
+export function useWorkspaceTree(enabled: boolean, scopeKey = "") {
   const [roots, setRoots] = useState<WorkspaceNode[]>([]);
   const [childrenByPath, setChildrenByPath] = useState<Map<string, WorkspaceNode[]>>(() => new Map());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -19,6 +20,22 @@ export function useWorkspaceTree(enabled: boolean) {
   const [error, setError] = useState<string | null>(null);
   const [rootsLoaded, setRootsLoaded] = useState(false);
   const [query, setQuery] = useState("");
+  const previousScopeRef = useRef(scopeKey);
+
+  useEffect(() => {
+    if (!workspaceTreeScopeChanged(previousScopeRef.current, scopeKey)) {
+      return;
+    }
+
+    previousScopeRef.current = scopeKey;
+    setRoots([]);
+    setChildrenByPath(new Map());
+    setExpandedIds(new Set());
+    setLoadingIds(new Set());
+    setError(null);
+    setRootsLoaded(false);
+    setQuery("");
+  }, [scopeKey]);
 
   // 面板首次打开才拉根，避免没用到也扫盘。
   useEffect(() => {

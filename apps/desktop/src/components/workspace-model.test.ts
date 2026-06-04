@@ -8,6 +8,7 @@ import {
   flattenVisibleNodes,
   formatFileSize,
   rootLabel,
+  workspaceTreeScopeChanged,
   searchLoadedTree,
   sortNodes,
   toggleExpanded,
@@ -111,4 +112,10 @@ test("breadcrumbSegments splits both posix and windows paths", () => {
 test("rootLabel names the two roots", () => {
   assert.equal(rootLabel("workspace"), "工作区");
   assert.equal(rootLabel("computer"), "这台电脑");
+});
+
+test("workspaceTreeScopeChanged only resets when workspace path changes", () => {
+  assert.equal(workspaceTreeScopeChanged("/Users/rqq/project-a", "/Users/rqq/project-a"), false);
+  assert.equal(workspaceTreeScopeChanged("/Users/rqq/project-a", "/Users/rqq/project-b"), true);
+  assert.equal(workspaceTreeScopeChanged("", "/Users/rqq/project-b"), true);
 });

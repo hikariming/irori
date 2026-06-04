@@ -80,6 +80,51 @@ struct StoredModelRegistry {
     profiles: Vec<StoredModelProfile>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveWebAccessSettingsRequest {
+    provider: String,
+    workflow: String,
+    #[serde(default = "default_true")]
+    no_key_fallback: bool,
+    #[serde(default)]
+    allow_browser_cookies: bool,
+    exa_api_key: Option<String>,
+    perplexity_api_key: Option<String>,
+    gemini_api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WebAccessSettingsSnapshot {
+    provider: String,
+    workflow: String,
+    no_key_fallback: bool,
+    allow_browser_cookies: bool,
+    exa_has_key: bool,
+    exa_key_hint: Option<String>,
+    perplexity_has_key: bool,
+    perplexity_key_hint: Option<String>,
+    gemini_has_key: bool,
+    gemini_key_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredWebAccessSettings {
+    #[serde(default = "default_web_access_provider")]
+    provider: String,
+    #[serde(default = "default_web_access_workflow")]
+    workflow: String,
+    #[serde(default = "default_true")]
+    no_key_fallback: bool,
+    #[serde(default)]
+    allow_browser_cookies: bool,
+    exa_api_key: Option<String>,
+    perplexity_api_key: Option<String>,
+    gemini_api_key: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LegacyStoredModelSettings {
@@ -96,9 +141,26 @@ struct SendPiPromptRequest {
     run_id: Option<String>,
     session_prompt: Option<String>,
     session_id: Option<String>,
+    browser_snapshot: Option<serde_json::Value>,
     /// 工具审核模式："default"（用户手动）| "auto"（大模型审查）| "all"（全部通过）。
     #[serde(default)]
     review_mode: Option<String>,
+}
+
+/// 高级设置：影响编程 / Agent 能力的复杂开关。目前只有子代理委派，默认关闭。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdvancedSettings {
+    #[serde(default)]
+    enable_subagents: bool,
+}
+
+impl Default for AdvancedSettings {
+    fn default() -> Self {
+        Self {
+            enable_subagents: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -306,6 +368,18 @@ struct WorkspaceEntry {
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_MODEL_NAME: &str = "gpt-5.5";
 
+fn default_true() -> bool {
+    true
+}
+
+fn default_web_access_provider() -> String {
+    "auto".to_string()
+}
+
+fn default_web_access_workflow() -> String {
+    "none".to_string()
+}
+
 #[tauri::command]
 fn companion_status() -> &'static str {
     "Cockapoo Pi Companion desktop shell is ready."
@@ -339,6 +413,21 @@ fn delete_model_profile(
     profile_id: String,
 ) -> Result<ModelSettingsSnapshot, String> {
     delete_model_profile_at_path(&settings_path(&app)?, &profile_id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_web_access_settings(app: AppHandle) -> Result<WebAccessSettingsSnapshot, String> {
+    read_web_access_settings_from_path(&web_access_settings_path(&app)?)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_web_access_settings(
+    app: AppHandle,
+    request: SaveWebAccessSettingsRequest,
+) -> Result<WebAccessSettingsSnapshot, String> {
+    save_web_access_settings_to_path(&web_access_settings_path(&app)?, request)
         .map_err(|error| error.to_string())
 }
 
@@ -540,6 +629,50 @@ fn set_review_mode(app: AppHandle, mode: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_advanced_settings(app: AppHandle) -> Result<AdvancedSettings, String> {
+    read_advanced_settings_from_path(&advanced_settings_path(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_advanced_settings(
+    app: AppHandle,
+    settings: AdvancedSettings,
+) -> Result<AdvancedSettings, String> {
+    save_advanced_settings_to_path(&advanced_settings_path(&app)?, settings)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn get_workspace_path(app: AppHandle) -> Result<String, String> {
+    Ok(workspace_root_dir(&app)?.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn set_workspace_path(app: AppHandle, path: String) -> Result<String, String> {
+    save_workspace_path(&app, &path)
+}
+
+/// Opens the native folder picker and, if the user chooses a directory, persists
+/// it as the workspace root and returns the saved path. Returns `None` when the
+/// dialog is cancelled. The picker is dispatched off the main thread by the
+/// plugin, so this command must be `async` to avoid deadlocking the event loop.
+#[tauri::command]
+async fn pick_workspace_path(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog().file().pick_folder(move |picked| {
+        let _ = sender.send(picked);
+    });
+    let picked = receiver.recv().map_err(|error| error.to_string())?;
+
+    let Some(folder) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+    save_workspace_path(&app, &folder.to_string_lossy()).map(Some)
+}
+
+#[tauri::command]
 fn append_chat_message(
     app: AppHandle,
     request: AppendChatMessageRequest,
@@ -552,7 +685,7 @@ fn append_chat_message(
 fn list_workspace_roots(app: AppHandle) -> Result<Vec<WorkspaceEntry>, String> {
     let mut roots = Vec::new();
 
-    if let Ok(workspace) = workspace_root_dir() {
+    if let Ok(workspace) = workspace_root_dir(&app) {
         // build_workspace_entry already names it after the cwd folder (e.g. the repo dir).
         if let Some(entry) = build_workspace_entry(&workspace, "workspace") {
             roots.push(entry);
@@ -611,19 +744,23 @@ fn run_sidecar_prompt(
     let tool_policy_settings =
         read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
             .map_err(|error| error.to_string())?;
+    let web_access_settings =
+        read_stored_web_access_settings(&web_access_settings_path(&app)?)
+            .map_err(|error| error.to_string())?;
     let resolved = StoredModelProfile {
         token: Some(token),
         ..stored
     };
     let mut payload = build_sidecar_prompt_payload(
-        std::env::current_dir()
-            .map_err(|error| error.to_string())?
-            .to_string_lossy()
-            .to_string(),
+        workspace_root_dir(&app)?.to_string_lossy().to_string(),
         &resolved,
         prompt,
         chat_history_memory,
         tool_policy_settings,
+        build_web_access_runtime_config(&web_access_settings),
+        request
+            .as_ref()
+            .and_then(|request| request.browser_snapshot.clone()),
     );
     if let Some(request) = request.as_ref() {
         let memory_dir = memory_backend_dir(&app)?;
@@ -637,6 +774,17 @@ fn run_sidecar_prompt(
             None => read_review_mode_from_path(&review_mode_path(&app)?).unwrap_or_else(|_| "default".to_string()),
         };
         payload["reviewMode"] = serde_json::Value::String(review_mode);
+    }
+
+    // 高级设置：开启子代理委派时，让 sidecar 加载 pi-subagents、用持久化会话（worker
+    // 默认 context: fork 需要），并把围栏策略写到子进程可继承的配置路径。
+    let advanced =
+        read_advanced_settings_from_path(&advanced_settings_path(&app)?).unwrap_or_default();
+    if advanced.enable_subagents {
+        payload["enableSubagents"] = serde_json::Value::Bool(true);
+        payload["sessionMode"] = serde_json::Value::String("persistent".to_string());
+        payload["toolGateConfigPath"] =
+            serde_json::Value::String(tool_gate_config_path(&app)?.to_string_lossy().to_string());
     }
 
     if let Some(run_id) = request.as_ref().and_then(|request| request.run_id.clone()) {
@@ -870,6 +1018,8 @@ fn build_sidecar_prompt_payload(
     prompt: String,
     chat_history_memory: Option<serde_json::Value>,
     tool_policy_settings: serde_json::Value,
+    web_access_settings: serde_json::Value,
+    browser_snapshot: Option<serde_json::Value>,
 ) -> serde_json::Value {
     let mut payload = serde_json::json!({
         "cwd": cwd,
@@ -879,11 +1029,16 @@ fn build_sidecar_prompt_payload(
         },
         "runtimeToken": stored.token.clone().unwrap_or_default(),
         "prompt": prompt,
-        "toolPolicySettings": tool_policy_settings
+        "toolPolicySettings": tool_policy_settings,
+        "webAccessSettings": web_access_settings
     });
 
     if let Some(memory) = chat_history_memory {
         payload["chatHistoryMemory"] = memory;
+    }
+
+    if let Some(snapshot) = browser_snapshot {
+        payload["browserSnapshot"] = snapshot;
     }
 
     payload
@@ -918,8 +1073,57 @@ fn build_chat_history_memory_payload(
     })))
 }
 
-fn workspace_root_dir() -> Result<PathBuf, String> {
+/// The agent's working directory. Defaults to the process cwd (the dir the app
+/// was launched from), but the user can override it — see `set_workspace_path`.
+/// A saved path that no longer points at a real directory is ignored so a stale
+/// setting can't break file browsing or prompts.
+fn workspace_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    if let Some(saved) = read_saved_workspace_path(app) {
+        return Ok(saved);
+    }
     std::env::current_dir().map_err(|error| error.to_string())
+}
+
+fn workspace_path_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("workspace-path.json"))
+}
+
+fn read_saved_workspace_path(app: &AppHandle) -> Option<PathBuf> {
+    let path = workspace_path_path(app).ok()?;
+    if !path.exists() {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    let raw = value.get("path").and_then(|value| value.as_str())?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let candidate = PathBuf::from(raw);
+    candidate.is_dir().then_some(candidate)
+}
+
+fn save_workspace_path(app: &AppHandle, path: &str) -> Result<String, String> {
+    let canonical = fs::canonicalize(PathBuf::from(path.trim()))
+        .map_err(|error| format!("无法访问该目录：{error}"))?;
+    if !canonical.is_dir() {
+        return Err("该路径不是目录。".to_string());
+    }
+    let file = workspace_path_path(app)?;
+    if let Some(parent) = file.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let value = canonical.to_string_lossy().to_string();
+    fs::write(
+        &file,
+        serde_json::to_string_pretty(&serde_json::json!({ "path": value }))
+            .map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(value)
 }
 
 fn home_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -930,7 +1134,7 @@ fn home_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// crafted path can't walk into arbitrary system locations. Both sides are
 /// canonicalized first so symlinks / `..` can't slip past the prefix check.
 fn workspace_path_allowed(app: &AppHandle, canonical: &Path) -> bool {
-    [workspace_root_dir().ok(), home_root_dir(app).ok()]
+    [workspace_root_dir(app).ok(), home_root_dir(app).ok()]
         .into_iter()
         .flatten()
         .filter_map(|root| fs::canonicalize(root).ok())
@@ -1020,12 +1224,38 @@ fn tool_policy_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .join("tool-policy-settings.json"))
 }
 
+fn web_access_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("web-access-settings.json"))
+}
+
 fn review_mode_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?
         .join("review-mode.json"))
+}
+
+fn advanced_settings_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("advanced-settings.json"))
+}
+
+/// 子代理委派需要一个稳定的 gate 配置路径：sidecar 把策略写到这里，子进程经
+/// COCKAPOO_TOOL_GATE_CONFIG 环境变量继承后读取同一份围栏。
+fn tool_gate_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("cockapoo-tool-gate.json"))
 }
 
 fn build_memory_backend_config_payload(
@@ -1353,6 +1583,148 @@ fn delete_model_profile_at_path(
     Ok(snapshot_from_stored_registry(&registry))
 }
 
+fn normalize_web_access_provider(provider: &str) -> String {
+    match provider.trim().to_ascii_lowercase().as_str() {
+        "exa" => "exa",
+        "perplexity" => "perplexity",
+        "gemini" => "gemini",
+        _ => "auto",
+    }
+    .to_string()
+}
+
+fn normalize_web_access_workflow(workflow: &str) -> String {
+    match workflow.trim().to_ascii_lowercase().as_str() {
+        "summary-review" => "summary-review",
+        _ => "none",
+    }
+    .to_string()
+}
+
+fn normalize_optional_secret(value: Option<String>) -> Option<String> {
+    value
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+}
+
+fn default_stored_web_access_settings() -> StoredWebAccessSettings {
+    StoredWebAccessSettings {
+        provider: default_web_access_provider(),
+        workflow: default_web_access_workflow(),
+        no_key_fallback: true,
+        allow_browser_cookies: false,
+        exa_api_key: None,
+        perplexity_api_key: None,
+        gemini_api_key: None,
+    }
+}
+
+fn normalize_stored_web_access_settings(
+    stored: StoredWebAccessSettings,
+) -> StoredWebAccessSettings {
+    StoredWebAccessSettings {
+        provider: normalize_web_access_provider(&stored.provider),
+        workflow: normalize_web_access_workflow(&stored.workflow),
+        no_key_fallback: stored.no_key_fallback,
+        allow_browser_cookies: stored.allow_browser_cookies,
+        exa_api_key: normalize_optional_secret(stored.exa_api_key),
+        perplexity_api_key: normalize_optional_secret(stored.perplexity_api_key),
+        gemini_api_key: normalize_optional_secret(stored.gemini_api_key),
+    }
+}
+
+fn read_stored_web_access_settings(
+    path: &Path,
+) -> Result<StoredWebAccessSettings, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Ok(default_stored_web_access_settings());
+    }
+
+    let stored: StoredWebAccessSettings = serde_json::from_str(&fs::read_to_string(path)?)?;
+    Ok(normalize_stored_web_access_settings(stored))
+}
+
+fn key_status(key: &Option<String>) -> (bool, Option<String>) {
+    let value = key.as_deref().filter(|item| !item.trim().is_empty());
+    (value.is_some(), value.map(token_hint))
+}
+
+fn snapshot_from_stored_web_access(
+    stored: &StoredWebAccessSettings,
+) -> WebAccessSettingsSnapshot {
+    let (exa_has_key, exa_key_hint) = key_status(&stored.exa_api_key);
+    let (perplexity_has_key, perplexity_key_hint) = key_status(&stored.perplexity_api_key);
+    let (gemini_has_key, gemini_key_hint) = key_status(&stored.gemini_api_key);
+
+    WebAccessSettingsSnapshot {
+        provider: stored.provider.clone(),
+        workflow: stored.workflow.clone(),
+        no_key_fallback: stored.no_key_fallback,
+        allow_browser_cookies: stored.allow_browser_cookies,
+        exa_has_key,
+        exa_key_hint,
+        perplexity_has_key,
+        perplexity_key_hint,
+        gemini_has_key,
+        gemini_key_hint,
+    }
+}
+
+fn read_web_access_settings_from_path(
+    path: &Path,
+) -> Result<WebAccessSettingsSnapshot, Box<dyn std::error::Error>> {
+    Ok(snapshot_from_stored_web_access(
+        &read_stored_web_access_settings(path)?,
+    ))
+}
+
+fn save_web_access_settings_to_path(
+    path: &Path,
+    request: SaveWebAccessSettingsRequest,
+) -> Result<WebAccessSettingsSnapshot, Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let existing = read_stored_web_access_settings(path)?;
+    let stored = StoredWebAccessSettings {
+        provider: normalize_web_access_provider(&request.provider),
+        workflow: normalize_web_access_workflow(&request.workflow),
+        no_key_fallback: request.no_key_fallback,
+        allow_browser_cookies: request.allow_browser_cookies,
+        exa_api_key: normalize_optional_secret(request.exa_api_key).or(existing.exa_api_key),
+        perplexity_api_key: normalize_optional_secret(request.perplexity_api_key)
+            .or(existing.perplexity_api_key),
+        gemini_api_key: normalize_optional_secret(request.gemini_api_key)
+            .or(existing.gemini_api_key),
+    };
+
+    fs::write(path, serde_json::to_string_pretty(&stored)?)?;
+
+    Ok(snapshot_from_stored_web_access(&stored))
+}
+
+fn build_web_access_runtime_config(stored: &StoredWebAccessSettings) -> serde_json::Value {
+    let mut value = serde_json::json!({
+        "provider": stored.provider,
+        "workflow": stored.workflow,
+        "noKeyFallback": stored.no_key_fallback,
+        "allowBrowserCookies": stored.allow_browser_cookies
+    });
+
+    if let Some(key) = stored.exa_api_key.as_deref() {
+        value["exaApiKey"] = serde_json::Value::String(key.to_string());
+    }
+    if let Some(key) = stored.perplexity_api_key.as_deref() {
+        value["perplexityApiKey"] = serde_json::Value::String(key.to_string());
+    }
+    if let Some(key) = stored.gemini_api_key.as_deref() {
+        value["geminiApiKey"] = serde_json::Value::String(key.to_string());
+    }
+
+    value
+}
+
 fn default_tool_policy_settings() -> serde_json::Value {
     serde_json::json!({
         "builtinTools": {
@@ -1424,6 +1796,29 @@ fn save_review_mode_to_path(
     fs::write(path, serde_json::to_string_pretty(&serde_json::json!({ "mode": mode }))?)?;
 
     Ok(mode)
+}
+
+fn read_advanced_settings_from_path(
+    path: &Path,
+) -> Result<AdvancedSettings, Box<dyn std::error::Error>> {
+    if !path.exists() {
+        return Ok(AdvancedSettings::default());
+    }
+
+    Ok(serde_json::from_str(&fs::read_to_string(path)?).unwrap_or_default())
+}
+
+fn save_advanced_settings_to_path(
+    path: &Path,
+    settings: AdvancedSettings,
+) -> Result<AdvancedSettings, Box<dyn std::error::Error>> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    fs::write(path, serde_json::to_string_pretty(&settings)?)?;
+
+    Ok(settings)
 }
 
 fn read_tool_policy_settings_from_path(
@@ -2144,6 +2539,7 @@ fn row_to_chat_message_record(
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(PromptStdinRegistry::default())
         .invoke_handler(tauri::generate_handler![
@@ -2156,10 +2552,13 @@ pub fn run() {
             delete_model_profile,
             get_character_states,
             get_chat_session,
+            get_advanced_settings,
             get_memory_status,
             get_model_settings,
             get_review_mode,
             get_tool_policy_settings,
+            get_web_access_settings,
+            get_workspace_path,
             list_character_letters,
             list_character_moments,
             list_chat_sessions,
@@ -2170,8 +2569,12 @@ pub fn run() {
             save_character_states,
             save_model_settings,
             save_tool_policy_settings,
+            save_web_access_settings,
             set_active_model_profile,
+            set_advanced_settings,
             set_review_mode,
+            set_workspace_path,
+            pick_workspace_path,
             send_pi_prompt,
             test_model_connection,
             toggle_character_moment_like
@@ -2188,8 +2591,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        append_chat_message_to_path, build_sidecar_prompt_payload,
-        build_memory_backend_config_payload,
+        append_chat_message_to_path, build_memory_backend_config_payload,
+        build_sidecar_prompt_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
         init_chat_history_at_path, insert_character_letter_to_path, insert_character_moment_to_path,
         add_character_moment_comment_to_path, toggle_character_moment_like_to_path,
@@ -2198,15 +2601,19 @@ mod tests {
         mark_character_letter_read_to_path,
         memory_status_from_paths, normalize_openai_compatible_settings, parse_sidecar_stream_line,
         read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
-        read_review_mode_from_path, read_tool_policy_settings_from_path, read_workspace_dir,
-        save_review_mode_to_path,
+        read_advanced_settings_from_path, read_review_mode_from_path,
+        read_tool_policy_settings_from_path,
+        read_web_access_settings_from_path, read_workspace_dir,
+        save_advanced_settings_to_path, save_review_mode_to_path,
+        AdvancedSettings,
         recent_memory_messages_from_path, save_character_states_to_path, save_model_settings_to_path,
-        save_tool_policy_settings_to_path, set_active_model_profile_at_path,
+        save_tool_policy_settings_to_path, save_web_access_settings_to_path,
+        set_active_model_profile_at_path,
         AddCharacterLetterRequest, AddCharacterMomentCommentRequest, AddCharacterMomentRequest,
         AppendChatMessageRequest, CreateChatSessionRequest,
         SidecarStreamMessage,
         ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
-        ToggleCharacterMomentLikeRequest,
+        SaveWebAccessSettingsRequest, ToggleCharacterMomentLikeRequest,
     };
 
     static TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -2239,6 +2646,10 @@ mod tests {
         std::env::temp_dir().join(format!("cockapoo-tool-policy-{}.json", temp_path_nonce()))
     }
 
+    fn temp_web_access_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("cockapoo-web-access-{}.json", temp_path_nonce()))
+    }
+
     #[test]
     fn review_mode_round_trips_and_sanitizes() {
         let path = std::env::temp_dir().join(format!("cockapoo-review-mode-{}.json", temp_path_nonce()));
@@ -2255,6 +2666,27 @@ mod tests {
         // Bogus input is coerced to the safe default before writing.
         assert_eq!(save_review_mode_to_path(&path, "bogus").expect("save"), "default");
         assert_eq!(read_review_mode_from_path(&path).expect("read"), "default");
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn advanced_settings_round_trip_defaults_subagents_off() {
+        let path =
+            std::env::temp_dir().join(format!("cockapoo-advanced-{}.json", temp_path_nonce()));
+
+        // Missing file → subagents off.
+        assert!(!read_advanced_settings_from_path(&path).expect("default").enable_subagents);
+
+        // Persist enabled and read back.
+        let saved = save_advanced_settings_to_path(&path, AdvancedSettings { enable_subagents: true })
+            .expect("save");
+        assert!(saved.enable_subagents);
+        assert!(read_advanced_settings_from_path(&path).expect("read").enable_subagents);
+
+        // Corrupt file → safe default (off) rather than an error.
+        fs::write(&path, "{ not json").expect("write garbage");
+        assert!(!read_advanced_settings_from_path(&path).expect("default").enable_subagents);
 
         fs::remove_file(&path).ok();
     }
@@ -2783,6 +3215,69 @@ mod tests {
     }
 
     #[test]
+    fn web_access_settings_default_to_auto_no_key_fallback() {
+        let path = temp_web_access_path();
+
+        let snapshot = read_web_access_settings_from_path(&path).expect("default should load");
+
+        assert_eq!(snapshot.provider, "auto");
+        assert_eq!(snapshot.workflow, "none");
+        assert!(snapshot.no_key_fallback);
+        assert!(!snapshot.allow_browser_cookies);
+        assert!(!snapshot.exa_has_key);
+        assert!(!snapshot.perplexity_has_key);
+        assert!(!snapshot.gemini_has_key);
+    }
+
+    #[test]
+    fn web_access_settings_save_redacts_and_preserves_keys() {
+        let path = temp_web_access_path();
+
+        let saved = save_web_access_settings_to_path(
+            &path,
+            SaveWebAccessSettingsRequest {
+                provider: "perplexity".to_string(),
+                workflow: "summary-review".to_string(),
+                no_key_fallback: true,
+                allow_browser_cookies: true,
+                exa_api_key: None,
+                perplexity_api_key: Some("pplx-secret-abcdef".to_string()),
+                gemini_api_key: None,
+            },
+        )
+        .expect("web access settings should save");
+
+        assert_eq!(saved.provider, "perplexity");
+        assert!(saved.perplexity_has_key);
+        assert_eq!(saved.perplexity_key_hint.as_deref(), Some("••••cdef"));
+
+        let stored: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).expect("file should exist"))
+                .expect("stored json should parse");
+        assert_eq!(stored["perplexityApiKey"], "pplx-secret-abcdef");
+
+        let preserved = save_web_access_settings_to_path(
+            &path,
+            SaveWebAccessSettingsRequest {
+                provider: "auto".to_string(),
+                workflow: "none".to_string(),
+                no_key_fallback: true,
+                allow_browser_cookies: false,
+                exa_api_key: None,
+                perplexity_api_key: Some("".to_string()),
+                gemini_api_key: None,
+            },
+        )
+        .expect("empty key should preserve existing");
+
+        assert_eq!(preserved.provider, "auto");
+        assert!(preserved.perplexity_has_key);
+        assert_eq!(preserved.perplexity_key_hint.as_deref(), Some("••••cdef"));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn sidecar_prompt_payload_includes_tool_policy_settings() {
         let stored = StoredModelProfile {
             id: "default".to_string(),
@@ -2804,10 +3299,18 @@ mod tests {
             "你好".to_string(),
             Some(serde_json::json!({ "sessionId": "session-1" })),
             tool_policy_settings.clone(),
+            serde_json::json!({
+                "provider": "auto",
+                "workflow": "none",
+                "noKeyFallback": true
+            }),
+            None,
         );
 
         assert_eq!(payload["cwd"], "/tmp/cockapoo-workspace");
         assert_eq!(payload["toolPolicySettings"], tool_policy_settings);
+        assert_eq!(payload["webAccessSettings"]["provider"], "auto");
+        assert_eq!(payload["webAccessSettings"]["workflow"], "none");
         assert_eq!(payload["runtimeToken"], "sk-test");
     }
 
@@ -3019,6 +3522,8 @@ mod tests {
             "请只回复 OK".to_string(),
             None,
             serde_json::json!({}),
+            serde_json::json!({ "provider": "auto", "workflow": "none" }),
+            None,
         );
 
         assert_eq!(payload["modelSettings"]["baseUrl"], stored.base_url);
@@ -3026,6 +3531,35 @@ mod tests {
         assert_eq!(payload["runtimeToken"], "sk-glm-123456");
         assert!(payload["modelSettings"].get("token").is_none());
         assert!(payload.get("profiles").is_none());
+    }
+
+    #[test]
+    fn sidecar_prompt_payload_includes_read_only_browser_snapshot() {
+        let stored = StoredModelProfile {
+            id: "glm".to_string(),
+            name: "智谱 GLM".to_string(),
+            base_url: "https://open.bigmodel.cn/api/coding/paas/v4".to_string(),
+            model_name: "glm-5.1".to_string(),
+            token: Some("sk-glm-123456".to_string()),
+        };
+
+        let payload = build_sidecar_prompt_payload(
+            "/tmp/cockapoo-workspace".into(),
+            &stored,
+            "请打开来源".to_string(),
+            None,
+            serde_json::json!({}),
+            serde_json::json!({ "provider": "auto", "workflow": "none" }),
+            Some(serde_json::json!({
+                "currentUrl": "https://example.com/source",
+                "title": "Source",
+                "status": "loading"
+            })),
+        );
+
+        assert_eq!(payload["browserSnapshot"]["currentUrl"], "https://example.com/source");
+        assert_eq!(payload["browserSnapshot"]["title"], "Source");
+        assert_eq!(payload["browserSnapshot"]["status"], "loading");
     }
 
     #[test]

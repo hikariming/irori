@@ -224,3 +224,10 @@ export function searchLoadedTree(
 export function rootLabel(rootId: WorkspaceRootId): string {
   return rootId === "workspace" ? "工作区" : "这台电脑";
 }
+
+export function workspaceTreeScopeChanged(
+  previousScope: string | null | undefined,
+  nextScope: string | null | undefined
+): boolean {
+  return (previousScope ?? "") !== (nextScope ?? "");
+}

@@ -30,12 +30,25 @@ import {
   type StickerId
 } from "./chat-model.ts";
 import type { MemoryBackendSource, MemoryStatus, RecalledMemorySnapshot } from "./memory-status-model.ts";
+import type { BrowserPanelSnapshot } from "./browser-panel-model.ts";
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
 import { sanitizeCharacterStates, type CharacterStates, type Mood } from "./character-state.ts";
 import { sanitizeMoments, type CharacterMoment, type MomentActorType } from "./character-moments.ts";
 import { sanitizeLetters, type CharacterLetter, type LetterSender } from "./character-letters.ts";
 import type { WorkspaceNode, WorkspaceRootId } from "./workspace-model.ts";
 import { sanitizeReviewMode, type ReviewMode } from "./review-mode-model.ts";
+import {
+  defaultAdvancedSettings,
+  sanitizeAdvancedSettings,
+  type AdvancedSettings
+} from "./advanced-settings-model.ts";
+import {
+  applyWebAccessSettingsRequest,
+  buildDefaultWebAccessSettings,
+  mergeSavedWebAccessSettings,
+  type SaveWebAccessSettingsRequest,
+  type WebAccessSettingsState
+} from "./web-access-settings.ts";
 
 export type SaveModelSettingsRequest = {
   profileId: string;
@@ -56,6 +69,7 @@ export type TestModelConnectionRequest = {
 
 export type SendPiPromptRequest = {
   characterId: string;
+  browserSnapshot?: BrowserPanelSnapshot | null;
   prompt: string;
   runId?: string;
   sessionId?: string;
@@ -152,17 +166,24 @@ export type DesktopBackend = {
   saveCharacterStates: (states: CharacterStates) => Promise<void>;
   getMemoryStatus: () => Promise<MemoryStatus>;
   getToolPolicySettings: () => Promise<ToolPolicySettings>;
+  getWebAccessSettings: () => Promise<WebAccessSettingsState>;
   listChatSessions: () => Promise<ChatSessionSummary[]>;
   listWorkspaceRoots: () => Promise<WorkspaceNode[]>;
   listWorkspaceDir: (path: string, rootId: WorkspaceRootId) => Promise<WorkspaceNode[]>;
   loadModelSettings: () => Promise<ModelSettingsState>;
   loadReviewMode: () => Promise<ReviewMode>;
   saveReviewMode: (mode: ReviewMode) => Promise<ReviewMode>;
+  loadAdvancedSettings: () => Promise<AdvancedSettings>;
+  saveAdvancedSettings: (settings: AdvancedSettings) => Promise<AdvancedSettings>;
+  loadWorkspacePath: () => Promise<string>;
+  /** Opens the native folder picker; resolves to the new path, or null if cancelled. */
+  pickWorkspacePath: () => Promise<string | null>;
   onPiPromptProgress: (callback: (event: PiPromptProgressEvent) => void) => Promise<() => void>;
   onPiToolConfirm: (callback: (request: PiToolConfirmRequest) => void) => Promise<() => void>;
   respondPiToolConfirm: (request: RespondPiToolConfirmRequest) => Promise<void>;
   saveModelSettings: (request: SaveModelSettingsRequest) => Promise<ModelSettingsState>;
   saveToolPolicySettings: (settings: ToolPolicySettings) => Promise<ToolPolicySettings>;
+  saveWebAccessSettings: (request: SaveWebAccessSettingsRequest) => Promise<WebAccessSettingsState>;
   sendPiPrompt: (request: SendPiPromptRequest) => Promise<PiPromptResponse>;
   setActiveModelProfile: (profileId: string) => Promise<ModelSettingsState>;
   testModelConnection: (request?: TestModelConnectionRequest) => Promise<PiPromptResponse>;
@@ -352,10 +373,13 @@ export function createPreviewBackend(): DesktopBackend {
   let savedSettings: SavedModelSettings | null = null;
   let state = buildInitialModelSettings();
   let toolPolicySettings = defaultToolPolicySettings;
+  let webAccessSettings = buildDefaultWebAccessSettings();
   let characterStates: CharacterStates = {};
   let characterMoments: CharacterMoment[] = [];
   let characterLetters: CharacterLetter[] = [];
   let reviewMode: ReviewMode = "default";
+  let advancedSettings: AdvancedSettings = { ...defaultAdvancedSettings };
+  const workspacePath = "~/cockapoo-workspace（预览）";
   const sessions: ChatSessionSummary[] = [];
   const messagesBySession = new Map<string, StoredChatMessageRecord[]>();
 
@@ -526,6 +550,9 @@ export function createPreviewBackend(): DesktopBackend {
     async getToolPolicySettings() {
       return toolPolicySettings;
     },
+    async getWebAccessSettings() {
+      return webAccessSettings;
+    },
     async listChatSessions() {
       return [...sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
     },
@@ -541,6 +568,20 @@ export function createPreviewBackend(): DesktopBackend {
     async saveReviewMode(mode) {
       reviewMode = sanitizeReviewMode(mode);
       return reviewMode;
+    },
+    async loadAdvancedSettings() {
+      return advancedSettings;
+    },
+    async saveAdvancedSettings(settings) {
+      advancedSettings = sanitizeAdvancedSettings(settings);
+      return advancedSettings;
+    },
+    async loadWorkspacePath() {
+      return workspacePath;
+    },
+    async pickWorkspacePath() {
+      // 浏览器预览没有原生文件选择器，保持当前路径不变。
+      return null;
     },
     async loadModelSettings() {
       state = mergeSavedModelSettings(buildInitialModelSettings(), savedSettings);
@@ -564,6 +605,10 @@ export function createPreviewBackend(): DesktopBackend {
     async saveToolPolicySettings(settings) {
       toolPolicySettings = settings;
       return toolPolicySettings;
+    },
+    async saveWebAccessSettings(request) {
+      webAccessSettings = applyWebAccessSettingsRequest(webAccessSettings, request);
+      return webAccessSettings;
     },
     async sendPiPrompt() {
       if (!isModelConfigured(state)) {
@@ -661,6 +706,9 @@ export function createTauriBackend(): DesktopBackend {
     async getToolPolicySettings() {
       return invoke<ToolPolicySettings>("get_tool_policy_settings");
     },
+    async getWebAccessSettings() {
+      return mergeSavedWebAccessSettings(await invoke<unknown>("get_web_access_settings"));
+    },
     async listChatSessions() {
       return invoke<ChatSessionSummary[]>("list_chat_sessions");
     },
@@ -682,6 +730,20 @@ export function createTauriBackend(): DesktopBackend {
     async saveReviewMode(mode) {
       return sanitizeReviewMode(await invoke<string>("set_review_mode", { mode }));
     },
+    async loadAdvancedSettings() {
+      return sanitizeAdvancedSettings(await invoke<AdvancedSettings>("get_advanced_settings"));
+    },
+    async saveAdvancedSettings(settings) {
+      return sanitizeAdvancedSettings(
+        await invoke<AdvancedSettings>("set_advanced_settings", { settings: sanitizeAdvancedSettings(settings) })
+      );
+    },
+    async loadWorkspacePath() {
+      return invoke<string>("get_workspace_path");
+    },
+    async pickWorkspacePath() {
+      return invoke<string | null>("pick_workspace_path");
+    },
     async onPiPromptProgress(callback) {
       return listen<PiPromptProgressEvent>("pi_prompt_progress", (event) => {
         callback(event.payload);
@@ -701,6 +763,9 @@ export function createTauriBackend(): DesktopBackend {
     },
     async saveToolPolicySettings(settings) {
       return invoke<ToolPolicySettings>("save_tool_policy_settings", { settings });
+    },
+    async saveWebAccessSettings(request) {
+      return mergeSavedWebAccessSettings(await invoke<unknown>("save_web_access_settings", { request }));
     },
     async sendPiPrompt(request) {
       return invoke<PiPromptResponse>("send_pi_prompt", { request });

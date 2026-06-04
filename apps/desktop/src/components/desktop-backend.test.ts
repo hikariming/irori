@@ -24,6 +24,53 @@ test("preview backend saves a model profile and returns registry state", async (
   assert.equal(profile?.tokenHint, "••••3456");
 });
 
+test("preview backend round-trips advanced settings and defaults subagents off", async () => {
+  const backend = createPreviewBackend();
+
+  assert.equal((await backend.loadAdvancedSettings()).enableSubagents, false);
+
+  const saved = await backend.saveAdvancedSettings({ enableSubagents: true });
+  assert.equal(saved.enableSubagents, true);
+  assert.equal((await backend.loadAdvancedSettings()).enableSubagents, true);
+});
+
+test("preview backend saves web access settings without returning raw keys", async () => {
+  const backend = createPreviewBackend();
+
+  const initial = await backend.getWebAccessSettings();
+  assert.equal(initial.provider, "auto");
+  assert.equal(initial.workflow, "none");
+  assert.equal(initial.noKeyFallback, true);
+  assert.equal(initial.perplexityHasKey, false);
+
+  const saved = await backend.saveWebAccessSettings({
+    provider: "perplexity",
+    workflow: "summary-review",
+    noKeyFallback: true,
+    allowBrowserCookies: true,
+    perplexityApiKey: "pplx-secret-abcdef"
+  });
+
+  assert.equal(saved.provider, "perplexity");
+  assert.equal(saved.workflow, "summary-review");
+  assert.equal(saved.allowBrowserCookies, true);
+  assert.equal(saved.perplexityHasKey, true);
+  assert.equal(saved.perplexityKeyHint, "••••cdef");
+  assert.equal("perplexityApiKey" in saved, false);
+
+  const preserved = await backend.saveWebAccessSettings({
+    provider: "auto",
+    workflow: "none",
+    noKeyFallback: true,
+    allowBrowserCookies: false,
+    perplexityApiKey: ""
+  });
+
+  assert.equal(preserved.provider, "auto");
+  assert.equal(preserved.perplexityHasKey, true);
+  assert.equal(preserved.perplexityKeyHint, "••••cdef");
+});
+
 test("preview backend saves a second model profile and switches active profile", async () => {
   const backend = createPreviewBackend();
 
