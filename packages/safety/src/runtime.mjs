@@ -68,7 +68,17 @@ export function resolveToolPolicy({ settings = defaultToolPolicySettings } = {})
 
 // Pi tool names (as seen by the tool_call hook) that only observe, never mutate
 // the workspace or external world.
-export const readOnlyGateTools = new Set(["read", "grep", "find", "ls", "memory_read"]);
+export const readOnlyGateTools = new Set([
+  "read",
+  "grep",
+  "find",
+  "ls",
+  "memory_read",
+  "web_search",
+  "fetch_content",
+  "get_search_content",
+  "browser_view"
+]);
 
 // Writes that a git checkpoint can fully undo, so higher autonomy modes may run
 // them without a per-call confirmation.

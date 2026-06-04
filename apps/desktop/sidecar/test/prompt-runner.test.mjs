@@ -146,7 +146,7 @@ test("runCockapooPiPrompt forwards streaming progress events", async () => {
     }
   });
 
-  assert.equal(result.text, "你好");
+  assert.equal(result.text, "你好。");
   assert.deepEqual(progressEvents.filter((event) => event.delta || event.text !== undefined), [
     {
       runId: "run-progress",
@@ -214,7 +214,7 @@ test("runCockapooPiPrompt emits status heartbeats while waiting for first model 
     }
   });
 
-  assert.equal(result.text, "你好");
+  assert.equal(result.text, "你好。");
   assert.ok(progressEvents.some((event) => event.status === "正在整理上下文"));
   assert.ok(progressEvents.some((event) => event.status?.startsWith("等待模型首个输出")));
 });
@@ -628,14 +628,245 @@ test("runCockapooPiPrompt applies tool policy settings to the Pi session", async
     }
   });
 
-  assert.deepEqual(sessionOptions.tools, ["read", "grep", "ls", "memory_read", "memory_write"]);
+  assert.deepEqual(sessionOptions.tools, [
+    "read",
+    "grep",
+    "ls",
+    "memory_read",
+    "memory_write",
+    "fetch_content",
+    "get_search_content",
+    "web_search",
+    "browser_view"
+  ]);
   assert.deepEqual(sessionOptions.toolPolicy.builtinTools, ["read", "grep", "ls"]);
-  assert.deepEqual(sessionOptions.toolPolicy.customTools, ["memory.read", "memory.write"]);
-  assert.equal(sessionOptions.customTools.length, 2);
+  assert.deepEqual(sessionOptions.toolPolicy.customTools, ["memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
+  assert.equal(sessionOptions.customTools.length, 3);
   assert.equal(sessionOptions.customTools[0].name, "memory_read");
   assert.equal(sessionOptions.customTools[1].name, "memory_write");
-  assert.deepEqual(result.toolPolicy.enabledTools, ["read", "grep", "ls", "memory.read", "memory.write"]);
-  assert.deepEqual(result.toolPolicy.registeredCustomTools, ["memory.read", "memory.write"]);
+  assert.equal(sessionOptions.customTools[2].name, "browser_view");
+  assert.deepEqual(result.toolPolicy.enabledTools, ["read", "grep", "ls", "memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
+  assert.deepEqual(result.toolPolicy.registeredCustomTools, ["memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
+});
+
+test("runCockapooPiPrompt forwards browser view tool events as prompt progress", async () => {
+  const progressEvents = [];
+
+  await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：打开来源",
+    runId: "run-browser",
+    toolPolicySettings: {
+      builtinTools: {},
+      customTools: {
+        "browser.view": true
+      },
+      confirmTools: {},
+      protectedPaths: []
+    },
+    browserSnapshot: {
+      currentUrl: "https://example.com/current",
+      title: "Current page"
+    },
+    onProgressEvent(event) {
+      progressEvents.push(event);
+    },
+    createSession: async (options) => {
+      const browserView = options.customTools.find((tool) => tool.name === "browser_view");
+      let onEvent = () => {};
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            await browserView.execute("tool-call-1", {
+              url: "https://example.com/source",
+              title: "Source"
+            });
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "已打开来源。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(progressEvents.find((event) => event.phase === "browser"), {
+    runId: "run-browser",
+    phase: "browser",
+    status: "打开右侧浏览器：https://example.com/source",
+    browser: {
+      action: "open",
+      url: "https://example.com/source",
+      title: "Source",
+      source: "agent"
+    }
+  });
+});
+
+test("runCockapooPiPrompt writes web access settings before creating the Pi session", async () => {
+  const calls = [];
+
+  await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：搜一下今天的新闻",
+    webAccessSettings: {
+      provider: "perplexity",
+      workflow: "none",
+      noKeyFallback: true,
+      perplexityApiKey: "pplx-secret"
+    },
+    writeWebAccessConfig: async ({ settings }) => {
+      calls.push({ type: "web", settings });
+    },
+    createSession: async () => {
+      calls.push({ type: "session" });
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "我会联网查询。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.deepEqual(calls.map((call) => call.type), ["web", "session"]);
+  assert.equal(calls[0].settings.provider, "perplexity");
+  assert.equal(calls[0].settings.workflow, "none");
+});
+
+test("runCockapooPiPrompt persists the gate config and env pointer when a path is given", async () => {
+  const calls = [];
+  const previousEnv = process.env.COCKAPOO_TOOL_GATE_CONFIG;
+  delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
+
+  try {
+    await runCockapooPiPrompt({
+      cwd: "/tmp/cockapoo-workspace",
+      modelSettings: {
+        baseUrl: "https://api.openai.com/v1",
+        modelName: "gpt-5.5"
+      },
+      runtimeToken: "sk-test",
+      prompt: "用户：派个子代理改代码",
+      toolGateMode: "managed",
+      toolGateConfigPath: "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json",
+      writeToolGateConfig: async (config) => {
+        calls.push({ type: "gate", config });
+      },
+      createSession: async () => {
+        calls.push({ type: "session" });
+        let onEvent = () => {};
+
+        return {
+          session: {
+            subscribe(callback) {
+              onEvent = callback;
+              return () => {};
+            },
+            async prompt() {
+              onEvent({
+                type: "message_update",
+                assistantMessageEvent: {
+                  type: "text_end",
+                  content: "好。"
+                }
+              });
+            },
+            dispose() {}
+          }
+        };
+      }
+    });
+
+    assert.deepEqual(calls.map((call) => call.type), ["gate", "session"]);
+    assert.equal(calls[0].config.mode, "managed");
+    assert.equal(calls[0].config.configPath, "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json");
+    assert.ok(Array.isArray(calls[0].config.gatePolicy.allowedToolNames));
+    assert.equal(
+      process.env.COCKAPOO_TOOL_GATE_CONFIG,
+      "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json"
+    );
+  } finally {
+    if (previousEnv === undefined) {
+      delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
+    } else {
+      process.env.COCKAPOO_TOOL_GATE_CONFIG = previousEnv;
+    }
+  }
+});
+
+test("runCockapooPiPrompt does not persist a gate config when no path is given", async () => {
+  let gateWrites = 0;
+
+  await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：普通对话",
+    writeToolGateConfig: async () => {
+      gateWrites += 1;
+    },
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: {
+                type: "text_end",
+                content: "在的。"
+              }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(gateWrites, 0);
 });
 
 test("runCockapooPiPrompt times out stalled model prompts and disposes the session", { timeout: 500 }, async () => {
@@ -688,6 +919,34 @@ test("collectAssistantText uses text_end content when deltas are missing", () =>
   ]);
 
   assert.equal(text, "你好，我是示璃。");
+});
+
+test("collectAssistantText prefers final text_end content over streamed deltas", () => {
+  const text = collectAssistantText([
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: "你"
+      }
+    },
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_delta",
+        delta: "你呢？"
+      }
+    },
+    {
+      type: "message_update",
+      assistantMessageEvent: {
+        type: "text_end",
+        content: "你呢？"
+      }
+    }
+  ]);
+
+  assert.equal(text, "你呢？");
 });
 
 test("collectAssistantText throws a clear error when the model returns no text", () => {

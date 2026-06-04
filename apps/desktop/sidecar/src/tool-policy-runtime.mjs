@@ -8,7 +8,10 @@ import { classifyMemoryCandidate } from "../../../../packages/memory/src/runtime
 
 const supportedCustomToolNames = {
   "memory.read": "memory_read",
-  "memory.write": "memory_write"
+  "memory.write": "memory_write",
+  "web.fetch": ["fetch_content", "get_search_content"],
+  "web.search": "web_search",
+  "browser.view": "browser_view"
 };
 
 const memoryKinds = new Set([
@@ -21,6 +24,25 @@ const memoryKinds = new Set([
 
 function nonEmptyString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function normalizeBrowserUrl(value) {
+  const trimmed = nonEmptyString(value);
+  if (!trimmed) {
+    return "";
+  }
+
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "";
+    }
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 function positiveInteger(value, fallback) {
@@ -168,10 +190,95 @@ export function createMemoryWriteTool({ memoryBackend, recallRequest, requiresAp
   };
 }
 
+function normalizeBrowserSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") {
+    return null;
+  }
+
+  const currentUrl = normalizeBrowserUrl(snapshot.currentUrl);
+  if (!currentUrl) {
+    return null;
+  }
+
+  return {
+    currentUrl,
+    title: nonEmptyString(snapshot.title),
+    status: nonEmptyString(snapshot.status) || "unknown"
+  };
+}
+
+export function createBrowserViewTool({ browserSnapshot, onBrowserEvent } = {}) {
+  return {
+    name: "browser_view",
+    label: "Browser View",
+    description: "Open a public URL in Cockapoo's read-only right-side browser panel or report the current panel metadata.",
+    promptSnippet: "browser_view - Open a source URL in the right-side browser panel or inspect its current URL/title metadata.",
+    promptGuidelines: [
+      "Use browser_view when a source should be visible to the user in the right-side browser panel.",
+      "Pass url for pages you want opened visually; use fetch_content for page text extraction.",
+      "browser_view never clicks, types, submits forms, or reads cross-origin DOM content."
+    ],
+    parameters: Type.Object({
+      url: Type.Optional(Type.String({ description: "HTTP(S) URL to open in the right-side browser panel." })),
+      title: Type.Optional(Type.String({ description: "Optional short title for the page being opened." })),
+      reason: Type.Optional(Type.String({ description: "Why this source should be opened for the user." }))
+    }),
+    execute: async (_toolCallId, params = {}) => {
+      const url = normalizeBrowserUrl(params.url);
+
+      if (url) {
+        const event = {
+          action: "open",
+          url,
+          source: "agent",
+          ...(nonEmptyString(params.title) ? { title: nonEmptyString(params.title) } : {}),
+          ...(nonEmptyString(params.reason) ? { reason: nonEmptyString(params.reason) } : {})
+        };
+
+        onBrowserEvent?.(event);
+
+        return {
+          content: [{ type: "text", text: `已请求在右侧浏览器打开：${url}` }],
+          details: {
+            status: "open_requested",
+            url
+          }
+        };
+      }
+
+      const snapshot = normalizeBrowserSnapshot(browserSnapshot);
+      if (!snapshot) {
+        return {
+          content: [{ type: "text", text: "右侧浏览器当前没有打开页面。传入 url 可以打开公开来源。" }],
+          details: { status: "empty" }
+        };
+      }
+
+      const label = snapshot.title ? `${snapshot.title} - ${snapshot.currentUrl}` : snapshot.currentUrl;
+      return {
+        content: [{ type: "text", text: `右侧浏览器当前页面：${label}` }],
+        details: {
+          status: "snapshot",
+          currentUrl: snapshot.currentUrl,
+          title: snapshot.title,
+          pageStatus: snapshot.status
+        }
+      };
+    }
+  };
+}
+
+// The single tool pi-subagents registers on the parent for delegation
+// (chain/parallel are parameters of it, not separate tools).
+export const subagentToolName = "subagent";
+
 export function buildToolRuntime({
   settings = defaultToolPolicySettings,
   memoryBackend,
-  memoryRecallRequest
+  memoryRecallRequest,
+  browserSnapshot,
+  onBrowserEvent,
+  enableSubagents = false
 } = {}) {
   const resolved = resolveToolPolicy({ settings });
   const customTools = [];
@@ -199,11 +306,28 @@ export function buildToolRuntime({
       continue;
     }
 
+    if (toolId === "web.fetch" || toolId === "web.search") {
+      registeredCustomTools.push(toolId);
+      continue;
+    }
+
+    if (toolId === "browser.view") {
+      customTools.push(createBrowserViewTool({ browserSnapshot, onBrowserEvent }));
+      registeredCustomTools.push(toolId);
+      continue;
+    }
+
     unsupportedCustomTools.push(toolId);
   }
 
-  const customToolNames = registeredCustomTools.map((toolId) => supportedCustomToolNames[toolId]);
-  const tools = [...resolved.builtinTools, ...customToolNames];
+  const customToolNames = registeredCustomTools.flatMap((toolId) => {
+    const toolNames = supportedCustomToolNames[toolId];
+    return Array.isArray(toolNames) ? toolNames : [toolNames];
+  });
+  // Opt-in: declare + allow the delegation tool so the parent gate permits it.
+  // The child's own bash/edit/write are gated separately inside the child.
+  const subagentTools = enableSubagents ? [subagentToolName] : [];
+  const tools = [...resolved.builtinTools, ...customToolNames, ...subagentTools];
   const effectiveToolPolicy = {
     ...resolved,
     customTools: registeredCustomTools,
@@ -213,7 +337,14 @@ export function buildToolRuntime({
   // Translate the policy into the Pi tool names the tool_call hook sees, so the
   // gate extension can evaluate concrete calls without knowing Cockapoo tool ids.
   const confirmToolNames = resolved.alwaysConfirm
-    .map((toolId) => (toolId.includes(".") ? supportedCustomToolNames[toolId] : toolId))
+    .flatMap((toolId) => {
+      if (!toolId.includes(".")) {
+        return [toolId];
+      }
+
+      const toolNames = supportedCustomToolNames[toolId];
+      return Array.isArray(toolNames) ? toolNames : [toolNames];
+    })
     .filter((name) => name && tools.includes(name));
   const gatePolicy = {
     allowedToolNames: tools,

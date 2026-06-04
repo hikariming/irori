@@ -28,7 +28,11 @@ export function createToolPolicyGateExtension(options = {}) {
     mode = "confirm",
     onToolEvent,
     onConfirm,
-    confirmFallback = "block"
+    confirmFallback = "block",
+    // How a fail-closed confirm renders its block reason. The default keeps the
+    // parent-process wording; a subagent child overrides it to tell the model to
+    // escalate over intercom instead (it has no desktop confirm channel).
+    formatConfirmBlockReason = (reason) => `${reason || "此操作需要确认"}（确认面板尚未开启，已暂时拦截）`
   } = options;
 
   return (pi) => {
@@ -70,7 +74,7 @@ export function createToolPolicyGateExtension(options = {}) {
 
       return {
         block: true,
-        reason: `${result.reason || "此操作需要确认"}（确认面板尚未开启，已暂时拦截）`
+        reason: formatConfirmBlockReason(result.reason)
       };
     });
   };

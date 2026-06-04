@@ -11,6 +11,9 @@
   "dependencies": {
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@tencentdb-agent-memory/memory-tencentdb": "^0.3.5"
+    "@tencentdb-agent-memory/memory-tencentdb": "^0.3.5",
+    "pi-intercom": "^0.6.0",
+    "pi-subagents": "^0.28.0",
+    "pi-web-access": "^0.10.7"
   }
 }

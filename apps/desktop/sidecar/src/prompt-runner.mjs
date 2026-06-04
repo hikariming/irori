@@ -9,6 +9,8 @@ import { resolveConfiguredMemoryBackend } from "./configured-memory-backend.mjs"
 import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
 import { createCockapooPiSession } from "./pi-session-adapter.mjs";
 import { buildToolRuntime } from "./tool-policy-runtime.mjs";
+import { toolGateConfigEnvVar, writeToolGateConfig as writeToolGateConfigToDisk } from "./tool-gate-config.mjs";
+import { writePiWebAccessConfig } from "./web-access-config.mjs";
 
 export const defaultPromptTimeoutMs = 120000;
 
@@ -68,7 +70,7 @@ export function collectAssistantText(events) {
     }
   }
 
-  const text = (deltas.join("") || textEndContent).trim();
+  const text = (textEndContent || deltas.join("")).trim();
 
   if (!text && assistantError) {
     throw new Error(assistantError);
@@ -181,6 +183,15 @@ export async function runCockapooPiPrompt({
   memoryCaptureTurn,
   chatHistoryMemory,
   toolPolicySettings,
+  webAccessSettings,
+  browserSnapshot,
+  writeWebAccessConfig = writePiWebAccessConfig,
+  toolGateConfigPath,
+  writeToolGateConfig = writeToolGateConfigToDisk,
+  enableSubagents = false,
+  // Subagent `context: fork` needs a persisted parent session; callers enabling
+  // delegation should pass "persistent". Defaults to in-memory (zero regression).
+  sessionMode = "memory",
   toolGateMode = "confirm",
   resolveMemoryBackend = resolveConfiguredMemoryBackend,
   promptTimeoutMs = defaultPromptTimeoutMs,
@@ -251,10 +262,37 @@ export async function runCockapooPiPrompt({
   const toolRuntime = buildToolRuntime({
     settings: toolPolicySettings,
     memoryBackend: effectiveMemoryBackend,
-    memoryRecallRequest: effectiveRecallRequest
+    memoryRecallRequest: effectiveRecallRequest,
+    enableSubagents,
+    browserSnapshot,
+    onBrowserEvent: runId && onProgressEvent
+      ? (browserEvent) => {
+          onProgressEvent({
+            runId,
+            phase: "browser",
+            status: browserEvent?.url ? `打开右侧浏览器：${browserEvent.url}` : "更新右侧浏览器",
+            browser: browserEvent
+          });
+        }
+      : undefined
   });
 
   emitRunStatus(onProgressEvent, runId, "上下文已整理，正在启动本地 Pi 会话");
+  if (webAccessSettings !== undefined) {
+    await writeWebAccessConfig({ settings: webAccessSettings });
+  }
+
+  // Opt-in: when a config path is given, persist the resolved fence so subagent
+  // child processes can inherit the SAME policy via the cockapoo-tool-gate
+  // extension, and point them at it through the environment.
+  if (toolGateConfigPath) {
+    await writeToolGateConfig({
+      gatePolicy: toolRuntime.gatePolicy,
+      mode: toolGateMode,
+      configPath: toolGateConfigPath
+    });
+    process.env[toolGateConfigEnvVar] = toolGateConfigPath;
+  }
 
   const onToolEvent = runId && onProgressEvent
     ? (toolEvent) => {
@@ -277,12 +315,13 @@ export async function runCockapooPiPrompt({
     modelSettings,
     runtimeToken,
     authPath,
-    sessionMode: "memory",
+    sessionMode,
     tools: toolRuntime.tools,
     customTools: toolRuntime.customTools,
     toolPolicy: toolRuntime.toolPolicy,
     gatePolicy: toolRuntime.gatePolicy,
     gateMode: toolGateMode,
+    enableSubagents,
     onToolEvent,
     onConfirm
   });

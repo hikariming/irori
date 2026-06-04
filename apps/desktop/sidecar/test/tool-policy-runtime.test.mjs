@@ -19,6 +19,8 @@ test("buildToolRuntime maps policy ids to Pi-compatible tool names and omits uns
         "memory.read": true,
         "memory.write": true,
         "web.fetch": true,
+        "web.search": true,
+        "browser.view": true,
         "browser.action": true
       },
       confirmTools: {
@@ -42,10 +44,94 @@ test("buildToolRuntime maps policy ids to Pi-compatible tool names and omits uns
     }
   });
 
-  assert.deepEqual(runtime.tools, ["read", "grep", "memory_read", "memory_write"]);
-  assert.deepEqual(runtime.summary.enabledTools, ["read", "grep", "memory.read", "memory.write"]);
-  assert.deepEqual(runtime.summary.registeredCustomTools, ["memory.read", "memory.write"]);
-  assert.deepEqual(runtime.summary.unsupportedCustomTools, ["web.fetch", "browser.action"]);
+  assert.deepEqual(runtime.tools, ["read", "grep", "memory_read", "memory_write", "fetch_content", "get_search_content", "web_search", "browser_view"]);
+  assert.deepEqual(runtime.summary.enabledTools, ["read", "grep", "memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
+  assert.deepEqual(runtime.summary.registeredCustomTools, ["memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
+  assert.deepEqual(runtime.summary.unsupportedCustomTools, ["browser.action"]);
+});
+
+test("buildToolRuntime declares and allows the subagent tool only when delegation is enabled", () => {
+  const baseSettings = {
+    builtinTools: { read: true, edit: true, write: true, bash: true },
+    customTools: {},
+    confirmTools: {},
+    protectedPaths: [".env"]
+  };
+
+  const off = buildToolRuntime({ settings: baseSettings });
+  assert.equal(off.tools.includes("subagent"), false);
+  assert.equal(off.gatePolicy.allowedToolNames.includes("subagent"), false);
+
+  const on = buildToolRuntime({ settings: baseSettings, enableSubagents: true });
+  assert.equal(on.tools.at(-1), "subagent");
+  assert.equal(on.gatePolicy.allowedToolNames.includes("subagent"), true);
+  // Delegation itself is allowed (not forced to confirm); the child's own
+  // bash/edit/write are gated inside the child instead.
+  assert.equal(on.gatePolicy.confirmToolNames.includes("subagent"), false);
+});
+
+test("browser_view tool emits a read-only open request for the desktop browser panel", async () => {
+  const browserEvents = [];
+  const runtime = buildToolRuntime({
+    settings: {
+      builtinTools: {},
+      customTools: {
+        "browser.view": true
+      },
+      confirmTools: {},
+      protectedPaths: []
+    },
+    browserSnapshot: {
+      currentUrl: "https://example.com/current",
+      title: "Current page"
+    },
+    onBrowserEvent(event) {
+      browserEvents.push(event);
+    }
+  });
+
+  const browserView = runtime.customTools.find((tool) => tool.name === "browser_view");
+  assert.ok(browserView);
+
+  const result = await browserView.execute("tool-call-1", {
+    url: "example.com/source",
+    title: "Source",
+    reason: "用户需要查看来源"
+  });
+
+  assert.deepEqual(browserEvents, [{
+    action: "open",
+    url: "https://example.com/source",
+    title: "Source",
+    reason: "用户需要查看来源",
+    source: "agent"
+  }]);
+  assert.equal(result.details.status, "open_requested");
+  assert.match(result.content[0].text, /右侧浏览器/);
+});
+
+test("browser_view tool reports the current desktop browser snapshot when no URL is provided", async () => {
+  const runtime = buildToolRuntime({
+    settings: {
+      builtinTools: {},
+      customTools: {
+        "browser.view": true
+      },
+      confirmTools: {},
+      protectedPaths: []
+    },
+    browserSnapshot: {
+      currentUrl: "https://example.com/current",
+      title: "Current page"
+    }
+  });
+
+  const browserView = runtime.customTools.find((tool) => tool.name === "browser_view");
+  const result = await browserView.execute("tool-call-1", {});
+
+  assert.equal(result.details.status, "snapshot");
+  assert.equal(result.details.currentUrl, "https://example.com/current");
+  assert.match(result.content[0].text, /Current page/);
 });
 
 test("memory_read tool recalls memory through the active memory backend", async () => {
