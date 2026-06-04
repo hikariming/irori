@@ -5,10 +5,16 @@ import type { CharacterCard } from "./character-cards.ts";
 import { defaultCharacterState } from "./character-state.ts";
 import {
   composeMomentPrompt,
+  composePeerCommentPrompt,
   formatMomentTime,
   hasMomentLike,
   MIN_MOMENT_GAP_MS,
+  MOMENT_ANGLES,
   parseMomentText,
+  peerReactionDecay,
+  pickMomentAngle,
+  PEER_REACTION_HALF_LIFE_MS,
+  PEER_REACTION_MAX_AGE_MS,
   sanitizeMoments,
   shouldPostMoment
 } from "./character-moments.ts";
@@ -38,6 +44,46 @@ test("composeMomentPrompt stays self-directed and persona-aware", () => {
   assert.match(prompt, /璐林/);
   assert.match(prompt, /安静的研究者/);
   assert.match(prompt, /只输出动态正文本身/);
+});
+
+test("pickMomentAngle is in-range and seed-reproducible", () => {
+  assert.equal(pickMomentAngle(0).key, MOMENT_ANGLES[0].key);
+  assert.equal(pickMomentAngle(0.999).key, MOMENT_ANGLES[MOMENT_ANGLES.length - 1].key);
+  assert.ok(MOMENT_ANGLES.includes(pickMomentAngle(0.5)));
+});
+
+test("peerReactionDecay decays with age and hard-cuts old moments", () => {
+  assert.equal(peerReactionDecay(0), 1);
+  assert.equal(peerReactionDecay(-100), 1);
+  assert.ok(Math.abs(peerReactionDecay(PEER_REACTION_HALF_LIFE_MS) - 0.5) < 1e-9);
+  // 半衰期叠加：两个半衰期 ≈ 0.25
+  assert.ok(Math.abs(peerReactionDecay(2 * PEER_REACTION_HALF_LIFE_MS) - 0.25) < 1e-9);
+  // 超过硬截断（太久）→ 0，不再评论
+  assert.equal(peerReactionDecay(PEER_REACTION_MAX_AGE_MS), 0);
+  assert.equal(peerReactionDecay(PEER_REACTION_MAX_AGE_MS + 1), 0);
+});
+
+test("composePeerCommentPrompt is peer-voiced and references the author's moment", () => {
+  const peer = { id: "cenji", name: "岑霁", persona: "冷静的调试师", speakingStyle: "干练吐槽" } as unknown as CharacterCard;
+  const prompt = composePeerCommentPrompt(peer, defaultCharacterState("cenji"), "璐林", "午后的咖啡又凉了", Date.now());
+  assert.match(prompt, /岑霁/);
+  assert.match(prompt, /璐林/);
+  assert.match(prompt, /午后的咖啡又凉了/);
+  assert.match(prompt, /只输出这一句评论本身/);
+  // 轻人设：评论 prompt 不应再灌入完整身份背景（避免端着人设、说得很违和）
+  assert.doesNotMatch(prompt, /身份与背景/);
+});
+
+test("composeMomentPrompt injects angle, day events and anti-repeat recent moments", () => {
+  const prompt = composeMomentPrompt(card, defaultCharacterState("lulin"), Date.now(), {
+    angle: { key: "complain", hint: "吐槽一下刚遇到的小麻烦" },
+    dayEvents: ["在厨房随便弄了点早饭", "在书桌前忙自己的事"],
+    recentMoments: ["午后的咖啡还是凉了"]
+  });
+  assert.match(prompt, /吐槽一下刚遇到的小麻烦/);
+  assert.match(prompt, /在厨房随便弄了点早饭/);
+  assert.match(prompt, /别在内容或措辞上重复/);
+  assert.match(prompt, /午后的咖啡还是凉了/);
 });
 
 test("parseMomentText strips markers, collapses blank lines and trims", () => {

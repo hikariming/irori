@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
+import { WorkspaceFolderBar } from "./components/WorkspaceFolderBar";
 import { CompanionLetters } from "./components/CompanionLetters";
 import { CompanionMomentsFeed } from "./components/CompanionMomentsFeed";
 import { CompanionSidebar } from "./components/CompanionSidebar";
@@ -25,6 +26,7 @@ import {
 } from "./components/character-cards";
 import {
   createAssistantProgress,
+  mergeAssistantStreamFragment,
   nextTypewriterText,
   removeAssistantStreamMessage,
   reduceAssistantProgress,
@@ -69,6 +71,24 @@ import { useCharacterMoments } from "./components/use-character-moments";
 import { useCharacterPreferences } from "./components/use-character-preferences";
 import { useCharacterState } from "./components/use-character-state";
 import { useTheme } from "./components/use-theme";
+import { useUserProfile } from "./components/use-user-profile";
+import { UserProfilePanel } from "./components/UserProfilePanel";
+import { OnboardingFlow } from "./components/OnboardingFlow";
+import {
+  applyBrowserOpenRequest,
+  buildBrowserSnapshot,
+  createInitialBrowserState,
+  markBrowserReady,
+  updateBrowserInput,
+  type BrowserOpenRequest
+} from "./components/browser-panel-model";
+import type { WorkspaceTab } from "./components/workspace-model";
+import {
+  buildFirstContactFacts,
+  buildFirstContactSelfIntro,
+  describeUserProfileForPrompt,
+  isUserProfileEmpty
+} from "./components/user-profile";
 
 function messageTime() {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -90,15 +110,35 @@ function createPromptRunId() {
 const LIFE_CATCHUP_GAP_MS = 90 * 60 * 1000;
 // 这些类别（睡觉/休息）就算执行了也不值得补动态。
 const CATCHUP_SKIP_CATEGORIES = new Set(["sleep", "rest"]);
+// 产品名 & 「已完成新手引导」标记键。
+const APP_DISPLAY_NAME = "Cockapoo Pi Companion";
+const ONBOARDING_DONE_KEY = "cockapoo-onboarding-done";
+// 角色第一次见到用户时，自动「反问」的开场白（脚本，不调模型，紧接着自动把用户档案当作回答发出去）。
+const FIRST_CONTACT_OPENER = "我们好像还是第一次正式认识～在开始之前，能先和我说说你是谁吗？比如我该怎么称呼你、你平时在忙些什么？";
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
   const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
-  const { states: characterStates, beginCharacterTurn, recordCharacterTurn, setCharacterSchedule, advanceCharacterLife } =
-    useCharacterState();
+  const { profile: userProfile, updateProfile: updateUserProfile } = useUserProfile();
+  const {
+    states: characterStates,
+    beginCharacterTurn,
+    recordCharacterTurn,
+    markCharacterIntroduced,
+    setCharacterSchedule,
+    advanceCharacterLife
+  } = useCharacterState();
   const { ensureDayScript } = useCharacterLife();
-  const { moments, postingIds, loadAllMoments, maybePostMoment, postCatchupMoment, toggleMomentLike, addMomentComment } =
-    useCharacterMoments();
+  const {
+    moments,
+    postingIds,
+    loadAllMoments,
+    maybePostMoment,
+    postCatchupMoment,
+    generatePeerReactions,
+    toggleMomentLike,
+    addMomentComment
+  } = useCharacterMoments();
   const { letters, writingIds, sendingIds, loadAllLetters, maybeWriteLetter, sendUserLetter, markRead } =
     useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
@@ -106,10 +146,27 @@ export function App() {
   const [viewMode, setViewMode] = useState<"chat" | "feed" | "letters">("chat");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  // 模型设置是否已从后端读完——避免在加载完成前误判「未配置」而闪现引导页。
+  const [modelSettingsLoaded, setModelSettingsLoaded] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(() => {
+    try {
+      return localStorage.getItem(ONBOARDING_DONE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // 引导一旦开启就锁定显示，直到用户「完成/跳过」，避免他在第二步刚输入名字就因「不再为空」而被关掉。
+  const [onboardingActive, setOnboardingActive] = useState(false);
+  const onboardingDecidedRef = useRef(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [reviewMode, setReviewMode] = useState<ReviewMode>(DEFAULT_REVIEW_MODE);
+  const [workspacePath, setWorkspacePath] = useState<string>("");
+  const [isPickingWorkspace, setIsPickingWorkspace] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessionSummary[]>([]);
+  // 会话列表是否已从后端读完——首次见面引导要等它读完再判，避免误把老用户当新认识。
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [assistantProgress, setAssistantProgress] = useState<AssistantProgress | null>(null);
@@ -135,8 +192,22 @@ export function App() {
   const letterChatTrackerRef = useRef<Map<string, { turnsSinceLetter: number; recent: DialogueTurn[] }>>(new Map());
   // 正在跑生活推进的角色 id，避免并发重复生成 / 推进。
   const lifeCycleInFlightRef = useRef<Set<string>>(new Set());
+  // 正在跑首次见面引导的角色 id，避免并发重复触发。
+  const introInFlightRef = useRef<Set<string>>(new Set());
+  const [workspaceActiveTab, setWorkspaceActiveTab] = useState<WorkspaceTab>("files");
+  const [workspaceBrowser, setWorkspaceBrowser] = useState(createInitialBrowserState);
   const modelReady = isModelConfigured(modelSettings);
   const activeModelProfile = getActiveModelProfile(modelSettings);
+
+  function completeOnboarding() {
+    try {
+      localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+    } catch {
+      // localStorage may be unavailable in some environments.
+    }
+    setOnboardingDone(true);
+    setOnboardingActive(false);
+  }
   const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
   const effectiveLetterClock = Math.max(letterClock, Date.now());
   const canStartNewSession = canStartNewDraftSession({
@@ -183,7 +254,7 @@ export function App() {
   );
   // 「动态」和「信件」合成一个「生活圈」页面，靠上方 tab 切换；聊天区只保留聊天本身。
   const isLifeView = viewMode === "feed" || viewMode === "letters";
-  // 角色 id → 头像/名字，给聚合的生活圈按发件人区分（大家住在一起）。
+  // 角色 id → 头像/名字，给聚合的生活圈按发件人区分（大家彼此认识、各自生活）。
   const characterAuthors = useMemo(() => buildCharacterAuthors(cards), [cards]);
   // 所有角色未读来信总数，给侧边栏「生活圈」入口点红点。
   const totalUnreadLetters = useMemo(
@@ -236,6 +307,28 @@ export function App() {
 
   function showInitialMessages() {
     setMessages([]);
+  }
+
+  // 首次见面引导：先把用户档案直接种进角色长期记忆（保证记住、并标记已认识防重复），
+  // 再让角色「先反问、用户自我介绍自动作答」，模型据此自然回应。仅每个角色第一次。
+  async function maybeRunFirstContactIntro(card: CharacterCard) {
+    if (!modelReady || isSending) {
+      return;
+    }
+    const selfIntro = buildFirstContactSelfIntro(userProfile);
+    if (!selfIntro) {
+      return;
+    }
+    if (getCharacterState(characterStates, card.id).introducedAt > 0 || introInFlightRef.current.has(card.id)) {
+      return;
+    }
+    introInFlightRef.current.add(card.id);
+    markCharacterIntroduced(card.id, buildFirstContactFacts(userProfile));
+    try {
+      await sendPrompt(selfIntro, { opener: FIRST_CONTACT_OPENER });
+    } finally {
+      introInFlightRef.current.delete(card.id);
+    }
   }
 
   // 一回合聊完后调用：累计对话、攒够轮数就在后台「偷偷」让角色写封信（延迟送达制造惊喜）。
@@ -375,12 +468,30 @@ export function App() {
         if (isMounted) {
           setModelSettings(buildInitialModelSettings());
         }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setModelSettingsLoaded(true);
+        }
       });
 
     return () => {
       isMounted = false;
     };
   }, []);
+
+  // 首次使用：模型设置读完后判断一次——「我」为空「或」模型未配置，就开启四步引导
+  //（只判一次，开启后锁定；完成/跳过会记 onboardingDone，之后不再打扰）。
+  useEffect(() => {
+    if (!modelSettingsLoaded || onboardingDecidedRef.current) {
+      return;
+    }
+    onboardingDecidedRef.current = true;
+    if (!onboardingDone && (!modelReady || isUserProfileEmpty(userProfile))) {
+      setOnboardingActive(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelSettingsLoaded]);
 
   // 恢复上次选择的工具审核模式（持久化在 review-mode.json）。
   useEffect(() => {
@@ -409,6 +520,45 @@ export function App() {
     });
   }
 
+  // 读取当前工作文件夹（持久化在 workspace-path.json，没设置时回落到进程 cwd）。
+  useEffect(() => {
+    let isMounted = true;
+
+    desktopBackend.loadWorkspacePath()
+      .then((path) => {
+        if (isMounted) {
+          setWorkspacePath(path);
+        }
+      })
+      .catch(() => {
+        // 读不到就留空，UI 显示「未设置」，不打断启动。
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 更改工作文件夹：弹系统目录选择器，选中即持久化并立即生效（取消则不变）。
+  function changeWorkspacePath() {
+    if (isPickingWorkspace) {
+      return;
+    }
+    setIsPickingWorkspace(true);
+    desktopBackend.pickWorkspacePath()
+      .then((path) => {
+        if (path) {
+          setWorkspacePath(path);
+        }
+      })
+      .catch(() => {
+        // 选择失败（如平台不支持）就保持原样，不影响对话。
+      })
+      .finally(() => {
+        setIsPickingWorkspace(false);
+      });
+  }
+
   useEffect(() => {
     let isMounted = true;
     let unlisten: (() => void) | null = null;
@@ -419,13 +569,20 @@ export function App() {
       }
 
       if (event.phase === "thinking") {
-        activeReasoningTextRef.current = event.text ?? `${activeReasoningTextRef.current}${event.delta ?? ""}`;
+        activeReasoningTextRef.current = event.text ?? mergeAssistantStreamFragment(activeReasoningTextRef.current, event.delta);
       }
 
       if (event.phase === "answering" && (event.delta || event.text !== undefined)) {
-        const nextTarget = event.text ?? `${activeAnswerTextRef.current}${event.delta ?? ""}`;
+        const nextTarget = event.text ?? mergeAssistantStreamFragment(activeAnswerTextRef.current, event.delta);
         activeAssistantStreamMessageIdRef.current = activeAssistantStreamMessageIdRef.current ?? `assistant-stream-${event.runId}`;
         setAssistantTypewriterTarget(nextTarget);
+      }
+
+      if (event.phase === "browser" && event.browser && event.browser.action === "open") {
+        const browserEvent = event.browser;
+        setWorkspaceBrowser((current) => applyBrowserOpenRequest(current, browserEvent));
+        setWorkspaceActiveTab("browser");
+        setIsWorkspaceOpen(true);
       }
 
       setAssistantProgress((current) => current ? reduceAssistantProgress(current, event) : current);
@@ -446,6 +603,20 @@ export function App() {
       unlisten?.();
     };
   }, []);
+
+  function openWorkspaceBrowser(request: BrowserOpenRequest) {
+    setWorkspaceBrowser((current) => applyBrowserOpenRequest(current, request));
+    setWorkspaceActiveTab("browser");
+    setIsWorkspaceOpen(true);
+  }
+
+  function setWorkspaceBrowserInput(value: string) {
+    setWorkspaceBrowser((current) => updateBrowserInput(current, value));
+  }
+
+  function markWorkspaceBrowserReady() {
+    setWorkspaceBrowser((current) => markBrowserReady(current));
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -526,6 +697,10 @@ export function App() {
             }
           ]);
         }
+      } finally {
+        if (isMounted) {
+          setSessionsLoaded(true);
+        }
       }
     }
 
@@ -562,8 +737,15 @@ export function App() {
       if (cancelled) {
         return;
       }
-      const state = getCharacterState(characterStates, card.id);
+      // 读「刚刚」推进后的最新状态（含本轮生成的作息），不要用渲染闭包里的旧 characterStates，
+      // 否则动态里的「此刻你正在」会落到通用兜底、与侧边栏显示的真实活动对不上。
+      const { state } = advanceCharacterLife(card.id, Date.now());
       await maybePostMoment(card, state, currentActivityPhrase(state, Date.now()) ?? undefined);
+      if (cancelled) {
+        return;
+      }
+      // 大家彼此认识：让角色们对最近的动态互相评论/点赞（按动态年龄衰减，太久的就不理了）。
+      await generatePeerReactions(cards, (id) => getCharacterState(characterStates, id));
     })();
 
     return () => {
@@ -599,6 +781,58 @@ export function App() {
     void runLifeCycle(activeCard, { allowCatchupMoment: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCard?.id, modelReady]);
+
+  // 首次见面：落到某个角色的「空白聊天」且从没和 ta 聊过时，自动跑一遍认识引导——
+  // 角色先反问「你是谁」，再把「我」的档案当作回答自动发出去，模型据此回应并把人记住。每个角色只一次。
+  useEffect(() => {
+    if (!sessionsLoaded || !modelReady || isSending || viewMode !== "chat" || !activeCard) {
+      return;
+    }
+    // 引导浮层还开着时先不触发，等用户「开始使用」后再认识。
+    if (onboardingActive) {
+      return;
+    }
+    // 只在真正空白的新对话里触发，不打扰已有/已加载的会话。
+    if (activeSessionId !== null || messages.length > 0) {
+      return;
+    }
+    if (chatSessions.some((session) => session.characterId === activeCard.id)) {
+      return;
+    }
+    if (isUserProfileEmpty(userProfile)) {
+      return;
+    }
+    if (getCharacterState(characterStates, activeCard.id).introducedAt > 0) {
+      return;
+    }
+    void maybeRunFirstContactIntro(activeCard);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionsLoaded, modelReady, viewMode, activeCard?.id, activeSessionId, chatSessions, characterStates, messages.length, onboardingActive]);
+
+  // 模型就绪后，后台为「所有」角色补齐今天的作息：串行、温和不打满模型端。
+  // 否则只有你点开过的 1~2 个角色有日程，其余会一直停在「同步今天作息」。
+  // 当前角色交给上面的 effect 负责，这里跳过避免重复生成。
+  useEffect(() => {
+    if (!modelReady || cards.length === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      for (const card of cards) {
+        if (cancelled) {
+          return;
+        }
+        if (card.id === activeCard?.id) {
+          continue;
+        }
+        await runLifeCycle(card);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelReady, cards]);
 
   // 打开生活圈信箱时，加载所有角色的信汇成一个统一收件箱。写信不在这里触发——而是聊够轮数后
   // 在后台偷偷写，这样信是「聊出来的惊喜」，而不是「点开信箱凭空多一封」。
@@ -651,8 +885,9 @@ export function App() {
     }
   }
 
-  async function sendPrompt(draft: string) {
+  async function sendPrompt(draft: string, options?: { opener?: string }) {
     const prompt = draft.trim();
+    const opener = options?.opener?.trim();
 
     if (!prompt || isSending || !modelReady || !activeCard) {
       if (prompt && !modelReady) {
@@ -682,8 +917,12 @@ export function App() {
     };
     const card = activeCard;
     const runId = createPromptRunId();
+    // 首次见面：角色先「反问」的开场白（脚本消息），排在自动回答之前。
+    const openerMessage: ChatMessage | null = opener
+      ? { id: `opener-${Date.now()}`, speaker: "character", author: card.name, text: opener, time: messageTime() }
+      : null;
 
-    setMessages((current) => [...current, userMessage]);
+    setMessages((current) => (openerMessage ? [...current, openerMessage, userMessage] : [...current, userMessage]));
     clearAssistantTypewriterTimer();
     activeAnswerTextRef.current = "";
     activeReasoningTextRef.current = "";
@@ -705,6 +944,19 @@ export function App() {
         title: createSessionTitle(prompt)
       })).id;
       sessionIdForRun = sessionId;
+      if (openerMessage) {
+        // 先把开场白落库（排在用户自我介绍之前），这样重开会话也能看到角色是「先问」的。
+        const persistedOpener = await desktopBackend.appendChatMessage({
+          sessionId,
+          speaker: "character",
+          author: card.name,
+          text: openerMessage.text,
+          characterId: card.id
+        });
+        setMessages((current) =>
+          current.map((message) => (message.id === openerMessage.id ? persistedOpener : message))
+        );
+      }
       const persistedUserMessage = await desktopBackend.appendChatMessage({
         sessionId,
         speaker: userMessage.speaker,
@@ -719,7 +971,8 @@ export function App() {
         userPrompt: prompt,
         timeContext: buildCharacterTimeContext(),
         selfState,
-        memories
+        memories,
+        userProfile: describeUserProfileForPrompt(userProfile) ?? undefined
       });
 
       setActiveSessionId(sessionId);
@@ -729,6 +982,7 @@ export function App() {
 
       const response = await desktopBackend.sendPiPrompt({
         characterId: card.id,
+        browserSnapshot: buildBrowserSnapshot(workspaceBrowser),
         prompt,
         runId,
         sessionId,
@@ -763,12 +1017,8 @@ export function App() {
         characterId: card.id
       });
 
-      const reasoningText = activeReasoningTextRef.current.trim();
-      const assistantMessageWithReasoning = reasoningText
-        ? { ...assistantMessage, reasoning: reasoningText }
-        : assistantMessage;
       const streamMessageId = activeAssistantStreamMessageIdRef.current;
-      setMessages((current) => replaceAssistantStreamMessage(current, streamMessageId, assistantMessageWithReasoning));
+      setMessages((current) => replaceAssistantStreamMessage(current, streamMessageId, assistantMessage));
       await refreshChatSessions(sessionId);
     } catch (error) {
       const streamMessageId = activeAssistantStreamMessageIdRef.current;
@@ -887,7 +1137,13 @@ export function App() {
         onLifeOpen={openLifeCircle}
         onSettingsOpen={() => {
           setIsCharacterOpen(false);
+          setIsProfileOpen(false);
           setIsSettingsOpen(true);
+        }}
+        onProfileOpen={() => {
+          setIsCharacterOpen(false);
+          setIsSettingsOpen(false);
+          setIsProfileOpen(true);
         }}
         onNewSession={startNewSession}
         onSessionSelect={loadChatSession}
@@ -1018,13 +1274,20 @@ export function App() {
           </div>
         ) : null}
         {viewMode === "chat" ? (
-          <CompanionInput
-            disabled={isSending || !modelReady || !activeCharacter}
-            isSending={isSending}
-            reviewMode={reviewMode}
-            onReviewModeChange={changeReviewMode}
-            onSend={sendPrompt}
-          />
+          <>
+            <CompanionInput
+              disabled={isSending || !modelReady || !activeCharacter}
+              isSending={isSending}
+              reviewMode={reviewMode}
+              onReviewModeChange={changeReviewMode}
+              onSend={sendPrompt}
+            />
+            <WorkspaceFolderBar
+              path={workspacePath}
+              isPicking={isPickingWorkspace}
+              onChangeFolder={changeWorkspacePath}
+            />
+          </>
         ) : null}
         <SystemSettingsPanel
           activeCharacterId={activeCharacterId}
@@ -1038,8 +1301,35 @@ export function App() {
           onClose={() => setIsSettingsOpen(false)}
           onModelSettingsChange={setModelSettings}
         />
+        <UserProfilePanel
+          isOpen={isProfileOpen}
+          profile={userProfile}
+          onProfileChange={updateUserProfile}
+          onClose={() => setIsProfileOpen(false)}
+        />
       </section>
-      <WorkspacePanel isOpen={isWorkspaceOpen} onToggle={() => setIsWorkspaceOpen((open) => !open)} />
+      <WorkspacePanel
+        activeTab={workspaceActiveTab}
+        browser={workspaceBrowser}
+        isOpen={isWorkspaceOpen}
+        workspacePath={workspacePath}
+        onBrowserInputChange={setWorkspaceBrowserInput}
+        onBrowserLoad={markWorkspaceBrowserReady}
+        onBrowserNavigate={openWorkspaceBrowser}
+        onTabChange={setWorkspaceActiveTab}
+        onToggle={() => setIsWorkspaceOpen((open) => !open)}
+      />
+      {onboardingActive ? (
+        <OnboardingFlow
+          appName={APP_DISPLAY_NAME}
+          profile={userProfile}
+          onProfileChange={updateUserProfile}
+          modelSettings={modelSettings}
+          onModelSettingsChange={setModelSettings}
+          onFinish={completeOnboarding}
+          onSkip={completeOnboarding}
+        />
+      ) : null}
     </main>
   );
 }

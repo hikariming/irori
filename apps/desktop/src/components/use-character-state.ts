@@ -85,6 +85,20 @@ export function useCharacterState() {
     [commit]
   );
 
+  // 首次「自我介绍」握手：把用户档案直接种进长期记忆（保证记住），并打上 introducedAt 时间戳，
+  // 之后这个角色不再重复引导。返回更新后的状态。
+  const markCharacterIntroduced = useCallback(
+    (characterId: string, facts: ParsedImpression[]): CharacterState => {
+      const current = getCharacterState(statesRef.current, characterId);
+      const now = Date.now();
+      const withFacts = mergeImpressions(current, facts, now);
+      const next = { ...withFacts, introducedAt: now };
+      commit({ ...statesRef.current, [characterId]: next });
+      return next;
+    },
+    [commit]
+  );
+
   // 落库当天的作息脚本（生成 / 重生成后调用）。返回更新后的状态。
   const setCharacterSchedule = useCallback(
     (characterId: string, schedule: DayScript | null): CharacterState => {
@@ -116,6 +130,7 @@ export function useCharacterState() {
     states,
     beginCharacterTurn,
     recordCharacterTurn,
+    markCharacterIntroduced,
     setCharacterSchedule,
     advanceCharacterLife
   } as const;

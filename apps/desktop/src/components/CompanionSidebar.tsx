@@ -13,6 +13,7 @@ type CompanionSidebarProps = {
   onCharacterInspect?: (character: CompanionCharacter) => void;
   onLifeOpen?: () => void;
   onNewSession?: () => void;
+  onProfileOpen?: () => void;
   onSessionSelect?: (sessionId: string) => void;
   onSettingsOpen?: () => void;
   onThemeToggle?: () => void;
@@ -124,6 +125,7 @@ export function CompanionSidebar({
   onCharacterInspect,
   onLifeOpen,
   onNewSession,
+  onProfileOpen,
   onSessionSelect,
   onSettingsOpen,
   onThemeToggle,
@@ -198,6 +200,23 @@ export function CompanionSidebar({
         <div className="sidebar-footer__group">
           <Button aria-label="设置" className="sidebar-icon-button" onPress={onSettingsOpen} type="button">
             ⚙
+          </Button>
+          <Button aria-label="我的档案" className="sidebar-icon-button" onPress={onProfileOpen} type="button">
+            <svg
+              className="sidebar-life-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <circle cx="12" cy="8" r="3.4" />
+              <path d="M5 19a7 7 0 0 1 14 0" />
+            </svg>
           </Button>
           <Button
             aria-label="生活圈"

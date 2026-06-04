@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 
+import type { BrowserOpenRequest, BrowserPanelState } from "./browser-panel-model";
 import { useWorkspaceTree } from "./use-workspace-tree";
 import {
   breadcrumbSegments,
@@ -13,7 +14,14 @@ import {
 } from "./workspace-model";
 
 type WorkspacePanelProps = {
+  activeTab?: WorkspaceTab;
+  browser: BrowserPanelState;
   isOpen: boolean;
+  workspacePath?: string;
+  onBrowserInputChange: (value: string) => void;
+  onBrowserLoad: () => void;
+  onBrowserNavigate: (request: BrowserOpenRequest) => void;
+  onTabChange?: (tab: WorkspaceTab) => void;
   onToggle: () => void;
 };
 
@@ -178,13 +186,119 @@ function PlaceholderTab({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-export function WorkspacePanel({ isOpen, onToggle }: WorkspacePanelProps) {
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("files");
+function BrowserTab({
+  browser,
+  onInputChange,
+  onLoad,
+  onNavigate
+}: {
+  browser: BrowserPanelState;
+  onInputChange: (value: string) => void;
+  onLoad: () => void;
+  onNavigate: (request: BrowserOpenRequest) => void;
+}) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onNavigate({
+      action: "open",
+      url: browser.urlInput,
+      source: "user"
+    });
+  }
+
+  function openExternal() {
+    if (!browser.currentUrl) {
+      return;
+    }
+
+    window.open(browser.currentUrl, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <div className="ws-browser">
+      <form className="ws-browser-bar" onSubmit={submit}>
+        <input
+          aria-label="浏览器地址"
+          inputMode="url"
+          placeholder="https://example.com"
+          type="text"
+          value={browser.urlInput}
+          onChange={(event) => onInputChange(event.target.value)}
+        />
+        <button type="submit" aria-label="打开网页" className="ws-icon-button">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12h14" />
+            <path d="m13 6 6 6-6 6" />
+          </svg>
+        </button>
+        <button type="button" aria-label="在系统浏览器打开" className="ws-icon-button" disabled={!browser.currentUrl} onClick={openExternal}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M14 3h7v7" />
+            <path d="M10 14 21 3" />
+            <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+          </svg>
+        </button>
+      </form>
+
+      <div className="ws-browser-meta" aria-live="polite">
+        {browser.currentUrl ? (
+          <>
+            <span className={`ws-browser-status ${browser.status}`}>{browser.status === "ready" ? "已加载" : browser.status === "error" ? "错误" : "加载中"}</span>
+            <span className="ws-browser-url">{browser.title || browser.currentUrl}</span>
+          </>
+        ) : (
+          <span className="ws-browser-url">暂无页面</span>
+        )}
+      </div>
+
+      {browser.error ? <p className="ws-error">{browser.error}</p> : null}
+
+      {browser.currentUrl ? (
+        <div className="ws-browser-frame">
+          <iframe
+            key={browser.currentUrl}
+            title={browser.title || "浏览器预览"}
+            src={browser.currentUrl}
+            sandbox="allow-same-origin allow-scripts allow-popups"
+            referrerPolicy="no-referrer-when-downgrade"
+            onLoad={onLoad}
+          />
+        </div>
+      ) : (
+        <div className="ws-browser-empty" role="status">
+          <strong>未打开网页</strong>
+          <p>输入地址或让 Pi 打开来源。</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WorkspacePanel({
+  activeTab: controlledActiveTab,
+  browser,
+  isOpen,
+  onBrowserInputChange,
+  onBrowserLoad,
+  onBrowserNavigate,
+  onTabChange,
+  onToggle,
+  workspacePath = ""
+}: WorkspacePanelProps) {
+  const [internalActiveTab, setInternalActiveTab] = useState<WorkspaceTab>("files");
+  const activeTab = controlledActiveTab ?? internalActiveTab;
   const [selected, setSelected] = useState<WorkspaceNode | null>(null);
-  const tree = useWorkspaceTree(isOpen);
+  const tree = useWorkspaceTree(isOpen, workspacePath);
+
+  useEffect(() => {
+    setSelected(null);
+  }, [workspacePath]);
 
   function onRailSelect(tab: WorkspaceTab) {
-    setActiveTab(tab);
+    if (controlledActiveTab === undefined) {
+      setInternalActiveTab(tab);
+    }
+    onTabChange?.(tab);
     if (!isOpen) {
       onToggle();
     }
@@ -242,7 +356,12 @@ export function WorkspacePanel({ isOpen, onToggle }: WorkspacePanelProps) {
             <PlaceholderTab title="后端服务" hint="这里会列出 Pi 启动的本地服务、端口与日志，可一键打开或重启。" />
           ) : null}
           {activeTab === "browser" ? (
-            <PlaceholderTab title="内置浏览器" hint="这里会嵌入一个轻量浏览器视图，Pi 可以替你打开网页、抓取内容。" />
+            <BrowserTab
+              browser={browser}
+              onInputChange={onBrowserInputChange}
+              onLoad={onBrowserLoad}
+              onNavigate={onBrowserNavigate}
+            />
           ) : null}
         </div>
       ) : null}

@@ -33,6 +33,7 @@ export type CharacterState = {
   impressions: Impression[]; // 见面即记住 / 记仇：长期印象
   schedule: DayScript | null; // 当天的虚拟生活作息脚本，驱动「此刻在干嘛」与状态推进
   lastLifeTickAt: number; // 上次推进作息（执行条目 / 离线回放）的时间戳（ms），0 表示从未
+  introducedAt: number; // 首次「自我介绍」握手完成的时间戳（ms），0 表示还没认识过这个用户
 };
 
 export type CharacterStates = Record<string, CharacterState>;
@@ -56,7 +57,8 @@ export function defaultCharacterState(characterId: string): CharacterState {
     meetCount: 0,
     impressions: [],
     schedule: null,
-    lastLifeTickAt: 0
+    lastLifeTickAt: 0,
+    introducedAt: 0
   };
 }
 
@@ -302,6 +304,29 @@ const impressionKindLabel: Record<ImpressionKind, string> = {
   grudge: "我介意的事"
 };
 
+// 角色长期记住的一条印象，给「设置-记忆」面板展示用（带中文类别标签）。
+export type StoredMemoryView = {
+  id: string;
+  kind: ImpressionKind;
+  kindLabel: string;
+  text: string;
+  createdAt: number;
+};
+
+// 列出某个角色长期记得的所有印象（最新/最重要在前），供记忆面板直接展示。
+// 这才是角色「真正记住的东西」，区别于某一轮对话临时召回的记忆快照。
+export function listStoredMemories(state: CharacterState): StoredMemoryView[] {
+  return [...state.impressions]
+    .sort((a, b) => b.createdAt - a.createdAt || b.weight - a.weight)
+    .map((impression) => ({
+      id: impression.id,
+      kind: impression.kind,
+      kindLabel: impressionKindLabel[impression.kind],
+      text: impression.text,
+      createdAt: impression.createdAt
+    }));
+}
+
 function normalizeImpressionText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -488,7 +513,8 @@ export function sanitizeCharacterStates(value: unknown): CharacterStates {
       meetCount: typeof entry.meetCount === "number" && entry.meetCount >= 0 ? Math.floor(entry.meetCount) : base.meetCount,
       impressions: sanitizeImpressions(entry.impressions, kinds),
       schedule: sanitizeDayScript(entry.schedule),
-      lastLifeTickAt: typeof entry.lastLifeTickAt === "number" ? entry.lastLifeTickAt : base.lastLifeTickAt
+      lastLifeTickAt: typeof entry.lastLifeTickAt === "number" ? entry.lastLifeTickAt : base.lastLifeTickAt,
+      introducedAt: typeof entry.introducedAt === "number" ? entry.introducedAt : base.introducedAt
     };
   }
   return result;

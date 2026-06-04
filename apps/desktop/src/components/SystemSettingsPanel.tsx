@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { CharacterCardSettings } from "./CharacterCardSettings";
 import { desktopBackend } from "./desktop-backend";
+import { defaultAdvancedSettings, type AdvancedSettings } from "./advanced-settings-model";
 import { formatUnknownError } from "./error-message";
 import {
   buildMemoryDashboardViewModel,
@@ -28,7 +29,7 @@ import {
 import { buildSettingsTabs } from "./settings-model";
 import type { CharacterCard } from "./character-cards";
 import type { CharacterPreference, CharacterPreferences } from "./character-preferences";
-import type { CharacterStates } from "./character-state";
+import { getCharacterState, listStoredMemories, type CharacterStates } from "./character-state";
 import {
   buildToolPolicySettingsViewModel,
   defaultToolPolicySettings,
@@ -37,6 +38,14 @@ import {
   type ToolPolicySettings,
   type ToolPolicyToggleGroup
 } from "./tool-policy-model";
+import {
+  buildDefaultWebAccessSettings,
+  buildWebAccessSettingsViewModel,
+  type WebAccessProvider,
+  type WebAccessProviderId,
+  type WebAccessSettingsState,
+  type WebAccessWorkflow
+} from "./web-access-settings";
 
 type SystemSettingsPanelProps = {
   activeCharacterId?: string;
@@ -55,7 +64,9 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
   const memoryTab = tabs.find((tab) => tab.id === "memory");
+  const webAccessTab = tabs.find((tab) => tab.id === "web-access");
   const safetyTab = tabs.find((tab) => tab.id === "safety");
+  const advancedTab = tabs.find((tab) => tab.id === "advanced");
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
   const [selectedProfileId, setSelectedProfileId] = useState(getActiveModelProfile(buildInitialModelSettings()).id);
   const [draftProfile, setDraftProfile] = useState<SavedModelProfile>(() => getActiveModelProfile(buildInitialModelSettings()));
@@ -66,6 +77,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   const [toolPolicySettings, setToolPolicySettings] = useState<ToolPolicySettings>(defaultToolPolicySettings);
   const [toolPolicySaveState, setToolPolicySaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [toolPolicyError, setToolPolicyError] = useState("");
+  const [webAccessSettings, setWebAccessSettings] = useState<WebAccessSettingsState>(buildDefaultWebAccessSettings);
+  const [webAccessKeys, setWebAccessKeys] = useState<Record<WebAccessProviderId, string>>({ exa: "", perplexity: "", gemini: "" });
+  const [webAccessSaveState, setWebAccessSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [webAccessError, setWebAccessError] = useState("");
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(defaultAdvancedSettings);
+  const [advancedSaveState, setAdvancedSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [advancedError, setAdvancedError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
@@ -170,6 +188,45 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         setToolPolicySettings(defaultToolPolicySettings);
         setToolPolicyError(formatUnknownError(error, "权限设置加载失败。"));
       });
+
+    desktopBackend.getWebAccessSettings()
+      .then((settings) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setWebAccessSettings(settings);
+        setWebAccessKeys({ exa: "", perplexity: "", gemini: "" });
+        setWebAccessSaveState("idle");
+        setWebAccessError("");
+      })
+      .catch((error) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setWebAccessSettings(buildDefaultWebAccessSettings());
+        setWebAccessError(formatUnknownError(error, "联网设置加载失败。"));
+      });
+
+    desktopBackend.loadAdvancedSettings()
+      .then((settings) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setAdvancedSettings(settings);
+        setAdvancedSaveState("idle");
+        setAdvancedError("");
+      })
+      .catch((error) => {
+        if (!isOpen) {
+          return;
+        }
+
+        setAdvancedSettings(defaultAdvancedSettings);
+        setAdvancedError(formatUnknownError(error, "高级设置加载失败。"));
+      });
   }, [activeCharacterId, isOpen, onModelSettingsChange]);
 
   if (!isOpen) {
@@ -187,7 +244,17 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     latestRun: latestMemoryRun,
     selectedCharacterId: selectedMemoryCharacterId
   });
+  // 选中角色「真正长期记住的事」（来自角色状态里的印象），区别于上一轮临时召回的快照。
+  const storedMemories = listStoredMemories(getCharacterState(characterStates, selectedMemoryCharacterId));
   const toolPolicyView = buildToolPolicySettingsViewModel(toolPolicySettings);
+  const webAccessView = buildWebAccessSettingsViewModel(webAccessSettings);
+  // 子代理要真正干活，至少得有一种写能力（写文件或跑命令）启用。默认全开，只有用户
+  // 手动在「权限」里关掉时才会缺，这里据此给出内联提示，免得跨标签翻查。
+  const subagentCanWork = Boolean(
+    toolPolicySettings.builtinTools?.write ||
+      toolPolicySettings.builtinTools?.edit ||
+      toolPolicySettings.builtinTools?.bash
+  );
   const didNormalizeBaseUrl = normalizedDraft.baseUrl !== draftProfile.baseUrl.trim().replace(/\/+$/, "");
   const canUseDraft = Boolean(draftProfile.baseUrl.trim() && draftProfile.modelName.trim() && (draftProfile.hasToken || token.trim()));
   const isModelActionBusy = saveState === "saving" || testState === "testing";
@@ -403,6 +470,84 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     }
   }
 
+  // Advanced settings save on toggle (no separate save button) — the change is a
+  // single boolean and takes effect on the next chat send.
+  async function updateAdvancedSettings(patch: Partial<AdvancedSettings>) {
+    const next = { ...advancedSettings, ...patch };
+    setAdvancedSettings(next);
+    setAdvancedSaveState("saving");
+
+    try {
+      const saved = await desktopBackend.saveAdvancedSettings(next);
+      setAdvancedSettings(saved);
+      setAdvancedSaveState("saved");
+      setAdvancedError("");
+    } catch (error) {
+      setAdvancedSaveState("error");
+      setAdvancedError(formatUnknownError(error, "高级设置保存失败。"));
+    }
+  }
+
+  // 一键修复：直接在工具策略里开启写文件 + Shell 并保存，省去用户去「权限」标签翻找。
+  async function enableSubagentWriteTools() {
+    const next: ToolPolicySettings = {
+      ...toolPolicySettings,
+      builtinTools: {
+        ...toolPolicySettings.builtinTools,
+        edit: true,
+        write: true,
+        bash: true
+      }
+    };
+    setToolPolicySettings(next);
+    setToolPolicySaveState("saving");
+
+    try {
+      const saved = await desktopBackend.saveToolPolicySettings(next);
+      setToolPolicySettings(saved);
+      setToolPolicySaveState("saved");
+      setToolPolicyError("");
+    } catch (error) {
+      setToolPolicySaveState("error");
+      setToolPolicyError(formatUnknownError(error, "权限设置保存失败。"));
+    }
+  }
+
+  function updateWebAccessSettings(patch: Partial<Pick<WebAccessSettingsState, "provider" | "workflow" | "noKeyFallback" | "allowBrowserCookies">>) {
+    setWebAccessSettings((settings) => ({ ...settings, ...patch }));
+    setWebAccessSaveState("idle");
+    setWebAccessError("");
+  }
+
+  function updateWebAccessKey(provider: WebAccessProviderId, value: string) {
+    setWebAccessKeys((keys) => ({ ...keys, [provider]: value }));
+    setWebAccessSaveState("idle");
+    setWebAccessError("");
+  }
+
+  async function saveWebAccessSettings() {
+    setWebAccessSaveState("saving");
+
+    try {
+      const saved = await desktopBackend.saveWebAccessSettings({
+        provider: webAccessSettings.provider,
+        workflow: webAccessSettings.workflow,
+        noKeyFallback: webAccessSettings.noKeyFallback,
+        allowBrowserCookies: webAccessSettings.allowBrowserCookies,
+        exaApiKey: webAccessKeys.exa,
+        perplexityApiKey: webAccessKeys.perplexity,
+        geminiApiKey: webAccessKeys.gemini
+      });
+      setWebAccessSettings(saved);
+      setWebAccessKeys({ exa: "", perplexity: "", gemini: "" });
+      setWebAccessSaveState("saved");
+      setWebAccessError("");
+    } catch (error) {
+      setWebAccessSaveState("error");
+      setWebAccessError(formatUnknownError(error, "联网设置保存失败。"));
+    }
+  }
+
   function isToolEnabled(group: ToolPolicyToggleGroup, toolId: ToolId) {
     const groupSettings = toolPolicySettings[group] as Partial<Record<ToolId, boolean>>;
     return groupSettings[toolId] === true;
@@ -478,6 +623,33 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
           <strong>{preset.name}</strong>
           <small>{preset.description}</small>
         </span>
+      </button>
+    );
+  }
+
+  function renderWebAccessProviderButton(provider: WebAccessProvider, label: string, description: string) {
+    return (
+      <button
+        className={`web-provider-card ${webAccessSettings.provider === provider ? "selected" : ""}`}
+        key={provider}
+        onClick={() => updateWebAccessSettings({ provider })}
+        type="button"
+      >
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </button>
+    );
+  }
+
+  function renderWebWorkflowButton(workflow: WebAccessWorkflow, label: string) {
+    return (
+      <button
+        className={`segmented-option ${webAccessSettings.workflow === workflow ? "selected" : ""}`}
+        key={workflow}
+        onClick={() => updateWebAccessSettings({ workflow })}
+        type="button"
+      >
+        {label}
       </button>
     );
   }
@@ -779,7 +951,23 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
               </dl>
 
               <div className="memory-recall-list">
-                <h4>{memoryView.selectedCharacterLabel}可见记忆</h4>
+                <h4>{memoryView.selectedCharacterLabel}长期记得的事 {storedMemories.length > 0 ? `· ${storedMemories.length}` : ""}</h4>
+                {storedMemories.length > 0 ? (
+                  storedMemories.map((memory) => (
+                    <article className="memory-recall-item" key={memory.id}>
+                      <div>
+                        <span>{memory.kindLabel}</span>
+                      </div>
+                      <p>{memory.text}</p>
+                    </article>
+                  ))
+                ) : (
+                  <p className="memory-empty-state">{memoryView.selectedCharacterLabel}还没记住关于你的事，多聊几句、或第一次见面打个招呼就有了。</p>
+                )}
+              </div>
+
+              <div className="memory-recall-list">
+                <h4>上一轮对话召回的记忆 {memoryView.totalRecalledCount > 0 ? `· ${memoryView.recalledCount}/${memoryView.totalRecalledCount}` : ""}</h4>
                 {memoryView.memories.length > 0 ? (
                   memoryView.memories.map((memory) => (
                     <article className="memory-recall-item" key={memory.id}>
@@ -791,7 +979,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     </article>
                   ))
                 ) : (
-                  <p className="memory-empty-state">还没有召回记录。</p>
+                  <p className="memory-empty-state">这一轮还没有召回记录（发生在你发消息、模型检索记忆时）。</p>
                 )}
               </div>
 
@@ -814,6 +1002,111 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             </div>
           </section>
         </Tabs.Panel>
+
+        {webAccessTab ? (
+          <Tabs.Panel className="settings-tab-panel" id={webAccessTab.id}>
+            <section>
+              <header className="settings-section-header">
+                <div>
+                  <h3>{webAccessTab.label}</h3>
+                  <p>{webAccessTab.description}</p>
+                </div>
+                <div className="settings-header-actions">
+                  <Chip className="provider-status" size="sm" variant="soft">
+                    {webAccessView.effectiveProviderLabel}
+                  </Chip>
+                  <Button
+                    className="settings-primary-action"
+                    isDisabled={webAccessSaveState === "saving"}
+                    onPress={saveWebAccessSettings}
+                    type="button"
+                  >
+                    {webAccessSaveState === "saving" ? "保存中" : "保存联网"}
+                  </Button>
+                </div>
+              </header>
+
+              <div className="web-access-dashboard">
+                <div className="web-provider-grid" aria-label="搜索 provider">
+                  {renderWebAccessProviderButton("auto", "Auto", "按可用性自动选择。")}
+                  {renderWebAccessProviderButton("exa", "Exa", "优先 Exa API / MCP。")}
+                  {renderWebAccessProviderButton("perplexity", "Perplexity", "使用 Sonar 搜索。")}
+                  {renderWebAccessProviderButton("gemini", "Gemini", "API 或浏览器登录。")}
+                </div>
+
+                <div className="web-access-main">
+                  <div className="web-access-form">
+                    <div className="form-section-header">
+                      <h4>运行方式</h4>
+                      <Chip className="provider-status" size="sm" variant="soft">
+                        {webAccessView.workflowLabel}
+                      </Chip>
+                    </div>
+
+                    <div className="settings-segmented" aria-label="搜索 workflow">
+                      {renderWebWorkflowButton("none", "直接返回")}
+                      {renderWebWorkflowButton("summary-review", "浏览器审阅")}
+                    </div>
+
+                    <label className="tool-policy-toggle web-access-switch">
+                      <input
+                        checked={webAccessSettings.noKeyFallback}
+                        onChange={(event) => updateWebAccessSettings({ noKeyFallback: event.target.checked })}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>无 key 自动回退</strong>
+                        <small>{webAccessView.willFallbackWithoutKey ? "当前会以 Auto 运行。" : "显式 provider 可在缺 key 时回到 Auto。"}</small>
+                      </span>
+                    </label>
+
+                    <label className="tool-policy-toggle web-access-switch">
+                      <input
+                        checked={webAccessSettings.allowBrowserCookies}
+                        onChange={(event) => updateWebAccessSettings({ allowBrowserCookies: event.target.checked })}
+                        type="checkbox"
+                      />
+                      <span>
+                        <strong>允许 Gemini 浏览器登录</strong>
+                        <small>开启后可读取本机 Chromium 登录状态。</small>
+                      </span>
+                    </label>
+
+                    {webAccessError ? <p className="settings-save-note error">{webAccessError}</p> : null}
+                    {webAccessSaveState === "saved" ? <p className="settings-save-note">联网设置已保存。</p> : null}
+                    {webAccessSaveState === "error" ? <p className="settings-save-note error">联网设置保存失败。</p> : null}
+                  </div>
+
+                  <div className="web-key-form">
+                    <div className="form-section-header">
+                      <h4>API Keys</h4>
+                      <Chip className="provider-status" size="sm" variant="soft">
+                        {webAccessView.keyRows.filter((row) => row.hasKey).length}/3
+                      </Chip>
+                    </div>
+
+                    {webAccessView.keyRows.map((row) => (
+                      <label className="settings-input web-key-input" key={row.id}>
+                        <span>{row.label}</span>
+                        <div className="token-input-row">
+                          <input
+                            aria-label={`${row.label} API Key`}
+                            onChange={(event) => updateWebAccessKey(row.id, event.target.value)}
+                            placeholder={row.hasKey ? `已保存 ${row.status}，留空则不修改` : row.placeholder}
+                            type="password"
+                            value={webAccessKeys[row.id]}
+                          />
+                          {row.hasKey ? <span className="token-saved-badge">已保存</span> : null}
+                        </div>
+                        <small>{row.description}</small>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+          </Tabs.Panel>
+        ) : null}
 
         {safetyTab ? (
           <Tabs.Panel className="settings-tab-panel" id={safetyTab.id}>
@@ -859,6 +1152,65 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   {renderToolGroup("confirmTools", "需要确认", toolPolicyView.toolOrder)}
                 </article>
               </div>
+            </section>
+          </Tabs.Panel>
+        ) : null}
+
+        {advancedTab ? (
+          <Tabs.Panel className="settings-tab-panel" id={advancedTab.id}>
+            <section>
+              <header className="settings-section-header">
+                <div>
+                  <h3>{advancedTab.label}</h3>
+                  <p>{advancedTab.description}</p>
+                </div>
+              </header>
+
+              <article className="tool-policy-mode-card">
+                <header>
+                  <div>
+                    <h4>子代理委派</h4>
+                    <p>允许角色把任务拆给 scout / worker / reviewer 等子代理，增强编程与多步任务能力。</p>
+                  </div>
+                  <Chip className="provider-status" size="sm" variant="soft">
+                    {advancedSettings.enableSubagents ? "已开启" : "已关闭"}
+                  </Chip>
+                </header>
+
+                <label className="tool-policy-toggle web-access-switch">
+                  <input
+                    checked={advancedSettings.enableSubagents}
+                    onChange={(event) => updateAdvancedSettings({ enableSubagents: event.target.checked })}
+                    type="checkbox"
+                  />
+                  <span>
+                    <strong>启用子代理委派</strong>
+                    <small>子代理在独立进程运行，其每次工具调用都受与主会话相同的安全围栏约束。需要可写文件 / Shell 权限才能发挥作用。</small>
+                  </span>
+                </label>
+
+                <p className="settings-save-note">
+                  开启后会使用持久化会话并允许委派；子代理的危险操作仍会被拦截。仅对原生支持的模型 provider（如 DeepSeek）生效。
+                </p>
+                {advancedSettings.enableSubagents && !subagentCanWork ? (
+                  <div className="settings-inline-fix">
+                    <p className="settings-save-note error">
+                      子代理目前无法干活：「权限」里的写文件 / Shell 都被关了，它只能读、不能改。
+                    </p>
+                    <Button
+                      className="settings-secondary-action"
+                      isDisabled={toolPolicySaveState === "saving"}
+                      onPress={enableSubagentWriteTools}
+                      type="button"
+                    >
+                      {toolPolicySaveState === "saving" ? "开启中…" : "一键开启写入与 Shell"}
+                    </Button>
+                  </div>
+                ) : null}
+                {advancedError ? <p className="settings-save-note error">{advancedError}</p> : null}
+                {advancedSaveState === "saved" ? <p className="settings-save-note">高级设置已保存。</p> : null}
+                {advancedSaveState === "error" ? <p className="settings-save-note error">高级设置保存失败。</p> : null}
+              </article>
             </section>
           </Tabs.Panel>
         ) : null}

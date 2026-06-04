@@ -34,7 +34,7 @@ function actorName(actor: MomentActorRef, authors: Record<string, FeedAuthor>) {
   return authors[actor.actorId]?.name ?? unknownAuthor.name;
 }
 
-// 生活圈动态：把所有角色的动态汇成一条共享时间线，像朋友圈/Facebook 那样大家住在一起。
+// 生活圈动态：把所有角色的动态汇成一条共享时间线，像朋友圈/Facebook 那样——大家彼此认识，各自生活。
 export function CompanionMomentsFeed({
   moments,
   authors,
@@ -68,7 +68,7 @@ export function CompanionMomentsFeed({
       <header className="moments-header">
         <div className="moments-header-copy">
           <strong>生活圈</strong>
-          <span>大家住在一起，随手记下的生活片段</span>
+          <span>大家随手记下的生活片段</span>
         </div>
       </header>
 

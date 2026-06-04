@@ -62,6 +62,22 @@ test("reduceAssistantProgress uses final text_end content when provided", () => 
   assert.equal(next.answerText, "最终回复。");
 });
 
+test("reduceAssistantProgress treats cumulative answer fragments as replacements", () => {
+  const progress = createAssistantProgress("run-1");
+  const first = reduceAssistantProgress(progress, {
+    runId: "run-1",
+    phase: "answering",
+    delta: "你"
+  });
+  const second = reduceAssistantProgress(first, {
+    runId: "run-1",
+    phase: "answering",
+    delta: "你呢？"
+  });
+
+  assert.equal(second.answerText, "你呢？");
+});
+
 test("reduceAssistantProgress collects tool decisions without resetting the answer", () => {
   const answering = reduceAssistantProgress(createAssistantProgress("run-1"), {
     runId: "run-1",
@@ -80,6 +96,28 @@ test("reduceAssistantProgress collects tool decisions without resetting the answ
   assert.equal(next.phase, "answering");
   assert.equal(next.toolEvents.length, 1);
   assert.equal(next.toolEvents[0].status, "blocked");
+});
+
+test("reduceAssistantProgress ignores browser side-panel events without resetting the answer", () => {
+  const answering = reduceAssistantProgress(createAssistantProgress("run-1"), {
+    runId: "run-1",
+    phase: "answering",
+    delta: "我找到一个来源。"
+  });
+
+  const next = reduceAssistantProgress(answering, {
+    runId: "run-1",
+    phase: "browser",
+    status: "打开右侧浏览器：https://example.com",
+    browser: {
+      action: "open",
+      url: "https://example.com",
+      source: "agent"
+    }
+  });
+
+  assert.equal(next.answerText, "我找到一个来源。");
+  assert.equal(next.phase, "answering");
 });
 
 test("assistantProgressStatusLabel describes each visible phase", () => {
@@ -116,14 +154,14 @@ test("assistantProgressPrimaryText does not label queued requests as thinking", 
   );
 });
 
-test("assistantReasoningDisplayText shows a thinking placeholder until reasoning deltas arrive", () => {
+test("assistantReasoningDisplayText hides reasoning content behind a thinking label", () => {
   assert.equal(assistantReasoningDisplayText(createAssistantProgress("run-1")), "");
   assert.equal(
     assistantReasoningDisplayText({
       ...createAssistantProgress("run-1"),
       phase: "thinking"
     }),
-    "正在思考..."
+    "思考中"
   );
   assert.equal(
     assistantReasoningDisplayText({
@@ -131,7 +169,7 @@ test("assistantReasoningDisplayText shows a thinking placeholder until reasoning
       phase: "thinking",
       reasoningText: "先判断语气。"
     }),
-    "先判断语气。"
+    "思考中"
   );
 });
 

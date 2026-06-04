@@ -9,6 +9,7 @@ export type ComposeCharacterSessionPromptInput = {
   selfState?: string;
   timeContext?: string;
   memories?: string[];
+  userProfile?: string;
 };
 
 export type ParsedCharacterReply = {
@@ -80,7 +81,8 @@ export function composeCharacterSessionPrompt({
   userPrompt,
   selfState,
   timeContext,
-  memories
+  memories,
+  userProfile
 }: ComposeCharacterSessionPromptInput) {
   return [
     "# Cockapoo Pi Companion Chat",
@@ -95,6 +97,7 @@ export function composeCharacterSessionPrompt({
     `互动原则：${card.interactionPrinciples.join("；")}`,
     "",
     ...(timeContext ? ["## 当前真实时间", timeContext, ""] : []),
+    ...(userProfile ? ["## 关于 ta（正在和你聊天的用户）", userProfile, ""] : []),
     ...(selfState ? ["## 此刻的我", selfState, ""] : []),
     ...(memories && memories.length > 0
       ? ["## 我还记得关于 ta 的事", ...memories.map((memory) => `- ${memory}`), ""]

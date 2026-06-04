@@ -1,6 +1,6 @@
 import type { ChatMessage } from "./chat-model";
 
-export type AssistantProgressPhase = "queued" | "thinking" | "answering" | "tool";
+export type AssistantProgressPhase = "queued" | "thinking" | "answering" | "tool" | "browser";
 
 export type ToolGateStatus =
   | "allowed"
@@ -14,6 +14,14 @@ export type ToolProgressInfo = {
   status: ToolGateStatus;
   target?: string;
   reason?: string;
+};
+
+export type BrowserProgressInfo = {
+  action: "open";
+  url: string;
+  title?: string;
+  reason?: string;
+  source: "agent";
 };
 
 export type PiToolConfirmRequest = {
@@ -33,6 +41,7 @@ export type PiPromptProgressEvent = {
   status?: string;
   text?: string;
   tool?: ToolProgressInfo;
+  browser?: BrowserProgressInfo;
 };
 
 export type AssistantProgress = {
@@ -55,6 +64,22 @@ export function createAssistantProgress(runId: string): AssistantProgress {
   };
 }
 
+export function mergeAssistantStreamFragment(current: string, fragment: string | undefined): string {
+  if (!fragment) {
+    return current;
+  }
+
+  if (fragment.startsWith(current)) {
+    return fragment;
+  }
+
+  if (current.endsWith(fragment)) {
+    return current;
+  }
+
+  return `${current}${fragment}`;
+}
+
 export function reduceAssistantProgress(
   current: AssistantProgress,
   event: PiPromptProgressEvent
@@ -67,7 +92,7 @@ export function reduceAssistantProgress(
     return {
       ...current,
       phase: "thinking",
-      reasoningText: event.text ?? `${current.reasoningText}${event.delta ?? ""}`,
+      reasoningText: event.text ?? mergeAssistantStreamFragment(current.reasoningText, event.delta),
       statusText: event.status ?? ""
     };
   }
@@ -76,7 +101,7 @@ export function reduceAssistantProgress(
     return {
       ...current,
       phase: "answering",
-      answerText: event.text ?? `${current.answerText}${event.delta ?? ""}`,
+      answerText: event.text ?? mergeAssistantStreamFragment(current.answerText, event.delta),
       statusText: event.status ?? ""
     };
   }
@@ -88,6 +113,13 @@ export function reduceAssistantProgress(
       ...current,
       statusText: event.status ?? current.statusText,
       toolEvents: event.tool ? [...current.toolEvents, event.tool] : current.toolEvents
+    };
+  }
+
+  if (event.phase === "browser") {
+    return {
+      ...current,
+      statusText: event.status ?? current.statusText
     };
   }
 
@@ -126,11 +158,11 @@ export function assistantReasoningDisplayText(progress: AssistantProgress | null
   const reasoningText = progress?.reasoningText.trim() ?? "";
 
   if (reasoningText) {
-    return reasoningText;
+    return "思考中";
   }
 
   if (progress?.phase === "thinking") {
-    return "正在思考...";
+    return "思考中";
   }
 
   return "";

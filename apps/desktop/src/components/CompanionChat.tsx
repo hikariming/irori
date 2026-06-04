@@ -35,12 +35,6 @@ function MessageBubble({ message, avatar }: { message: ChatMessage; avatar: stri
           <strong>{message.author}</strong>
           <time>{message.time}</time>
         </header>
-        {message.reasoning ? (
-          <details className="chat-reasoning">
-            <summary>推理思考</summary>
-            <p>{message.reasoning}</p>
-          </details>
-        ) : null}
         <p>{message.text}</p>
         {message.sticker ? (
           <figure className="chat-sticker">
@@ -130,9 +124,8 @@ export function CompanionChat({
                 <p>{primaryProgressText}</p>
               </div>
               {reasoningDisplayText ? (
-                <section className="chat-progress-section" aria-label="模型推理思考">
-                  <span>推理思考</span>
-                  <p>{reasoningDisplayText}</p>
+                <section className="chat-progress-section" aria-label="模型思考状态">
+                  <span>{reasoningDisplayText}</span>
                 </section>
               ) : null}
             </div>

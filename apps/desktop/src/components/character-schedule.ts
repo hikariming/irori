@@ -127,14 +127,27 @@ export function defaultDaySkeleton(characterId: string, date: string, now: numbe
 }
 
 // 让 LLM 给某个角色生成一整天作息的一次性 prompt。要求结构化 JSON 数组输出。
+// 把人设的关键信息（身份/背景/核心动机/说话风格）都喂进去，作息才会贴各自的人，而不是千篇一律。
 export function composeDayScriptPrompt(card: CharacterCard, date: string): string {
-  return [
-    `你是 ${card.name}。`,
-    `人设：${card.persona}`,
-    `说话风格：${card.speakingStyle}`,
+  const lines: string[] = [`你是 ${card.name}。`];
+  if (card.persona) {
+    lines.push(`人设：${card.persona}`);
+  }
+  if (card.storyBackground) {
+    lines.push(`身份与背景：${card.storyBackground}`);
+  }
+  if (card.coreMotivation) {
+    lines.push(`你看重的事：${card.coreMotivation}`);
+  }
+  if (card.speakingStyle) {
+    lines.push(`说话风格：${card.speakingStyle}`);
+  }
+  lines.push(
     "",
     `现在请你规划 ${date} 这一整天你自己的生活安排（不是和 ta 聊天，是你独处时真实在过的一天）。`,
-    "从凌晨睡觉到深夜，按时间顺序排 8~12 件事，要符合你的人设与习惯，具体、有生活感、彼此连贯。",
+    "从凌晨睡觉到深夜，按时间顺序排 8~12 件事，具体、有生活感、彼此连贯。",
+    "务必贴合上面你的身份、职业、所处环境与作息习惯——比如学生有课业、调试师泡在终端前、整理型的人会收拾与做计划；",
+    "不要写成放之四海皆可的通用日程，要让人一眼看出这是「你」的一天，和别人不一样。",
     "",
     "严格只输出一个 JSON 数组，每个元素形如：",
     '{"time":"HH:MM","activity":"在做什么(一句话)","location":"在哪","category":"类别","energy":数字,"mood":"心情或空"}',
@@ -142,7 +155,8 @@ export function composeDayScriptPrompt(card: CharacterCard, date: string): strin
     "energy 是这件事做完对你精力的增减（睡觉/休息为正，劳累/外出为负，约 -25 到 +18）。",
     `mood 留空或从这些里选：${MOODS.join(" / ")}。`,
     "不要任何解释、不要 Markdown、不要数组以外的字符。"
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 // 从模型输出解析出 DayScript；解析失败 / 为空时回退到默认骨架。
