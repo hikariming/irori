@@ -196,8 +196,14 @@ export async function runCockapooPiPrompt({
   resolveMemoryBackend = resolveConfiguredMemoryBackend,
   promptTimeoutMs = defaultPromptTimeoutMs,
   modelWaitHeartbeatMs = 3000,
+  skillsRootPath,
+  allowedSkillNames,
+  skillRequiredTools,
   runId,
+  scheduledTasks = [],
   onProgressEvent,
+  onScheduleUpsert,
+  onScheduleCancel,
   onConfirm
 }) {
   const model = resolvePiModel(modelSettings);
@@ -264,6 +270,7 @@ export async function runCockapooPiPrompt({
     memoryBackend: effectiveMemoryBackend,
     memoryRecallRequest: effectiveRecallRequest,
     enableSubagents,
+    skillRequiredTools,
     browserSnapshot,
     onBrowserEvent: runId && onProgressEvent
       ? (browserEvent) => {
@@ -274,7 +281,12 @@ export async function runCockapooPiPrompt({
             browser: browserEvent
           });
         }
-      : undefined
+      : undefined,
+    // 只有真实聊天（有 runId + 回写通道）才放开定时任务工具；无人值守的定时执行不放开。
+    onScheduleUpsert: runId && onScheduleUpsert ? onScheduleUpsert : undefined,
+    onScheduleCancel: runId && onScheduleCancel ? onScheduleCancel : undefined,
+    scheduledTasks,
+    scheduleNow: new Date().toString()
   });
 
   emitRunStatus(onProgressEvent, runId, "上下文已整理，正在启动本地 Pi 会话");
@@ -322,6 +334,8 @@ export async function runCockapooPiPrompt({
     gatePolicy: toolRuntime.gatePolicy,
     gateMode: toolGateMode,
     enableSubagents,
+    skillsRootPath,
+    allowedSkillNames,
     onToolEvent,
     onConfirm
   });

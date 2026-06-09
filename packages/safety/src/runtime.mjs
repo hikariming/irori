@@ -34,6 +34,19 @@ export const defaultToolPolicySettings = {
   protectedPaths: defaultProtectedPaths
 };
 
+// Tools a skill is allowed to force-enable for a session via its `allowed-tools`
+// frontmatter. Deliberately excludes bash/edit/write and the read-only file
+// tools: a user-authored skill must never silently grant shell or filesystem
+// mutation. Everything here is still subject to the gate (confirm/protected
+// paths) once enabled.
+export const skillGrantableToolIds = [
+  "web.search",
+  "web.fetch",
+  "browser.view",
+  "memory.read",
+  "memory.write"
+];
+
 export function resolveToolPolicy({ settings = defaultToolPolicySettings } = {}) {
   const builtinTools = enabledTools(
     [...readOnlyBuiltinTools, ...writeBuiltinTools],

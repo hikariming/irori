@@ -149,6 +149,79 @@ export type PiPromptResponse = {
   };
 };
 
+export type SkillRecord = {
+  name: string;
+  description: string;
+  body: string;
+  disableModelInvocation: boolean;
+  allowedTools: string[];
+};
+
+export type SaveSkillRequest = {
+  name: string;
+  description: string;
+  body: string;
+  disableModelInvocation: boolean;
+  allowedTools: string[];
+};
+
+export type SkillAssignment = {
+  characterId: string;
+  enabled: boolean;
+};
+
+export type ScheduleKind = "daily" | "weekdays" | "weekly" | "once" | "cron";
+
+export type ScheduledTask = {
+  id: string;
+  characterId: string;
+  title: string;
+  prompt: string;
+  scheduleKind: ScheduleKind;
+  scheduleSpec: string;
+  enabled: boolean;
+  source: "user" | "agent";
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SaveScheduledTaskRequest = {
+  id?: string;
+  characterId: string;
+  title: string;
+  prompt: string;
+  scheduleKind: ScheduleKind;
+  scheduleSpec: string;
+  enabled: boolean;
+};
+
+export type ScheduledTaskRun = {
+  id: string;
+  taskId: string;
+  characterId: string;
+  scheduledFor: string;
+  ranAt: string;
+  status: "ok" | "error";
+  result: string | null;
+  error: string | null;
+  read: boolean;
+  createdAt: string;
+};
+
+export type ScheduledTaskRunEvent = {
+  taskId: string;
+  characterId: string;
+  status: "ok" | "error";
+};
+
+export type MissedTaskPolicy = "catchup" | "skip";
+
+function sanitizeMissedTaskPolicy(value: unknown): MissedTaskPolicy {
+  return value === "skip" ? "skip" : "catchup";
+}
+
 const previewRuntimeMessage = "浏览器预览不会调用真实 LLM。请在 Tauri 桌面客户端里运行并发送消息，那里会通过 Rust command 调用 sidecar / Pi。";
 
 export type DesktopBackend = {
@@ -188,6 +261,26 @@ export type DesktopBackend = {
   setActiveModelProfile: (profileId: string) => Promise<ModelSettingsState>;
   testModelConnection: (request?: TestModelConnectionRequest) => Promise<PiPromptResponse>;
   toggleCharacterMomentLike: (request: ToggleCharacterMomentLikeRequest) => Promise<CharacterMoment>;
+  listSkills: () => Promise<SkillRecord[]>;
+  createSkill: (request: SaveSkillRequest) => Promise<SkillRecord>;
+  updateSkill: (request: SaveSkillRequest) => Promise<SkillRecord>;
+  deleteSkill: (name: string) => Promise<void>;
+  listSkillAssignments: (skillName: string) => Promise<SkillAssignment[]>;
+  listCharacterSkills: (characterId: string) => Promise<string[]>;
+  setCharacterSkill: (characterId: string, skillName: string, enabled: boolean) => Promise<void>;
+  listScheduledTasks: (characterId?: string) => Promise<ScheduledTask[]>;
+  createScheduledTask: (request: SaveScheduledTaskRequest) => Promise<ScheduledTask>;
+  updateScheduledTask: (request: SaveScheduledTaskRequest) => Promise<ScheduledTask>;
+  deleteScheduledTask: (id: string) => Promise<void>;
+  setScheduledTaskEnabled: (id: string, enabled: boolean) => Promise<ScheduledTask>;
+  runScheduledTaskNow: (id: string) => Promise<void>;
+  listTaskRuns: (taskId: string) => Promise<ScheduledTaskRun[]>;
+  scheduledUnreadCount: () => Promise<number>;
+  markTaskRunsRead: (taskId?: string) => Promise<void>;
+  onScheduledTaskRun: (callback: (event: ScheduledTaskRunEvent) => void) => Promise<() => void>;
+  onScheduledTaskChanged: (callback: () => void) => Promise<() => void>;
+  loadMissedTaskPolicy: () => Promise<MissedTaskPolicy>;
+  saveMissedTaskPolicy: (policy: MissedTaskPolicy) => Promise<MissedTaskPolicy>;
 };
 
 type StoredChatMessageRecord = {
@@ -379,6 +472,12 @@ export function createPreviewBackend(): DesktopBackend {
   let characterLetters: CharacterLetter[] = [];
   let reviewMode: ReviewMode = "default";
   let advancedSettings: AdvancedSettings = { ...defaultAdvancedSettings };
+  let skills: SkillRecord[] = [];
+  // 预览态下的角色↔技能映射：key 为 `${characterId}::${skillName}`。
+  const skillAssignments = new Map<string, boolean>();
+  let scheduledTasks: ScheduledTask[] = [];
+  let scheduledSeq = 0;
+  let missedPolicy: MissedTaskPolicy = "catchup";
   const workspacePath = "~/cockapoo-workspace（预览）";
   const sessions: ChatSessionSummary[] = [];
   const messagesBySession = new Map<string, StoredChatMessageRecord[]>();
@@ -635,6 +734,115 @@ export function createPreviewBackend(): DesktopBackend {
       }
 
       throw new Error(previewRuntimeMessage);
+    },
+    async listSkills() {
+      return skills.map((skill) => ({ ...skill }));
+    },
+    async createSkill(request) {
+      if (skills.some((skill) => skill.name === request.name)) {
+        throw new Error("已存在同名技能。");
+      }
+      const skill: SkillRecord = { ...request };
+      skills = [...skills, skill].sort((left, right) => left.name.localeCompare(right.name));
+      return { ...skill };
+    },
+    async updateSkill(request) {
+      skills = skills.map((skill) => (skill.name === request.name ? { ...request } : skill));
+      return { ...request };
+    },
+    async deleteSkill(name) {
+      skills = skills.filter((skill) => skill.name !== name);
+      for (const key of [...skillAssignments.keys()]) {
+        if (key.endsWith(`::${name}`)) {
+          skillAssignments.delete(key);
+        }
+      }
+    },
+    async listSkillAssignments(skillName) {
+      const assignments: SkillAssignment[] = [];
+      for (const [key, enabled] of skillAssignments) {
+        const [characterId, name] = key.split("::");
+        if (name === skillName) {
+          assignments.push({ characterId, enabled });
+        }
+      }
+      return assignments;
+    },
+    async listCharacterSkills(characterId) {
+      const names: string[] = [];
+      for (const [key, enabled] of skillAssignments) {
+        const [id, name] = key.split("::");
+        if (id === characterId && enabled) {
+          names.push(name);
+        }
+      }
+      return names;
+    },
+    async setCharacterSkill(characterId, skillName, enabled) {
+      skillAssignments.set(`${characterId}::${skillName}`, enabled);
+    },
+    async listScheduledTasks(characterId) {
+      return scheduledTasks
+        .filter((task) => !characterId || task.characterId === characterId)
+        .map((task) => ({ ...task }));
+    },
+    async createScheduledTask(request) {
+      const now = `${Date.now()}`;
+      const task: ScheduledTask = {
+        id: `sched-preview-${(scheduledSeq += 1)}`,
+        ...request,
+        source: "user",
+        nextRunAt: request.enabled ? now : null,
+        lastRunAt: null,
+        createdAt: now,
+        updatedAt: now
+      };
+      scheduledTasks = [task, ...scheduledTasks];
+      return { ...task };
+    },
+    async updateScheduledTask(request) {
+      scheduledTasks = scheduledTasks.map((task) =>
+        task.id === request.id ? { ...task, ...request, updatedAt: `${Date.now()}` } : task
+      );
+      const updated = scheduledTasks.find((task) => task.id === request.id);
+      if (!updated) throw new Error("任务不存在。");
+      return { ...updated };
+    },
+    async deleteScheduledTask(id) {
+      scheduledTasks = scheduledTasks.filter((task) => task.id !== id);
+    },
+    async setScheduledTaskEnabled(id, enabled) {
+      scheduledTasks = scheduledTasks.map((task) =>
+        task.id === id ? { ...task, enabled, updatedAt: `${Date.now()}` } : task
+      );
+      const updated = scheduledTasks.find((task) => task.id === id);
+      if (!updated) throw new Error("任务不存在。");
+      return { ...updated };
+    },
+    async runScheduledTaskNow() {
+      throw new Error(previewRuntimeMessage);
+    },
+    async listTaskRuns() {
+      return [];
+    },
+    async scheduledUnreadCount() {
+      return 0;
+    },
+    async markTaskRunsRead() {
+      // 预览态无运行历史，无需处理。
+    },
+    async onScheduledTaskRun() {
+      return () => {};
+    },
+    async onScheduledTaskChanged() {
+      return () => {};
+    },
+    async loadMissedTaskPolicy() {
+      return missedPolicy;
+    },
+    async saveMissedTaskPolicy(policy) {
+      missedPolicy = sanitizeMissedTaskPolicy(policy);
+      return missedPolicy;
     }
   };
 }
@@ -776,6 +984,70 @@ export function createTauriBackend(): DesktopBackend {
     },
     async testModelConnection(request) {
       return invoke<PiPromptResponse>("test_model_connection", { request });
+    },
+    async listSkills() {
+      return invoke<SkillRecord[]>("list_skills");
+    },
+    async createSkill(request) {
+      return invoke<SkillRecord>("create_skill", { request });
+    },
+    async updateSkill(request) {
+      return invoke<SkillRecord>("update_skill", { request });
+    },
+    async deleteSkill(name) {
+      await invoke("delete_skill", { name });
+    },
+    async listSkillAssignments(skillName) {
+      return invoke<SkillAssignment[]>("list_skill_assignments", { skillName });
+    },
+    async listCharacterSkills(characterId) {
+      return invoke<string[]>("list_character_skills", { characterId });
+    },
+    async setCharacterSkill(characterId, skillName, enabled) {
+      await invoke("set_character_skill", { characterId, skillName, enabled });
+    },
+    async listScheduledTasks(characterId) {
+      return invoke<ScheduledTask[]>("list_scheduled_tasks", { characterId: characterId ?? null });
+    },
+    async createScheduledTask(request) {
+      return invoke<ScheduledTask>("create_scheduled_task", { request });
+    },
+    async updateScheduledTask(request) {
+      return invoke<ScheduledTask>("update_scheduled_task", { request });
+    },
+    async deleteScheduledTask(id) {
+      await invoke("delete_scheduled_task", { id });
+    },
+    async setScheduledTaskEnabled(id, enabled) {
+      return invoke<ScheduledTask>("set_scheduled_task_enabled", { id, enabled });
+    },
+    async runScheduledTaskNow(id) {
+      await invoke("run_scheduled_task_now", { id });
+    },
+    async listTaskRuns(taskId) {
+      return invoke<ScheduledTaskRun[]>("list_task_runs", { taskId });
+    },
+    async scheduledUnreadCount() {
+      return invoke<number>("scheduled_unread_count");
+    },
+    async markTaskRunsRead(taskId) {
+      await invoke("mark_task_runs_read", { taskId: taskId ?? null });
+    },
+    async onScheduledTaskRun(callback) {
+      return listen<ScheduledTaskRunEvent>("scheduled_task_run", (event) => {
+        callback(event.payload);
+      });
+    },
+    async onScheduledTaskChanged(callback) {
+      return listen("scheduled_task_changed", () => {
+        callback();
+      });
+    },
+    async loadMissedTaskPolicy() {
+      return sanitizeMissedTaskPolicy(await invoke<string>("get_missed_task_policy"));
+    },
+    async saveMissedTaskPolicy(policy) {
+      return sanitizeMissedTaskPolicy(await invoke<string>("set_missed_task_policy", { policy }));
     }
   };
 }

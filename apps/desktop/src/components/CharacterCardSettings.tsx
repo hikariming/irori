@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Avatar, Chip } from "@heroui/react";
 
+import { CharacterSkillsSection } from "./CharacterSkillsSection";
 import { findCharacterCard, type CharacterCard } from "./character-cards";
 import {
   getCharacterPreference,
@@ -108,6 +109,8 @@ export function CharacterCardSettings({
               </span>
             </label>
           </div>
+
+          <CharacterSkillsSection characterId={card.id} characterName={card.name} />
 
           <header className="character-card-summary" style={{ borderLeftColor: card.themeColor }}>
             <Avatar className="settings-character-avatar">

@@ -21,9 +21,16 @@ import {
 import { createToolPolicyGateExtension } from "./tool-policy-gate.mjs";
 import { closureGateActiveFlag } from "./extensions/cockapoo-tool-gate.mjs";
 import {
+  clearSubagentModelsJson,
   materializeSubagentModelOverrides,
-  resolveNativePiProvider
+  materializeSubagentModelsJson,
+  resolveNativePiProvider,
+  subagentApiKeyEnvVar,
+  subagentBridgeModelRef
 } from "./subagent-native-model.mjs";
+// note: clearSubagentModelOverrides retained in subagent-native-model for callers/tests;
+// the adapter overwrites stale agent .md pins on every run via materialize, so it
+// no longer needs an explicit clear here.
 
 const require = createRequire(import.meta.url);
 const piWebAccessPackageName = "pi-web-access";
@@ -190,12 +197,24 @@ export function buildPiResourceLoaderOptions({
   agentDir,
   extensionFactories,
   webAccessPackageRoot = resolvePiWebAccessPackageRoot(),
-  additionalPackageRoots = []
+  additionalPackageRoots = [],
+  skillsRootPath,
+  allowedSkillNames
 }) {
+  // Access control: pi loads every skill it can discover, then we whitelist-filter
+  // to only the skills the current character is configured to know. With nothing
+  // assigned the set is empty, so no skill leaks into the prompt or /skill:name.
+  const allowed = new Set(Array.isArray(allowedSkillNames) ? allowedSkillNames : []);
+
   return {
     cwd,
     agentDir,
     additionalExtensionPaths: [webAccessPackageRoot, ...additionalPackageRoots].filter(Boolean),
+    additionalSkillPaths: skillsRootPath ? [skillsRootPath] : [],
+    skillsOverride: (base) => ({
+      ...base,
+      skills: base.skills.filter((skill) => allowed.has(skill.name))
+    }),
     extensionFactories
   };
 }
@@ -225,7 +244,20 @@ export async function createCockapooPiSession(options) {
   // a fence is configured, also load the Cockapoo gate package so children
   // inherit the SAME evaluateToolCall fence the parent enforces.
   const additionalPackageRoots = [];
-  if (options?.enableSubagents) {
+  if (options?.enableSubagents && options?.runtimeToken) {
+    // A subagent child is an independent `pi` process that must authenticate on its
+    // own. We bridge our in-memory openai-compatible model to the child two ways:
+    //   1. Native fast path — endpoints pi supports first-class: pin the child to
+    //      pi's own `provider/model` and pass the key via that provider's env var.
+    //   2. Universal models.json bridge — for everything else (default OpenAI,
+    //      self-hosted/proxy endpoints, …): write a models.json registering the
+    //      parent's exact openai-compatible model as a custom provider, with the key
+    //      read from an env var (name on disk, secret only in env). The parent uses
+    //      an in-memory registry that ignores models.json, so this only affects
+    //      children. Either way the key is passed by env and never written to disk.
+    const modelSettings = options?.modelSettings ?? defaultOpenAiCompatibleSettings;
+    const native = resolveNativePiProvider(modelSettings);
+
     // pi-subagents spawns children via `pi` on PATH; make the bundled one findable.
     ensureBundledPiOnPath();
     const subagentsRoot = resolvePiSubagentsPackageRoot();
@@ -234,26 +266,31 @@ export async function createCockapooPiSession(options) {
       additionalPackageRoots.push(resolveCockapooToolGatePackageRoot());
     }
 
-    // Bridge our synthetic openai-compatible model to a pi-native provider so the
-    // spawned child can authenticate: pass the key via env (no secret on disk),
-    // and pin the child agents to `provider/model` so they don't fall back to
-    // pi's own default model.
-    const native = resolveNativePiProvider(options?.modelSettings ?? defaultOpenAiCompatibleSettings);
-    if (native && options?.runtimeToken) {
+    if (native) {
       process.env[native.envVar] = options.runtimeToken;
+      // Drop any stale models.json bridge left by a previous non-native session.
+      clearSubagentModelsJson({ agentDir });
+    } else {
+      process.env[subagentApiKeyEnvVar] = options.runtimeToken;
       try {
-        materializeSubagentModelOverrides({
-          packageAgentsDir: join(subagentsRoot, "agents"),
-          agentDir,
-          modelRef: native.modelRef,
-          // Pin the gate INTO each child — children don't inherit it otherwise.
-          extensions: options?.gatePolicy ? resolveCockapooToolGatePackageRoot() : undefined
-        });
+        materializeSubagentModelsJson({ agentDir, settings: modelSettings });
       } catch {
-        // Best-effort: if we can't write overrides the child falls back to its
-        // default model (and will surface a clear auth error), which is no worse
-        // than before.
+        // Best-effort: without the bridge the child can't authenticate and will
+        // surface a clear auth error, which is no worse than before.
       }
+    }
+
+    try {
+      materializeSubagentModelOverrides({
+        packageAgentsDir: join(subagentsRoot, "agents"),
+        agentDir,
+        modelRef: native ? native.modelRef : subagentBridgeModelRef(modelSettings),
+        // Pin the gate INTO each child — children don't inherit it otherwise.
+        extensions: options?.gatePolicy ? resolveCockapooToolGatePackageRoot() : undefined
+      });
+    } catch {
+      // Best-effort: if we can't write overrides the child falls back to its
+      // default model (and will surface a clear auth error), no worse than before.
     }
   }
 
@@ -261,7 +298,9 @@ export async function createCockapooPiSession(options) {
     cwd: sessionOptions.cwd,
     agentDir,
     extensionFactories,
-    additionalPackageRoots
+    additionalPackageRoots,
+    skillsRootPath: options?.skillsRootPath,
+    allowedSkillNames: options?.allowedSkillNames
   }));
 
   await resourceLoader.reload();

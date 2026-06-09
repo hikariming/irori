@@ -10,12 +10,15 @@ type CompanionSidebarProps = {
   theme: Theme;
   isLifeActive?: boolean;
   lifeUnreadCount?: number;
+  schedulesUnreadCount?: number;
   onCharacterInspect?: (character: CompanionCharacter) => void;
   onLifeOpen?: () => void;
   onNewSession?: () => void;
   onProfileOpen?: () => void;
+  onSchedulesOpen?: () => void;
   onSessionSelect?: (sessionId: string) => void;
   onSettingsOpen?: () => void;
+  onSkillsOpen?: () => void;
   onThemeToggle?: () => void;
 };
 
@@ -122,12 +125,15 @@ export function CompanionSidebar({
   isNewSessionDisabled = false,
   isLifeActive = false,
   lifeUnreadCount = 0,
+  schedulesUnreadCount = 0,
   onCharacterInspect,
   onLifeOpen,
   onNewSession,
   onProfileOpen,
+  onSchedulesOpen,
   onSessionSelect,
   onSettingsOpen,
+  onSkillsOpen,
   onThemeToggle,
   sessions,
   theme
@@ -217,6 +223,45 @@ export function CompanionSidebar({
               <circle cx="12" cy="8" r="3.4" />
               <path d="M5 19a7 7 0 0 1 14 0" />
             </svg>
+          </Button>
+          <Button aria-label="技能" className="sidebar-icon-button" onPress={onSkillsOpen} type="button">
+            <svg
+              className="sidebar-life-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
+            </svg>
+          </Button>
+          <Button aria-label="定时任务" className="sidebar-icon-button" onPress={onSchedulesOpen} type="button">
+            <svg
+              className="sidebar-life-icon"
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <circle cx="12" cy="13" r="8" />
+              <path d="M12 9v4l2.5 1.6" />
+              <path d="M5 4 2.6 6.2M19 4l2.4 2.2" />
+            </svg>
+            {schedulesUnreadCount > 0 ? (
+              <span className="letter-badge" aria-label={`${schedulesUnreadCount} 条新结果`}>
+                {schedulesUnreadCount > 9 ? "9+" : schedulesUnreadCount}
+              </span>
+            ) : null}
           </Button>
           <Button
             aria-label="生活圈"

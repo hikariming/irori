@@ -85,6 +85,12 @@ async function main() {
     onProgressEvent: streamEvents
       ? (event) => writeLine({ type: "progress", event })
       : undefined,
+    onScheduleUpsert: streamEvents
+      ? (task) => writeLine({ type: "schedule_upsert", task })
+      : undefined,
+    onScheduleCancel: streamEvents
+      ? (taskId) => writeLine({ type: "schedule_cancel", taskId })
+      : undefined,
     onConfirm
   });
 

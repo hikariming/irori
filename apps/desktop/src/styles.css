@@ -5719,3 +5719,551 @@ button {
     box-shadow: -18px 0 40px rgba(25, 31, 36, 0.16);
   }
 }
+
+/* ===== 技能管理（SkillsPanel） ===== */
+.skills-new-button {
+  margin-top: 8px;
+  width: 100%;
+  justify-content: center;
+  border: 1px dashed rgba(47, 111, 104, 0.5);
+  border-radius: 10px;
+  background: rgba(47, 111, 104, 0.06);
+  color: rgba(28, 38, 36, 0.86);
+  padding: 9px 12px;
+  font-size: 13px;
+}
+
+.skills-empty {
+  margin: 8px 2px;
+  color: rgba(40, 47, 58, 0.55);
+  font-size: 13px;
+}
+
+.skills-error {
+  margin: 0 0 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: rgba(196, 70, 70, 0.1);
+  color: #9a3030;
+  font-size: 13px;
+}
+
+.skills-editor {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.skills-field {
+  display: grid;
+  gap: 5px;
+}
+
+.skills-field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(28, 38, 36, 0.82);
+}
+
+.skills-field > small {
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.skills-field input,
+.skills-field textarea {
+  width: 100%;
+  border: 1px solid rgba(42, 47, 58, 0.16);
+  border-radius: 10px;
+  padding: 9px 11px;
+  font: inherit;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(24, 30, 36, 0.92);
+  resize: vertical;
+}
+
+.skills-field input:read-only {
+  background: rgba(42, 47, 58, 0.05);
+  color: rgba(40, 47, 58, 0.6);
+}
+
+.skills-field input:focus,
+.skills-field textarea:focus {
+  outline: none;
+  border-color: rgba(47, 111, 104, 0.6);
+}
+
+.skills-field-error {
+  font-size: 12px;
+  font-style: normal;
+  color: #9a3030;
+}
+
+.skills-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.skills-toggle input {
+  margin-top: 3px;
+}
+
+.skills-toggle span {
+  display: grid;
+  gap: 2px;
+}
+
+.skills-toggle strong {
+  font-size: 13px;
+}
+
+.skills-toggle small {
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.skills-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.skills-save-button {
+  border-radius: 10px;
+  padding: 9px 18px;
+  background: rgba(47, 111, 104, 0.92);
+  color: #fff;
+  font-size: 13px;
+}
+
+.skills-delete-button {
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: rgba(196, 70, 70, 0.1);
+  color: #9a3030;
+  font-size: 13px;
+}
+
+/* ---------- 定时任务 ---------- */
+.schedule-missed-policy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.schedule-missed-policy__label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 13px;
+  color: rgba(40, 47, 58, 0.75);
+}
+
+.schedule-missed-policy__label small {
+  font-size: 11px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.schedule-list-avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.schedule-paused-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(40, 47, 58, 0.1);
+  color: rgba(40, 47, 58, 0.55);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.schedule-agent-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(47, 111, 104, 0.14);
+  color: #2f6f68;
+  font-size: 11px;
+  font-style: normal;
+}
+
+.schedule-field {
+  display: grid;
+  gap: 10px;
+}
+
+.schedule-field-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(40, 47, 58, 0.75);
+}
+
+.schedule-kind-segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(42, 47, 58, 0.06);
+}
+
+.schedule-kind-segment {
+  border: none;
+  border-radius: 9px;
+  padding: 6px 14px;
+  background: transparent;
+  color: rgba(40, 47, 58, 0.7);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.schedule-kind-segment.is-active {
+  background: rgba(47, 111, 104, 0.92);
+  color: #fff;
+}
+
+.schedule-weekdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.schedule-weekday-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(42, 47, 58, 0.14);
+  border-radius: 50%;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.schedule-weekday-chip.is-active {
+  background: rgba(47, 111, 104, 0.92);
+  border-color: transparent;
+  color: #fff;
+}
+
+.schedule-weekday-chip input {
+  display: none;
+}
+
+.schedule-time-input {
+  width: fit-content;
+  padding: 8px 12px;
+  border: 1px solid rgba(42, 47, 58, 0.16);
+  border-radius: 10px;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.schedule-run-button {
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: rgba(47, 111, 104, 0.12);
+  color: #2f6f68;
+  font-size: 13px;
+}
+
+.schedule-pause-button {
+  border-radius: 10px;
+  padding: 9px 16px;
+  background: rgba(40, 47, 58, 0.08);
+  color: rgba(40, 47, 58, 0.75);
+  font-size: 13px;
+}
+
+.schedule-runs {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(42, 47, 58, 0.1);
+}
+
+.schedule-runs header h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.schedule-runs header p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.schedule-run-item {
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.schedule-run-item summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.schedule-run-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.schedule-run-item time {
+  color: rgba(40, 47, 58, 0.55);
+  font-size: 12px;
+}
+
+.schedule-run-status {
+  padding: 1px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.schedule-run-status--ok {
+  background: rgba(47, 111, 104, 0.12);
+  color: #2f6f68;
+}
+
+.schedule-run-status--error {
+  background: rgba(196, 70, 70, 0.12);
+  color: #9a3030;
+}
+
+.schedule-run-body {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  color: rgba(40, 47, 58, 0.8);
+}
+
+.skills-assign {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(42, 47, 58, 0.1);
+}
+
+.skills-assign header h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.skills-assign header p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.skills-assign-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+}
+
+.skills-assign-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+.skills-templates {
+  display: grid;
+  gap: 6px;
+}
+
+.skills-templates-label {
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.skills-templates-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.skills-template-chip {
+  border: 1px solid rgba(47, 111, 104, 0.32);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: rgba(47, 111, 104, 0.07);
+  color: rgba(28, 38, 36, 0.82);
+  cursor: pointer;
+}
+
+.skills-template-chip:hover {
+  background: rgba(47, 111, 104, 0.14);
+}
+
+.skills-intro {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  max-width: 460px;
+}
+
+.skills-intro h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.skills-intro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(40, 47, 58, 0.66);
+}
+
+.skills-intro .skills-save-button {
+  justify-self: start;
+}
+
+/* 角色卡侧的技能配置区块 */
+.character-skills-section {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.character-skills-head h4 {
+  margin: 0 0 2px;
+  font-size: 14px;
+}
+
+.character-skills-head p {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.character-skills-list {
+  display: grid;
+  gap: 7px;
+}
+
+.character-skill-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+}
+
+.character-skill-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.character-skill-copy strong {
+  font-size: 13px;
+}
+
+.character-skill-copy small {
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 技能编辑器里的「需要的工具」勾选组 */
+.skills-tools {
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(42, 47, 58, 0.1);
+}
+
+.skills-tools-head {
+  display: grid;
+  gap: 2px;
+}
+
+.skills-tools-head strong {
+  font-size: 13px;
+}
+
+.skills-tools-head small {
+  font-size: 12px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+.skills-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.skills-tool-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid rgba(42, 47, 58, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+
+.skills-tool-row input {
+  margin-top: 3px;
+}
+
+.skills-tool-row span {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.skills-tool-row strong {
+  font-size: 13px;
+}
+
+.skills-tool-row small {
+  font-size: 11px;
+  color: rgba(40, 47, 58, 0.5);
+}
+
+/* 角色卡侧每个技能的工具徽标 */
+.character-skill-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.character-skill-tool-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(47, 111, 104, 0.1);
+  color: rgba(28, 38, 36, 0.74);
+}

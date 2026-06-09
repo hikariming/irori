@@ -115,6 +115,70 @@ test("buildPiResourceLoaderOptions drops a missing web access root but keeps add
   assert.deepEqual(options.additionalExtensionPaths, ["/tmp/pi-subagents"]);
 });
 
+test("buildPiResourceLoaderOptions exposes the skills root when a path is given", () => {
+  const withRoot = piSessionAdapter.buildPiResourceLoaderOptions({
+    cwd: "/tmp/cockapoo-workspace",
+    agentDir: "/tmp/pi-agent",
+    extensionFactories: [],
+    webAccessPackageRoot: "/tmp/pi-web-access",
+    skillsRootPath: "/tmp/skills",
+    allowedSkillNames: ["tarot-reading"]
+  });
+  assert.deepEqual(withRoot.additionalSkillPaths, ["/tmp/skills"]);
+
+  const withoutRoot = piSessionAdapter.buildPiResourceLoaderOptions({
+    cwd: "/tmp/cockapoo-workspace",
+    agentDir: "/tmp/pi-agent",
+    extensionFactories: [],
+    webAccessPackageRoot: "/tmp/pi-web-access"
+  });
+  assert.deepEqual(withoutRoot.additionalSkillPaths, []);
+});
+
+test("skillsOverride whitelists only the character's assigned skills", () => {
+  const base = {
+    skills: [
+      { name: "tarot-reading" },
+      { name: "weather-lookup" },
+      { name: "secret-admin" }
+    ],
+    diagnostics: ["keep-me"]
+  };
+
+  const allowed = piSessionAdapter.buildPiResourceLoaderOptions({
+    cwd: "/tmp/cockapoo-workspace",
+    agentDir: "/tmp/pi-agent",
+    extensionFactories: [],
+    webAccessPackageRoot: "/tmp/pi-web-access",
+    skillsRootPath: "/tmp/skills",
+    allowedSkillNames: ["tarot-reading", "weather-lookup"]
+  }).skillsOverride(base);
+
+  assert.deepEqual(
+    allowed.skills.map((skill) => skill.name),
+    ["tarot-reading", "weather-lookup"]
+  );
+  // diagnostics pass through untouched.
+  assert.deepEqual(allowed.diagnostics, ["keep-me"]);
+});
+
+test("skillsOverride hides every skill when the character has none assigned", () => {
+  const base = { skills: [{ name: "tarot-reading" }], diagnostics: [] };
+
+  for (const allowedSkillNames of [undefined, [], null]) {
+    const filtered = piSessionAdapter.buildPiResourceLoaderOptions({
+      cwd: "/tmp/cockapoo-workspace",
+      agentDir: "/tmp/pi-agent",
+      extensionFactories: [],
+      webAccessPackageRoot: "/tmp/pi-web-access",
+      skillsRootPath: "/tmp/skills",
+      allowedSkillNames
+    }).skillsOverride(base);
+
+    assert.deepEqual(filtered.skills, []);
+  }
+});
+
 test("resolveBundledPiBinDir finds a dir that actually contains a pi executable", () => {
   // The pi CLI ships in the (pnpm) store; we should locate its bin dir.
   const binDir = piSessionAdapter.resolveBundledPiBinDir();

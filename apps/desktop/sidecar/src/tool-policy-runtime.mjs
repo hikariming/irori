@@ -2,7 +2,8 @@ import { Type } from "@earendil-works/pi-ai";
 
 import {
   defaultToolPolicySettings,
-  resolveToolPolicy
+  resolveToolPolicy,
+  skillGrantableToolIds
 } from "../../../../packages/safety/src/runtime.mjs";
 import { classifyMemoryCandidate } from "../../../../packages/memory/src/runtime.mjs";
 
@@ -11,7 +12,9 @@ const supportedCustomToolNames = {
   "memory.write": "memory_write",
   "web.fetch": ["fetch_content", "get_search_content"],
   "web.search": "web_search",
-  "browser.view": "browser_view"
+  "browser.view": "browser_view",
+  // 一个 Cockapoo id 展开成三个 pi 工具名：建 / 列 / 取消，三者同进退、同围栏放行。
+  "schedule.create": ["schedule_create", "schedule_list", "schedule_cancel"]
 };
 
 const memoryKinds = new Set([
@@ -268,9 +271,150 @@ export function createBrowserViewTool({ browserSnapshot, onBrowserEvent } = {}) 
   };
 }
 
+// schedule_create lets the character register a scheduled task straight from
+// chat ("每晚8点帮我总结"). It never touches the DB itself — it emits the task
+// back to the Rust parent via onScheduleUpsert, which persists it (source=agent)
+// and the in-process scheduler runs it at the chosen time. Only registered in
+// streaming chats (onScheduleUpsert present), never in unattended scheduled runs.
+export function createScheduleCreateTool({ onScheduleUpsert, now } = {}) {
+  const nowLabel = nonEmptyString(now) || new Date().toString();
+  const validKinds = new Set(["daily", "weekdays", "weekly", "once"]);
+  return {
+    name: "schedule_create",
+    label: "Schedule Create",
+    description:
+      "登记一个定时任务：当用户要求你在未来某时间、或每天/每周某时定期帮他做某事时调用。登记后系统会到点自动以你的身份执行并推送结果。",
+    promptSnippet: "schedule_create - 登记一个到点自动执行的定时任务。",
+    promptGuidelines: [
+      `当前本地时间：${nowLabel}。涉及 once 的相对日期（如「明天」）据此换算。`,
+      "scheduleKind 取值：daily(每天)、weekdays(周一至周五)、weekly(每周指定几天)、once(指定某一刻一次)。",
+      "scheduleSpec 格式：daily/weekdays 用 'HH:MM'(24 小时制)；weekly 用 '日号,日号@HH:MM'，其中 0=周日,1=周一,…,6=周六，例如周一三五晚八点是 '1,3,5@20:00'；once 用本地时间 'YYYY-MM-DDTHH:MM'。",
+      "prompt 字段写给未来执行时的你自己，用第二人称完整描述要做的事。",
+      "登记成功后用 confirmText 自然地口头告诉用户你已安排好。"
+    ],
+    parameters: Type.Object({
+      title: Type.String({ description: "简短任务名，如『每晚工作总结』" }),
+      prompt: Type.String({ description: "到点要执行的完整指令（写给未来的你自己）" }),
+      scheduleKind: Type.String({ description: "daily | weekdays | weekly | once" }),
+      scheduleSpec: Type.String({ description: "见 guidelines 的格式说明" }),
+      confirmText: Type.Optional(Type.String({ description: "给用户的口头确认，如『好的，我每晚8点帮你总结～』" }))
+    }),
+    execute: async (_toolCallId, params = {}) => {
+      const title = nonEmptyString(params.title);
+      const prompt = nonEmptyString(params.prompt);
+      const scheduleKind = nonEmptyString(params.scheduleKind);
+      const scheduleSpec = nonEmptyString(params.scheduleSpec);
+
+      if (!title || !prompt || !scheduleKind || !scheduleSpec) {
+        return {
+          content: [{ type: "text", text: "登记失败：title、prompt、scheduleKind、scheduleSpec 都必填。" }],
+          details: { status: "invalid" }
+        };
+      }
+      if (!validKinds.has(scheduleKind)) {
+        return {
+          content: [
+            { type: "text", text: `登记失败：scheduleKind 只能是 daily/weekdays/weekly/once，收到「${scheduleKind}」。` }
+          ],
+          details: { status: "invalid" }
+        };
+      }
+
+      onScheduleUpsert?.({ title, prompt, scheduleKind, scheduleSpec });
+
+      const confirm = nonEmptyString(params.confirmText) || `好的，我已经把「${title}」安排好了。`;
+      return {
+        content: [{ type: "text", text: confirm }],
+        details: { status: "scheduled", task: { title, scheduleKind, scheduleSpec } }
+      };
+    }
+  };
+}
+
+function describeScheduledTask(task) {
+  const state = task.enabled === false ? "（已暂停）" : "";
+  return `- [${task.id}] ${task.title}（${task.scheduleKind} ${task.scheduleSpec}）${state}`;
+}
+
+// schedule_list lets the character report / look up the tasks it has registered
+// (it needs the ids before it can cancel one). The list is injected by the Rust
+// parent (scheduledTasks), so the tool just formats what's already in hand.
+export function createScheduleListTool({ scheduledTasks = [] } = {}) {
+  return {
+    name: "schedule_list",
+    label: "Schedule List",
+    description: "列出你当前已登记的定时任务（含 id）。用于回答用户「你帮我设了哪些定时任务」，或在取消前查到任务 id。",
+    promptSnippet: "schedule_list - 列出已登记的定时任务及其 id。",
+    promptGuidelines: ["取消任务前先用 schedule_list 拿到准确的 taskId。"],
+    parameters: Type.Object({}),
+    execute: async () => {
+      if (!scheduledTasks.length) {
+        return {
+          content: [{ type: "text", text: "你当前没有已登记的定时任务。" }],
+          details: { tasks: [] }
+        };
+      }
+      const text = `你已登记的定时任务：\n${scheduledTasks.map(describeScheduledTask).join("\n")}`;
+      return { content: [{ type: "text", text }], details: { tasks: scheduledTasks } };
+    }
+  };
+}
+
+// schedule_cancel removes a task the character registered. Like schedule_create
+// it never touches the DB — it emits the id to the Rust parent, which deletes it
+// (only if it belongs to this character). taskId must come from schedule_list.
+export function createScheduleCancelTool({ onScheduleCancel, scheduledTasks = [] } = {}) {
+  return {
+    name: "schedule_cancel",
+    label: "Schedule Cancel",
+    description: "取消（删除）一个你已登记的定时任务。先用 schedule_list 查到 taskId，再调用本工具。",
+    promptSnippet: "schedule_cancel - 按 id 取消一个已登记的定时任务。",
+    promptGuidelines: ["taskId 必须来自 schedule_list，不要凭空编造。"],
+    parameters: Type.Object({
+      taskId: Type.String({ description: "要取消的任务 id（来自 schedule_list）" })
+    }),
+    execute: async (_toolCallId, params = {}) => {
+      const taskId = nonEmptyString(params.taskId);
+      const match = scheduledTasks.find((task) => task.id === taskId);
+      if (!taskId || !match) {
+        return {
+          content: [{ type: "text", text: `没找到 id 为「${taskId}」的任务，请先用 schedule_list 查看现有任务。` }],
+          details: { status: "not_found" }
+        };
+      }
+      onScheduleCancel?.(taskId);
+      return {
+        content: [{ type: "text", text: `已取消定时任务「${match.title}」。` }],
+        details: { status: "cancelled", taskId }
+      };
+    }
+  };
+}
+
 // The single tool pi-subagents registers on the parent for delegation
 // (chain/parallel are parameters of it, not separate tools).
 export const subagentToolName = "subagent";
+
+// Merge the tools the active character's skills require into the policy settings.
+// Only ids in skillGrantableToolIds take effect (so a skill can never grant
+// bash/edit/write), and we flip the matching customTools toggle on so the tool
+// is both registered and allowed by the gate — exactly as if the user had
+// enabled it in settings. Returns the original settings when nothing applies.
+export function mergeSkillRequiredTools(settings, skillRequiredTools = []) {
+  const grant = new Set(skillGrantableToolIds);
+  const toAdd = (Array.isArray(skillRequiredTools) ? skillRequiredTools : []).filter((tool) =>
+    grant.has(tool)
+  );
+  if (toAdd.length === 0) {
+    return settings;
+  }
+
+  const customTools = { ...(settings.customTools ?? {}) };
+  for (const tool of toAdd) {
+    customTools[tool] = true;
+  }
+  return { ...settings, customTools };
+}
 
 export function buildToolRuntime({
   settings = defaultToolPolicySettings,
@@ -278,9 +422,16 @@ export function buildToolRuntime({
   memoryRecallRequest,
   browserSnapshot,
   onBrowserEvent,
-  enableSubagents = false
+  onScheduleUpsert,
+  onScheduleCancel,
+  scheduledTasks = [],
+  scheduleNow,
+  enableSubagents = false,
+  skillRequiredTools = []
 } = {}) {
-  const resolved = resolveToolPolicy({ settings });
+  const resolved = resolveToolPolicy({
+    settings: mergeSkillRequiredTools(settings, skillRequiredTools)
+  });
   const customTools = [];
   const registeredCustomTools = [];
   const unsupportedCustomTools = [];
@@ -318,6 +469,16 @@ export function buildToolRuntime({
     }
 
     unsupportedCustomTools.push(toolId);
+  }
+
+  // schedule_* tools are always available in chat (not gated by user settings),
+  // but only when a sink to persist them exists — i.e. a streaming chat run.
+  // schedule.create expands to create + list + cancel via supportedCustomToolNames.
+  if (onScheduleUpsert) {
+    customTools.push(createScheduleCreateTool({ onScheduleUpsert, now: scheduleNow }));
+    customTools.push(createScheduleListTool({ scheduledTasks }));
+    customTools.push(createScheduleCancelTool({ onScheduleCancel, scheduledTasks }));
+    registeredCustomTools.push("schedule.create");
   }
 
   const customToolNames = registeredCustomTools.flatMap((toolId) => {

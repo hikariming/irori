@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
@@ -13,6 +13,8 @@ import {
   type DialogueTurn
 } from "./components/character-letters";
 import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
+import { SkillsPanel } from "./components/SkillsPanel";
+import { SchedulesPanel } from "./components/SchedulesPanel";
 import { WorkspacePanel } from "./components/WorkspacePanel";
 import { desktopBackend } from "./components/desktop-backend";
 import { formatUnknownError } from "./components/error-message";
@@ -147,6 +149,9 @@ export function App() {
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSkillsOpen, setIsSkillsOpen] = useState(false);
+  const [isSchedulesOpen, setIsSchedulesOpen] = useState(false);
+  const [schedulesUnread, setSchedulesUnread] = useState(0);
   // 模型设置是否已从后端读完——避免在加载完成前误判「未配置」而闪现引导页。
   const [modelSettingsLoaded, setModelSettingsLoaded] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(() => {
@@ -266,6 +271,8 @@ export function App() {
   function openLifeCircle() {
     setIsSettingsOpen(false);
     setIsCharacterOpen(false);
+    setIsSkillsOpen(false);
+    setIsSchedulesOpen(false);
     setViewMode((current) => (current === "letters" ? "letters" : "feed"));
   }
 
@@ -647,6 +654,35 @@ export function App() {
     };
   }, []);
 
+  // 红点未读数始终以后端真实查询为准，避免硬编码 0 抹掉其它任务的未读、
+  // 或与「任务跑完」事件刷新相互竞态。
+  const refreshSchedulesUnread = useCallback(() => {
+    desktopBackend
+      .scheduledUnreadCount()
+      .then((count) => setSchedulesUnread(count))
+      .catch(() => {});
+  }, []);
+
+  // 定时任务：开机读一次未读红点，并订阅「任务跑完」事件实时刷新计数。
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+
+    refreshSchedulesUnread();
+    desktopBackend
+      .onScheduledTaskRun(() => refreshSchedulesUnread())
+      .then((nextUnlisten) => {
+        if (cancelled) nextUnlisten();
+        else unlisten = nextUnlisten;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [refreshSchedulesUnread]);
+
   useEffect(() => {
     if (cards.length === 0 || initialSessionLoadedRef.current) {
       return;
@@ -871,6 +907,8 @@ export function App() {
       }
       setIsCharacterOpen(false);
       setIsSettingsOpen(false);
+      setIsSkillsOpen(false);
+      setIsSchedulesOpen(false);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -1095,6 +1133,8 @@ export function App() {
     setActiveCharacterId(characterId);
     setIsSettingsOpen(false);
     setIsCharacterOpen(false);
+    setIsSkillsOpen(false);
+    setIsSchedulesOpen(false);
     // 点角色即回到聊天（从生活圈点人头自然是想聊天，不是继续看动态）。
     setViewMode("chat");
 
@@ -1123,6 +1163,8 @@ export function App() {
     setActiveSessionId(null);
     setIsSettingsOpen(false);
     setIsCharacterOpen(false);
+    setIsSkillsOpen(false);
+    setIsSchedulesOpen(false);
     showInitialMessages();
   }
 
@@ -1133,17 +1175,36 @@ export function App() {
         isNewSessionDisabled={!canStartNewSession}
         isLifeActive={isLifeView}
         lifeUnreadCount={totalUnreadLetters}
+        schedulesUnreadCount={schedulesUnread}
         onCharacterInspect={(character) => switchCharacter(character.id)}
         onLifeOpen={openLifeCircle}
         onSettingsOpen={() => {
           setIsCharacterOpen(false);
           setIsProfileOpen(false);
+          setIsSkillsOpen(false);
+          setIsSchedulesOpen(false);
           setIsSettingsOpen(true);
         }}
         onProfileOpen={() => {
           setIsCharacterOpen(false);
           setIsSettingsOpen(false);
+          setIsSkillsOpen(false);
+          setIsSchedulesOpen(false);
           setIsProfileOpen(true);
+        }}
+        onSkillsOpen={() => {
+          setIsCharacterOpen(false);
+          setIsSettingsOpen(false);
+          setIsProfileOpen(false);
+          setIsSchedulesOpen(false);
+          setIsSkillsOpen(true);
+        }}
+        onSchedulesOpen={() => {
+          setIsCharacterOpen(false);
+          setIsSettingsOpen(false);
+          setIsProfileOpen(false);
+          setIsSkillsOpen(false);
+          setIsSchedulesOpen(true);
         }}
         onNewSession={startNewSession}
         onSessionSelect={loadChatSession}
@@ -1306,6 +1367,17 @@ export function App() {
           profile={userProfile}
           onProfileChange={updateUserProfile}
           onClose={() => setIsProfileOpen(false)}
+        />
+        <SkillsPanel
+          isOpen={isSkillsOpen}
+          cards={cards}
+          onClose={() => setIsSkillsOpen(false)}
+        />
+        <SchedulesPanel
+          isOpen={isSchedulesOpen}
+          cards={cards}
+          onClose={() => setIsSchedulesOpen(false)}
+          onRunsRead={refreshSchedulesUnread}
         />
       </section>
       <WorkspacePanel

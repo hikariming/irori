@@ -273,6 +273,42 @@ test("runCockapooPiPrompt reports the real OpenAI-compatible request route", asy
   );
 });
 
+test("runCockapooPiPrompt forwards the skills root and allowed skill names to the session", async () => {
+  let captured = null;
+
+  await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: { baseUrl: "https://api.example.com/v1", modelName: "demo" },
+    runtimeToken: "sk-test",
+    prompt: "你好",
+    skillsRootPath: "/tmp/skills",
+    allowedSkillNames: ["tarot-reading", "weather-lookup"],
+    createSession: async (options) => {
+      captured = options;
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: { type: "text_end", content: "OK" }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(captured.skillsRootPath, "/tmp/skills");
+  assert.deepEqual(captured.allowedSkillNames, ["tarot-reading", "weather-lookup"]);
+});
+
 test("runCockapooPiPrompt injects recalled memory and captures successful turns", async () => {
   let promptSentToPi = "";
   const capturedTurns = [];
