@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+test("sidecar runtime modules load without requiring Node to import TypeScript source", async () => {
+  const modules = await Promise.all([
+    import("../src/configured-memory-backend.mjs"),
+    import("../src/memory-bridge.mjs"),
+    import("../src/tool-policy-runtime.mjs"),
+    import("../src/tool-gate-config.mjs"),
+    import("../src/extensions/irori-tool-gate.mjs")
+  ]);
+
+  assert.equal(typeof modules[0].resolveConfiguredMemoryBackend, "function");
+  assert.equal(typeof modules[1].buildPromptWithMemory, "function");
+  assert.equal(typeof modules[2].buildToolRuntime, "function");
+  assert.equal(typeof modules[3].writeToolGateConfig, "function");
+  // The extension's default export is the (pi) => void factory a resource loader invokes.
+  assert.equal(typeof modules[4].default, "function");
+  assert.equal(typeof modules[4].createInheritedToolGateExtension, "function");
+});

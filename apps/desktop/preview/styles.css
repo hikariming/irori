@@ -1,0 +1,352 @@
+:root {
+  color-scheme: light;
+  --bg: #eee9df;
+  --ink: #292a2c;
+  --muted: #77716b;
+  --line: rgba(42, 42, 44, 0.12);
+  --paper: rgba(255, 252, 246, 0.82);
+  --paper-strong: rgba(255, 255, 255, 0.94);
+  --teal: #47746f;
+  --teal-dark: #29504c;
+  --rose: #b87972;
+  --lavender: #8a8398;
+  --shadow: 0 24px 80px rgba(49, 45, 38, 0.14);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 16% 10%, rgba(184, 121, 114, 0.18), transparent 28%),
+    radial-gradient(circle at 80% 4%, rgba(71, 116, 111, 0.16), transparent 24%),
+    linear-gradient(145deg, #f6f0e7 0%, #e6e8e3 52%, #ece4df 100%);
+  color: var(--ink);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  width: min(1440px, calc(100vw - 48px));
+  margin: 24px auto 40px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px 18px 0 0;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(24px);
+}
+
+.eyebrow,
+.card-label,
+.speaker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+h2 {
+  margin-bottom: 8px;
+  font-size: 18px;
+}
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, 1fr));
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.mode-tabs button,
+.actions button,
+.composer button,
+.rail-list button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 36px;
+}
+
+.mode-tabs .active,
+.actions .primary,
+.composer button,
+.rail-list .selected {
+  background: var(--teal-dark);
+  color: white;
+  box-shadow: 0 10px 22px rgba(41, 80, 76, 0.2);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) 320px;
+  min-height: 720px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  background: rgba(255, 255, 255, 0.38);
+  box-shadow: var(--shadow);
+}
+
+.left-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 14px;
+  border-right: 1px solid var(--line);
+}
+
+.portrait {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  background:
+    linear-gradient(155deg, rgba(255, 255, 255, 0.9), rgba(184, 121, 114, 0.22)),
+    linear-gradient(45deg, var(--teal), var(--lavender));
+  color: white;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.rail-list {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.rail-list button {
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--muted);
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+  min-width: 0;
+}
+
+.status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-strip span,
+.chips span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.message,
+.action-card,
+.panel-card,
+.concept {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.message {
+  max-width: 72%;
+  padding: 16px 18px;
+  line-height: 1.7;
+}
+
+.message p:last-child {
+  margin-bottom: 0;
+}
+
+.message.user {
+  align-self: flex-end;
+  background: rgba(71, 116, 111, 0.11);
+}
+
+.action-card {
+  margin-top: auto;
+  padding: 18px;
+  background: var(--paper-strong);
+}
+
+.action-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.action-card dl div {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(245, 242, 236, 0.72);
+}
+
+dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+dd {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.actions button {
+  padding: 0 18px;
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.composer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.composer input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 18px;
+  min-height: 44px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+}
+
+.composer button {
+  padding: 0 22px;
+}
+
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  border-left: 1px solid var(--line);
+  background: rgba(255, 252, 246, 0.42);
+}
+
+.panel-card {
+  padding: 16px;
+}
+
+.character-card {
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, 0.9), rgba(138, 131, 152, 0.12)),
+    var(--paper);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.memory-list,
+.timeline {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.concept {
+  margin-top: 24px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.concept img {
+  display: block;
+  width: 100%;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+@media (max-width: 980px) {
+  .shell {
+    width: calc(100vw - 24px);
+  }
+
+  .topbar,
+  .workspace {
+    display: block;
+  }
+
+  .mode-tabs {
+    margin-top: 16px;
+  }
+
+  .left-rail,
+  .right-panel {
+    border: 0;
+  }
+
+  .left-rail {
+    flex-direction: row;
+  }
+
+  .rail-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .message {
+    max-width: 100%;
+  }
+
+  .action-card dl {
+    grid-template-columns: 1fr;
+  }
+}

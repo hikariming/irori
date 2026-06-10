@@ -1,0 +1,19 @@
+node_modules/
+dist/
+target/
+.DS_Store
+
+# Local reference app bundle (~1G compiled .app), not part of the project
+refproj/
+
+apps/*/node_modules/
+apps/*/dist/
+apps/*/src-tauri/target/
+packages/*/node_modules/
+
+# Environment files and local overrides
+.env
+.env.*
+!.env.example
+*.local
+.claude/settings.local.json

@@ -1,0 +1,20 @@
+{
+  "name": "@irori/desktop-sidecar",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "description": "Desktop sidecar: a Node process embedding the Pi coding-agent SDK. Spawned on demand by the Tauri backend (apps/desktop/src-tauri) via the `prompt` script over stdio.",
+  "scripts": {
+    "prompt": "node bin/pi-prompt.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@tencentdb-agent-memory/memory-tencentdb": "^0.3.5",
+    "pi-intercom": "^0.6.0",
+    "pi-subagents": "^0.28.0",
+    "pi-web-access": "^0.10.7"
+  }
+}
