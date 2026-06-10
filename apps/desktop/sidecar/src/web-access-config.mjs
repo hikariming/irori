@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -93,9 +93,14 @@ async function readExistingConfig(path) {
     return {};
   }
 
-  const raw = await readFile(path, "utf-8");
-  const parsed = JSON.parse(raw);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  try {
+    const raw = await readFile(path, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    // 损坏的旧配置不该让之后的每次对话都失败；当作空配置，下面的原子写覆盖自愈。
+    return {};
+  }
 }
 
 export async function writePiWebAccessConfig({
@@ -109,7 +114,11 @@ export async function writePiWebAccessConfig({
   };
 
   await mkdir(dirname(configPath), { recursive: true });
-  await writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`);
+  // Atomic write (temp + rename) so a crash mid-write can never leave a
+  // half-written file behind for the next run to choke on.
+  const tmp = `${configPath}.${process.pid}.tmp`;
+  await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`);
+  await rename(tmp, configPath);
 
   return next;
 }

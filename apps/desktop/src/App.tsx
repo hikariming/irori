@@ -16,7 +16,12 @@ import { SystemSettingsPanel } from "./components/SystemSettingsPanel";
 import { SkillsPanel } from "./components/SkillsPanel";
 import { SchedulesPanel } from "./components/SchedulesPanel";
 import { WorkspacePanel } from "./components/WorkspacePanel";
-import { desktopBackend } from "./components/desktop-backend";
+import { desktopBackend, type StagedAttachment } from "./components/desktop-backend";
+import {
+  describeAttachmentsForPrompt,
+  mergeAttachments,
+  summarizeAttachmentsForMessage
+} from "./components/attachment-model";
 import { formatUnknownError } from "./components/error-message";
 import { type ChatMessage } from "./components/chat-model";
 import {
@@ -141,7 +146,7 @@ export function App() {
     toggleMomentLike,
     addMomentComment
   } = useCharacterMoments();
-  const { letters, writingIds, sendingIds, loadAllLetters, maybeWriteLetter, sendUserLetter, markRead } =
+  const { letters, writingIds, reactingIds, loadAllLetters, maybeSendKeepsake, reactToKeepsake, markRead } =
     useCharacterLetters();
   const [cards, setCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
@@ -174,6 +179,10 @@ export function App() {
   const [sessionsLoaded, setSessionsLoaded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isSending, setIsSending] = useState(false);
+  // 拖进来的文件：已复制进工作区，发送时连同提示一起交给角色读取。
+  const [attachments, setAttachments] = useState<StagedAttachment[]>([]);
+  const [isStagingFiles, setIsStagingFiles] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [assistantProgress, setAssistantProgress] = useState<AssistantProgress | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<PiToolConfirmRequest | null>(null);
   const [modelSettings, setModelSettings] = useState<ModelSettingsState>(buildInitialModelSettings);
@@ -259,6 +268,10 @@ export function App() {
   );
   // 「动态」和「信件」合成一个「生活圈」页面，靠上方 tab 切换；聊天区只保留聊天本身。
   const isLifeView = viewMode === "feed" || viewMode === "letters";
+  // 只有真正在聊天页、且有角色在场时才接收拖拽文件；用 ref 喂给只挂载一次的监听器，避开闭包陈旧。
+  const canAcceptDrop = viewMode === "chat" && Boolean(activeCharacter);
+  const canAcceptDropRef = useRef(canAcceptDrop);
+  canAcceptDropRef.current = canAcceptDrop;
   // 角色 id → 头像/名字，给聚合的生活圈按发件人区分（大家彼此认识、各自生活）。
   const characterAuthors = useMemo(() => buildCharacterAuthors(cards), [cards]);
   // 所有角色未读来信总数，给侧边栏「生活圈」入口点红点。
@@ -356,9 +369,9 @@ export function App() {
 
     const recentDialogue = summarizeRecentDialogue(entry.recent);
     const activity = currentActivityPhrase(state, Date.now()) ?? undefined;
-    void maybeWriteLetter(card, state, recentDialogue, activity).then((wrote) => {
-      if (wrote) {
-        // 写成功才重置计数，下一封要重新聊够轮数；失败则保留，留待后续回合再试。
+    void maybeSendKeepsake(card, state, recentDialogue, activity).then((sent) => {
+      if (sent) {
+        // 送成功才重置计数，下一件要重新聊够轮数；失败则保留，留待后续回合再试。
         entry.turnsSinceLetter = 0;
       }
     });
@@ -518,6 +531,82 @@ export function App() {
       isMounted = false;
     };
   }, []);
+
+  // 拖拽文件进来：在 chat 页把文件复制进工作区，挂成附件等待发送。监听器全窗口只挂一次。
+  useEffect(() => {
+    let dispose = () => {};
+    let cancelled = false;
+
+    desktopBackend
+      .onFileDrop((event) => {
+        if (!canAcceptDropRef.current) {
+          // 不在聊天页 / 没有角色时，拖进来也不接，连高亮都不亮。
+          setIsDragActive(false);
+          return;
+        }
+
+        if (event.kind === "over") {
+          setIsDragActive(true);
+          return;
+        }
+        if (event.kind === "cancel") {
+          setIsDragActive(false);
+          return;
+        }
+
+        // drop
+        setIsDragActive(false);
+        if (event.paths.length === 0) {
+          return;
+        }
+
+        setIsStagingFiles(true);
+        desktopBackend
+          .stageDroppedFiles(event.paths)
+          .then((staged) => {
+            if (staged.length > 0) {
+              setAttachments((current) => mergeAttachments(current, staged));
+            }
+          })
+          .catch((error: unknown) => {
+            setMessages((current) => [
+              ...current,
+              {
+                id: `attach-error-${Date.now()}`,
+                speaker: "system",
+                author: "文件",
+                text: `收下文件失败：${formatUnknownError(error, "无法把文件复制进工作区。")}`,
+                time: messageTime()
+              }
+            ]);
+          })
+          .finally(() => {
+            setIsStagingFiles(false);
+          });
+      })
+      .then((unlisten) => {
+        if (cancelled) {
+          unlisten();
+        } else {
+          dispose = unlisten;
+        }
+      })
+      .catch(() => {
+        // 浏览器预览没有 Tauri webview，拿不到拖拽事件，静默即可。
+      });
+
+    return () => {
+      cancelled = true;
+      dispose();
+    };
+  }, []);
+
+  // 切换角色时清掉还没发送的附件，免得把上一个角色的文件带过去。
+  useEffect(() => {
+    setAttachments([]);
+    setIsStagingFiles(false);
+    setIsDragActive(false);
+  }, [activeCharacterId]);
 
   // 切换审核模式：立即生效并持久化（写失败也保留本次会话的选择）。
   function changeReviewMode(mode: ReviewMode) {
@@ -926,9 +1015,12 @@ export function App() {
   async function sendPrompt(draft: string, options?: { opener?: string }) {
     const prompt = draft.trim();
     const opener = options?.opener?.trim();
+    // 快照本次要带走的附件：发送一开始就清空 state，避免下一条消息重复带上。
+    const attachmentsForRun = attachments;
+    const hasInput = prompt.length > 0 || attachmentsForRun.length > 0;
 
-    if (!prompt || isSending || !modelReady || !activeCard) {
-      if (prompt && !modelReady) {
+    if (!hasInput || isSending || !modelReady || !activeCard) {
+      if (hasInput && !modelReady) {
         setMessages((current) => [
           ...current,
           {
@@ -946,11 +1038,24 @@ export function App() {
       return;
     }
 
+    const attachmentSummary = summarizeAttachmentsForMessage(attachmentsForRun);
+    const attachmentNote = describeAttachmentsForPrompt(attachmentsForRun);
+    // 气泡里展示「文字 +（可能的）附件摘要」；纯附件时就只显示摘要。
+    const displayText = [prompt, attachmentSummary].filter(Boolean).join("\n\n");
+    // 交给角色的提示：用户文字（或纯附件时的占位说明）+ 附件清单与读取指引。
+    const promptForAgent =
+      prompt ||
+      (attachmentsForRun.length > 0
+        ? "（用户没有输入文字，只拖进了上面的文件，请先读懂内容再主动处理，或先确认要做什么。）"
+        : "");
+    const agentUserPrompt = attachmentNote ? `${promptForAgent}\n\n${attachmentNote}` : promptForAgent;
+    const userTextForRecord = prompt || attachmentSummary;
+
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       speaker: "user",
       author: "你",
-      text: prompt,
+      text: displayText,
       time: messageTime()
     };
     const card = activeCard;
@@ -973,13 +1078,14 @@ export function App() {
     setAssistantProgress(createAssistantProgress(runId));
     setPendingConfirm(null);
     setIsSending(true);
+    setAttachments([]);
 
     let sessionIdForRun = activeSessionId;
 
     try {
       const sessionId = activeSessionId ?? (await desktopBackend.createChatSession({
         characterId: card.id,
-        title: createSessionTitle(prompt)
+        title: createSessionTitle(userTextForRecord)
       })).id;
       sessionIdForRun = sessionId;
       if (openerMessage) {
@@ -1006,7 +1112,7 @@ export function App() {
       const sessionPrompt = composeCharacterSessionPrompt({
         card,
         history: promptHistory,
-        userPrompt: prompt,
+        userPrompt: agentUserPrompt,
         timeContext: buildCharacterTimeContext(),
         selfState,
         memories,
@@ -1021,7 +1127,7 @@ export function App() {
       const response = await desktopBackend.sendPiPrompt({
         characterId: card.id,
         browserSnapshot: buildBrowserSnapshot(workspaceBrowser),
-        prompt,
+        prompt: prompt || userTextForRecord,
         runId,
         sessionId,
         sessionPrompt,
@@ -1040,9 +1146,9 @@ export function App() {
       }
       const parsedReply = parseCharacterReply(response.text, card.stickers);
       const replyText = parsedReply.text || `已通过 ${response.modelRoute} 完成这次 Pi session。`;
-      const stateAfterTurn = recordCharacterTurn(card.id, { userText: prompt, replyText, impressions: parsedReply.impressions });
+      const stateAfterTurn = recordCharacterTurn(card.id, { userText: userTextForRecord, replyText, impressions: parsedReply.impressions });
       // 聊够轮数后在后台偷偷写信（延迟 1~24h 送达）；失败静默，不影响这次聊天。
-      trackChatTurnForLetter(card, stateAfterTurn, prompt, replyText);
+      trackChatTurnForLetter(card, stateAfterTurn, userTextForRecord, replyText);
       await revealAssistantText(replyText);
       const assistantMessage = await desktopBackend.appendChatMessage({
         sessionId,
@@ -1059,7 +1165,11 @@ export function App() {
       setMessages((current) => replaceAssistantStreamMessage(current, streamMessageId, assistantMessage));
       await refreshChatSessions(sessionId);
     } catch (error) {
+      // 先停掉打字机并摘掉流式消息 id：下面落库的 await 期间定时器若还触发，
+      // renderAssistantStreamText 拿不到 id 就会直接 no-op，不会把刚删掉的气泡重新插回去。
+      clearAssistantTypewriterTimer();
       const streamMessageId = activeAssistantStreamMessageIdRef.current;
+      activeAssistantStreamMessageIdRef.current = null;
       setMessages((current) => removeAssistantStreamMessage(current, streamMessageId));
 
       const systemMessage: ChatMessage = {
@@ -1212,9 +1322,22 @@ export function App() {
         sessions={groupedSessions}
         theme={theme}
       />
-      <section className="conversation-stage" aria-label="陪伴对话">
+      <section className={`conversation-stage ${isDragActive && canAcceptDrop ? "is-drop-active" : ""}`} aria-label="陪伴对话">
+        {isDragActive && canAcceptDrop ? (
+          <div className="stage-dropzone" aria-hidden="true">
+            <div className="stage-dropzone__card">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 16V4" />
+                <path d="M7 9l5-5 5 5" />
+                <path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
+              </svg>
+              <p>松手把文件交给 ta</p>
+              <span>会复制进工作区，然后一起聊</span>
+            </div>
+          </div>
+        ) : null}
         {activeCharacter && isLifeView ? (
-          <div className="stage-view-toggle" role="tablist" aria-label="生活圈：动态与信件">
+          <div className="stage-view-toggle" role="tablist" aria-label="生活圈：动态与信物匣">
             <button
               type="button"
               role="tab"
@@ -1231,7 +1354,7 @@ export function App() {
               className={viewMode === "letters" ? "is-active" : ""}
               onClick={() => setViewMode("letters")}
             >
-              信件
+              信物
             </button>
           </div>
         ) : null}
@@ -1254,40 +1377,29 @@ export function App() {
             <CompanionLetters
               letters={letters}
               authors={characterAuthors}
-              composeTarget={
-                activeCard
-                  ? { id: activeCard.id, ...(characterAuthors[activeCard.id] ?? { name: activeCard.name, avatar: "" }) }
-                  : null
-              }
-              composeTargets={cards.map((card) => ({
-                id: card.id,
-                ...(characterAuthors[card.id] ?? { name: card.name, avatar: "" })
-              }))}
               writingNames={writingIds.map((id) => characterAuthors[id]?.name).filter((name): name is string => Boolean(name))}
-              sendingNames={sendingIds.map((id) => characterAuthors[id]?.name).filter((name): name is string => Boolean(name))}
+              reactingNames={reactingIds.map((id) => characterAuthors[id]?.name).filter((name): name is string => Boolean(name))}
               backgroundSrc={activeCharacter.assets.background}
               now={effectiveLetterClock}
               onRead={markRead}
-              onSend={(draft) => {
-                const jobs = draft.recipientIds
-                  .map((characterId) => {
-                    const card = findCharacterCard(cards, characterId);
-                    if (!card) {
-                      return null;
-                    }
-                    return sendUserLetter({
-                      card,
-                      state: getCharacterState(characterStates, card.id),
-                      subject: draft.subject,
-                      body: draft.body,
-                      replyTo: draft.replyTo,
-                      generateReply: modelReady,
-                      onExchange: ({ userText, replyText, impressions }) =>
-                        recordCharacterTurn(card.id, { userText, replyText, impressions })
-                    });
-                  })
-                  .filter((job): job is Promise<void> => job !== null);
-                void Promise.all(jobs);
+              onOpenGift={(letter) => {
+                // 拆开一件小礼物给一点点好感（走与对话同一条 recordCharacterTurn 路径）。
+                recordCharacterTurn(letter.characterId, { userText: "（收下了 ta 的礼物）", replyText: "" });
+              }}
+              onReact={(letter, reaction) => {
+                const card = findCharacterCard(cards, letter.characterId);
+                if (!card) {
+                  return;
+                }
+                void reactToKeepsake({
+                  card,
+                  state: getCharacterState(characterStates, card.id),
+                  letter,
+                  reaction,
+                  generateReply: modelReady,
+                  onExchange: ({ userText, replyText, impressions }) =>
+                    recordCharacterTurn(card.id, { userText, replyText, impressions })
+                });
               }}
             />
           ) : (
@@ -1298,6 +1410,7 @@ export function App() {
               isCharacterOpen={isCharacterOpen}
               messages={messages}
               onCharacterClose={() => setIsCharacterOpen(false)}
+              sessionKey={activeSessionId ?? `draft-${activeCharacter.character.id}`}
             />
           )
         ) : (
@@ -1340,6 +1453,11 @@ export function App() {
               disabled={isSending || !modelReady || !activeCharacter}
               isSending={isSending}
               reviewMode={reviewMode}
+              attachments={attachments}
+              isStagingFiles={isStagingFiles}
+              onRemoveAttachment={(id) =>
+                setAttachments((current) => current.filter((item) => item.id !== id))
+              }
               onReviewModeChange={changeReviewMode}
               onSend={sendPrompt}
             />

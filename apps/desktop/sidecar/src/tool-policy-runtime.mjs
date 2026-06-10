@@ -271,6 +271,59 @@ export function createBrowserViewTool({ browserSnapshot, onBrowserEvent } = {}) 
   };
 }
 
+// 与 Rust 端 lib.rs 的 parse_hm 一致："HH:MM"（24 小时制），首个冒号切分、两侧
+// 都是非负整数、时 <24 分 <60。
+function isValidHm(spec) {
+  const idx = spec.indexOf(":");
+  if (idx === -1) {
+    return false;
+  }
+  const hour = spec.slice(0, idx).trim();
+  const minute = spec.slice(idx + 1).trim();
+  if (!/^\d+$/.test(hour) || !/^\d+$/.test(minute)) {
+    return false;
+  }
+  return Number(hour) < 24 && Number(minute) < 60;
+}
+
+// 与 Rust 端 lib.rs 的 validate_schedule 保持一致：daily/weekdays 用 'HH:MM'，
+// weekly 用 '日号,日号@HH:MM'（0=周日，至少一个合法日号），once 用本地时间
+// 'YYYY-MM-DDTHH:MM'。Rust 端校验失败只会静默丢弃登记，而模型此刻已经口头答应
+// 了用户，所以必须在工具里先拦下来、让模型修正后重试。
+export function isValidScheduleSpec(scheduleKind, scheduleSpec) {
+  if (scheduleKind === "daily" || scheduleKind === "weekdays") {
+    return isValidHm(scheduleSpec.trim());
+  }
+
+  if (scheduleKind === "weekly") {
+    const idx = scheduleSpec.indexOf("@");
+    if (idx === -1) {
+      return false;
+    }
+    const days = scheduleSpec.slice(0, idx);
+    const hm = scheduleSpec.slice(idx + 1);
+    return (
+      isValidHm(hm.trim()) &&
+      days.split(",").some((value) => /^\d+$/.test(value.trim()) && Number(value.trim()) < 7)
+    );
+  }
+
+  if (scheduleKind === "once") {
+    const match = scheduleSpec.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})T(\d{1,2}):(\d{1,2})$/);
+    if (!match) {
+      return false;
+    }
+    const [, year, month, day, hour, minute] = match.map(Number);
+    if (month < 1 || month > 12 || hour > 23 || minute > 59) {
+      return false;
+    }
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return day >= 1 && day <= daysInMonth;
+  }
+
+  return false;
+}
+
 // schedule_create lets the character register a scheduled task straight from
 // chat ("每晚8点帮我总结"). It never touches the DB itself — it emits the task
 // back to the Rust parent via onScheduleUpsert, which persists it (source=agent)
@@ -315,6 +368,17 @@ export function createScheduleCreateTool({ onScheduleUpsert, now } = {}) {
         return {
           content: [
             { type: "text", text: `登记失败：scheduleKind 只能是 daily/weekdays/weekly/once，收到「${scheduleKind}」。` }
+          ],
+          details: { status: "invalid" }
+        };
+      }
+      if (!isValidScheduleSpec(scheduleKind, scheduleSpec)) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `登记失败：scheduleSpec「${scheduleSpec}」不符合 ${scheduleKind} 的格式（daily/weekdays 用 'HH:MM'；weekly 用 '日号,日号@HH:MM'，0=周日；once 用 'YYYY-MM-DDTHH:MM'）。请修正后重试。`
+            }
           ],
           details: { status: "invalid" }
         };

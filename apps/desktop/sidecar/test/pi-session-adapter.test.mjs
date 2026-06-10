@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile, mkdir, readdir } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { createAgentSession } from "@earendil-works/pi-coding-agent";
@@ -204,6 +207,87 @@ test("ensureBundledPiOnPath is a no-op when no bin dir is found", () => {
 
   assert.equal(added, false);
   assert.equal(env.PATH, "/usr/bin");
+});
+
+test("resolveSubagentAgentDir defaults to an app-owned dir, never the user's ~/.pi/agent", () => {
+  const dir = piSessionAdapter.resolveSubagentAgentDir({ env: {} });
+
+  assert.equal(dir, join(homedir(), ".cockapoo", "pi-agent"));
+  assert.doesNotMatch(dir, /\.pi\/agent/);
+});
+
+test("resolveSubagentAgentDir honors the COCKAPOO_SUBAGENT_AGENT_DIR override", () => {
+  const dir = piSessionAdapter.resolveSubagentAgentDir({
+    env: { COCKAPOO_SUBAGENT_AGENT_DIR: "/custom/agent-dir" }
+  });
+
+  assert.equal(dir, "/custom/agent-dir");
+});
+
+test("configureSubagentBridge materializes the models.json bridge in the app-owned dir and points children at it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cockapoo-subagent-bridge-"));
+  const subagentsRoot = join(dir, "pi-subagents");
+  const agentDir = join(dir, "cockapoo-agent");
+  await mkdir(join(subagentsRoot, "agents"), { recursive: true });
+  await writeFile(join(subagentsRoot, "agents", "worker.md"), "---\nname: worker\n---\nWorker body.\n");
+  const env = {};
+
+  try {
+    const written = piSessionAdapter.configureSubagentBridge({
+      modelSettings: { baseUrl: "https://my-llm.internal/v1", modelName: "house-model" },
+      runtimeToken: "sk-secret",
+      subagentsRoot,
+      gateExtensionRoot: "/abs/cockapoo-tool-gate",
+      env,
+      agentDir
+    });
+
+    assert.equal(written, agentDir);
+    // 子进程与 pi-subagents 的 agent 发现都跟随这个 env 指针。
+    assert.equal(env.PI_CODING_AGENT_DIR, agentDir);
+    // 通用桥：key 经 env 传递，磁盘上只有 env 变量名。
+    assert.equal(env.COCKAPOO_SUBAGENT_API_KEY, "sk-secret");
+    const models = JSON.parse(await readFile(join(agentDir, "models.json"), "utf-8"));
+    assert.equal(models.providers["openai-compatible"].baseUrl, "https://my-llm.internal/v1");
+    const worker = await readFile(join(agentDir, "agents", "worker.md"), "utf-8");
+    assert.match(worker, /model: openai-compatible\/house-model/);
+    assert.match(worker, /extensions: \/abs\/cockapoo-tool-gate/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("configureSubagentBridge native fast path passes the key via the provider env var and drops a stale bridge", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cockapoo-subagent-native-"));
+  const subagentsRoot = join(dir, "pi-subagents");
+  const agentDir = join(dir, "cockapoo-agent");
+  await mkdir(join(subagentsRoot, "agents"), { recursive: true });
+  await writeFile(join(subagentsRoot, "agents", "worker.md"), "---\nname: worker\n---\nWorker body.\n");
+  await mkdir(agentDir, { recursive: true });
+  // 上一次非 native 会话遗留的 models.json 桥必须被清掉。
+  await writeFile(join(agentDir, "models.json"), "{}");
+  const env = {};
+
+  try {
+    piSessionAdapter.configureSubagentBridge({
+      modelSettings: { baseUrl: "https://api.deepseek.com/v1", modelName: "deepseek-v4-pro" },
+      runtimeToken: "sk-secret",
+      subagentsRoot,
+      env,
+      agentDir
+    });
+
+    assert.equal(env.PI_CODING_AGENT_DIR, agentDir);
+    assert.equal(env.DEEPSEEK_API_KEY, "sk-secret");
+    assert.equal(env.COCKAPOO_SUBAGENT_API_KEY, undefined);
+    assert.deepEqual((await readdir(agentDir)).filter((name) => name === "models.json"), []);
+    const worker = await readFile(join(agentDir, "agents", "worker.md"), "utf-8");
+    assert.match(worker, /model: deepseek\/deepseek-v4-pro/);
+    // 没有围栏时不强行给子代理 pin 扩展。
+    assert.doesNotMatch(worker, /extensions:/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("applyOpenAiCompatibleProviderRequestOverrides enables preserved thinking for Kimi requests", () => {

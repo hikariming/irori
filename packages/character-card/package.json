@@ -2,6 +2,7 @@
   "name": "@cockapoo-pi-companion/character-card",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Character-card schema and deterministic prompt composition.",
   "main": "src/index.mjs",

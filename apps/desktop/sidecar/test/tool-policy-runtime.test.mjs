@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildToolRuntime } from "../src/tool-policy-runtime.mjs";
+import { buildToolRuntime, isValidScheduleSpec } from "../src/tool-policy-runtime.mjs";
 
 test("buildToolRuntime maps policy ids to Pi-compatible tool names and omits unsupported custom tools", () => {
   const runtime = buildToolRuntime({
@@ -389,6 +389,49 @@ test("schedule_create rejects an invalid scheduleKind without emitting", async (
 
   assert.equal(upserts.length, 0);
   assert.equal(result.details.status, "invalid");
+});
+
+test("isValidScheduleSpec mirrors the Rust validate_schedule rules per kind", () => {
+  // daily / weekdays: 'HH:MM'，24 小时制。
+  assert.equal(isValidScheduleSpec("daily", "20:00"), true);
+  assert.equal(isValidScheduleSpec("weekdays", " 8:05 "), true);
+  assert.equal(isValidScheduleSpec("daily", "25:00"), false);
+  assert.equal(isValidScheduleSpec("daily", "20:60"), false);
+  assert.equal(isValidScheduleSpec("daily", "晚上八点"), false);
+  assert.equal(isValidScheduleSpec("daily", "20:00:00"), false);
+
+  // weekly: '日号,日号@HH:MM'，0=周日，至少一个合法日号（与 Rust 的 any 一致）。
+  assert.equal(isValidScheduleSpec("weekly", "1,3,5@20:00"), true);
+  assert.equal(isValidScheduleSpec("weekly", "9,3@20:00"), true);
+  assert.equal(isValidScheduleSpec("weekly", "7@20:00"), false);
+  assert.equal(isValidScheduleSpec("weekly", "1,3,5"), false);
+  assert.equal(isValidScheduleSpec("weekly", "周一@20:00"), false);
+
+  // once: 本地时间 'YYYY-MM-DDTHH:MM'。
+  assert.equal(isValidScheduleSpec("once", "2026-06-11T08:30"), true);
+  assert.equal(isValidScheduleSpec("once", "2026-02-30T08:30"), false);
+  assert.equal(isValidScheduleSpec("once", "2026-06-11 08:30"), false);
+  assert.equal(isValidScheduleSpec("once", "明天早上八点"), false);
+});
+
+test("schedule_create rejects a malformed scheduleSpec without emitting, so the model can retry", async () => {
+  const upserts = [];
+  const runtime = buildToolRuntime({
+    settings: { builtinTools: { read: true }, customTools: {}, confirmTools: {}, protectedPaths: [] },
+    onScheduleUpsert: (task) => upserts.push(task)
+  });
+  const scheduleTool = runtime.customTools.find((tool) => tool.name === "schedule_create");
+
+  const result = await scheduleTool.execute("tool-call-1", {
+    title: "x",
+    prompt: "y",
+    scheduleKind: "daily",
+    scheduleSpec: "晚上八点"
+  });
+
+  assert.equal(upserts.length, 0);
+  assert.equal(result.details.status, "invalid");
+  assert.match(result.content[0].text, /HH:MM/);
 });
 
 test("schedule_create is absent without a sink (unattended scheduled runs)", () => {

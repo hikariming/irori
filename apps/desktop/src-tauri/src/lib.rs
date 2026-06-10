@@ -322,6 +322,12 @@ struct AddCharacterLetterRequest {
     sender: Option<String>,
     #[serde(default)]
     reply_to: Option<String>,
+    // 信物类型：postcard | note | gift，省略时按明信片兜底。
+    #[serde(default)]
+    kind: Option<String>,
+    // 类型相关字段的 JSON 字符串（明信片 {place}、礼物 {item}）。
+    #[serde(default)]
+    meta: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,6 +343,10 @@ struct CharacterLetterRecord {
     read_at: Option<String>,
     sender: String,
     reply_to: Option<String>,
+    kind: String,
+    // 原样回传的 JSON 字符串，由前端解析。
+    meta: Option<String>,
+    reaction: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -446,6 +456,24 @@ struct WorkspaceEntry {
     size: Option<u64>,
     modified_at: Option<u64>,
     has_children: bool,
+}
+
+/// One file the user dropped onto the chat, after it has been copied into the
+/// workspace so the agent's workspace-scoped file tools can read it by `rel_path`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StagedAttachment {
+    /// Stable id for the frontend chip; equals the (deduped) on-disk file name.
+    id: String,
+    /// Original file name shown to the user.
+    name: String,
+    /// Path relative to the workspace root, e.g. `attachments/report.pdf`.
+    rel_path: String,
+    /// Absolute path of the copied file.
+    abs_path: String,
+    size: u64,
+    /// Coarse category used only for the UI icon: image | pdf | text | document | file.
+    kind: String,
 }
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -676,6 +704,21 @@ fn mark_character_letter_read(
 ) -> Result<CharacterLetterRecord, String> {
     mark_character_letter_read_to_path(&chat_history_path(&app)?, &letter_id, &current_timestamp())
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_character_letter_reaction(
+    app: AppHandle,
+    letter_id: String,
+    reaction: Option<String>,
+) -> Result<CharacterLetterRecord, String> {
+    set_character_letter_reaction_to_path(
+        &chat_history_path(&app)?,
+        &letter_id,
+        reaction.as_deref(),
+        &current_timestamp(),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -947,6 +990,105 @@ fn list_workspace_dir(
     }
 
     read_workspace_dir(&canonical, &root_id)
+}
+
+/// Coarse category for the UI chip icon. Purely cosmetic — the agent still reads
+/// whatever it finds; this only decides which glyph the chip shows.
+fn attachment_kind(path: &Path) -> String {
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase());
+
+    match ext.as_deref() {
+        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "heic") => "image",
+        Some("pdf") => "pdf",
+        Some(
+            "md" | "markdown" | "txt" | "log" | "json" | "yaml" | "yml" | "toml" | "csv" | "tsv"
+            | "rs" | "ts" | "tsx" | "js" | "jsx" | "py" | "go" | "java" | "c" | "cpp" | "h",
+        ) => "text",
+        Some("docx" | "doc" | "pptx" | "ppt" | "xlsx" | "xls" | "rtf" | "odt") => "document",
+        _ => "file",
+    }
+    .to_string()
+}
+
+/// Choose a name inside `dir` that doesn't collide with an existing file, inserting
+/// ` (n)` before the extension so repeated drops of the same name never clobber.
+fn unique_attachment_path(dir: &Path, file_name: &str) -> PathBuf {
+    let candidate = dir.join(file_name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    let source = Path::new(file_name);
+    let stem = source
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| file_name.to_string());
+    let ext = source
+        .extension()
+        .map(|ext| ext.to_string_lossy().to_string());
+
+    let mut counter = 1;
+    loop {
+        let next_name = match &ext {
+            Some(ext) => format!("{stem} ({counter}).{ext}"),
+            None => format!("{stem} ({counter})"),
+        };
+        let next = dir.join(&next_name);
+        if !next.exists() {
+            return next;
+        }
+        counter += 1;
+    }
+}
+
+/// Copy files the user dropped onto the chat into `<workspace>/attachments/` so the
+/// agent can open them with its workspace-scoped file tools, and return one
+/// descriptor per file. Sources that aren't readable regular files are skipped
+/// rather than failing the whole drop.
+#[tauri::command]
+fn stage_dropped_files(app: AppHandle, paths: Vec<String>) -> Result<Vec<StagedAttachment>, String> {
+    let workspace = workspace_root_dir(&app)?;
+    let attachments_dir = workspace.join("attachments");
+    fs::create_dir_all(&attachments_dir)
+        .map_err(|error| format!("无法创建 attachments 目录：{error}"))?;
+
+    let mut staged = Vec::new();
+    for raw in paths {
+        let source = PathBuf::from(raw.trim());
+        let Ok(metadata) = fs::metadata(&source) else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+
+        let file_name = source
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+        let dest = unique_attachment_path(&attachments_dir, &file_name);
+        if fs::copy(&source, &dest).is_err() {
+            continue;
+        }
+
+        let dest_name = dest
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_else(|| file_name.clone());
+        staged.push(StagedAttachment {
+            id: dest_name.clone(),
+            name: file_name,
+            rel_path: format!("attachments/{dest_name}"),
+            abs_path: dest.to_string_lossy().to_string(),
+            size: metadata.len(),
+            kind: attachment_kind(&dest),
+        });
+    }
+
+    Ok(staged)
 }
 
 fn run_sidecar_prompt(
@@ -2292,7 +2434,10 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
           deliver_at TEXT NOT NULL,
           read_at TEXT,
           sender TEXT NOT NULL DEFAULT 'character',
-          reply_to TEXT
+          reply_to TEXT,
+          kind TEXT NOT NULL DEFAULT 'postcard',
+          meta TEXT,
+          reaction TEXT
         );
 
         CREATE TABLE IF NOT EXISTS character_skill (
@@ -2370,6 +2515,16 @@ fn init_chat_history_at_path(path: &Path) -> Result<(), Box<dyn std::error::Erro
         [],
     );
     let _ = connection.execute("ALTER TABLE character_letter ADD COLUMN reply_to TEXT", []);
+
+    // 信物化迁移：把单一「信件」拆成明信片/便利贴/小礼物三种 kind，
+    // meta 存生成期类型字段（地点/物件），reaction 存用户的表情/短回应。
+    // 老库历史信件按 'postcard' 兜底渲染。列已存在时 ALTER 报错，忽略即可。
+    let _ = connection.execute(
+        "ALTER TABLE character_letter ADD COLUMN kind TEXT NOT NULL DEFAULT 'postcard'",
+        [],
+    );
+    let _ = connection.execute("ALTER TABLE character_letter ADD COLUMN meta TEXT", []);
+    let _ = connection.execute("ALTER TABLE character_letter ADD COLUMN reaction TEXT", []);
 
     Ok(())
 }
@@ -2626,10 +2781,15 @@ fn insert_character_letter_to_path(
         Some("user") => "user",
         _ => "character",
     };
+    let kind = match request.kind.as_deref() {
+        Some("note") => "note",
+        Some("gift") => "gift",
+        _ => "postcard",
+    };
 
     connection.execute(
-        "INSERT INTO character_letter (id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9)",
+        "INSERT INTO character_letter (id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to, kind, meta, reaction)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL, ?8, ?9, ?10, ?11, NULL)",
         params![
             id,
             request.character_id,
@@ -2639,7 +2799,9 @@ fn insert_character_letter_to_path(
             now,
             request.deliver_at,
             sender,
-            request.reply_to
+            request.reply_to,
+            kind,
+            request.meta
         ],
     )?;
 
@@ -2657,7 +2819,7 @@ fn list_character_letters_from_path(
 
     if let Some(character_id) = character_id {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to, kind, meta, reaction
              FROM character_letter
              WHERE character_id = ?1
              ORDER BY deliver_at DESC
@@ -2669,7 +2831,7 @@ fn list_character_letters_from_path(
         }
     } else {
         let mut statement = connection.prepare(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to, kind, meta, reaction
              FROM character_letter
              ORDER BY deliver_at DESC
              LIMIT ?1",
@@ -2698,13 +2860,33 @@ fn mark_character_letter_read_to_path(
         .ok_or_else(|| "character letter not found".into())
 }
 
+// 写入用户对某件信物的回应（表情 / 一句短话），reaction 为 JSON 字符串。
+// 同时把这件信物标记为已读（点表情即视作看过）。
+fn set_character_letter_reaction_to_path(
+    path: &Path,
+    letter_id: &str,
+    reaction: Option<&str>,
+    now: &str,
+) -> Result<CharacterLetterRecord, Box<dyn std::error::Error>> {
+    let connection = open_chat_history(path)?;
+    connection.execute(
+        "UPDATE character_letter
+         SET reaction = ?2, read_at = COALESCE(read_at, ?3)
+         WHERE id = ?1",
+        params![letter_id, reaction, now],
+    )?;
+
+    get_character_letter_record(&connection, letter_id)?
+        .ok_or_else(|| "character letter not found".into())
+}
+
 fn get_character_letter_record(
     connection: &Connection,
     id: &str,
 ) -> Result<Option<CharacterLetterRecord>, rusqlite::Error> {
     connection
         .query_row(
-            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to
+            "SELECT id, character_id, subject, body, mood, created_at, deliver_at, read_at, sender, reply_to, kind, meta, reaction
              FROM character_letter
              WHERE id = ?1",
             params![id],
@@ -2727,6 +2909,9 @@ fn row_to_character_letter_record(
         read_at: row.get(7)?,
         sender: row.get(8)?,
         reply_to: row.get(9)?,
+        kind: row.get(10)?,
+        meta: row.get(11)?,
+        reaction: row.get(12)?,
     })
 }
 
@@ -3941,12 +4126,14 @@ pub fn run() {
             scheduled_unread_count,
             set_active_model_profile,
             set_advanced_settings,
+            set_character_letter_reaction,
             set_character_skill,
             set_missed_task_policy,
             set_review_mode,
             set_scheduled_task_enabled,
             set_workspace_path,
             pick_workspace_path,
+            stage_dropped_files,
             send_pi_prompt,
             test_model_connection,
             toggle_character_moment_like,
@@ -3965,6 +4152,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
+        attachment_kind, unique_attachment_path,
         append_chat_message_to_path, build_memory_backend_config_payload,
         build_sidecar_prompt_payload,
         create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
@@ -3972,7 +4160,7 @@ mod tests {
         add_character_moment_comment_to_path, toggle_character_moment_like_to_path,
         list_character_letters_from_path, list_character_moments_from_path,
         list_chat_sessions_from_path, sidecar_prompt_command_args,
-        mark_character_letter_read_to_path,
+        mark_character_letter_read_to_path, set_character_letter_reaction_to_path,
         memory_status_from_paths, normalize_openai_compatible_settings, parse_sidecar_stream_line,
         read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
         read_advanced_settings_from_path, read_review_mode_from_path,
@@ -4064,6 +4252,37 @@ mod tests {
         assert_eq!(read_review_mode_from_path(&path).expect("read"), "default");
 
         fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn attachment_kind_maps_extensions_to_ui_categories() {
+        assert_eq!(attachment_kind(&PathBuf::from("a/photo.PNG")), "image");
+        assert_eq!(attachment_kind(&PathBuf::from("report.pdf")), "pdf");
+        assert_eq!(attachment_kind(&PathBuf::from("notes.md")), "text");
+        assert_eq!(attachment_kind(&PathBuf::from("deck.pptx")), "document");
+        assert_eq!(attachment_kind(&PathBuf::from("mystery.bin")), "file");
+        assert_eq!(attachment_kind(&PathBuf::from("noext")), "file");
+    }
+
+    #[test]
+    fn unique_attachment_path_avoids_clobbering_existing_files() {
+        let dir = std::env::temp_dir().join(format!("cockapoo-attach-{}", temp_path_nonce()));
+        fs::create_dir_all(&dir).expect("create dir");
+
+        // 目录里没有同名文件时，直接用原名。
+        let first = unique_attachment_path(&dir, "report.pdf");
+        assert_eq!(first, dir.join("report.pdf"));
+
+        // 占位后再来一次，应插入 " (1)" 而不是覆盖。
+        fs::write(&first, b"x").expect("write");
+        let second = unique_attachment_path(&dir, "report.pdf");
+        assert_eq!(second, dir.join("report (1).pdf"));
+
+        // 无扩展名文件也能让路。
+        fs::write(dir.join("LICENSE"), b"x").expect("write");
+        assert_eq!(unique_attachment_path(&dir, "LICENSE"), dir.join("LICENSE (1)"));
+
+        fs::remove_dir_all(&dir).ok();
     }
 
     #[test]
@@ -4580,6 +4799,8 @@ mod tests {
                 deliver_at: "2024-01-01T08:00:00Z".into(),
                 sender: None,
                 reply_to: None,
+                kind: None,
+                meta: None,
             },
             "2024-01-01T00:00:00Z",
         )
@@ -4594,6 +4815,8 @@ mod tests {
                 deliver_at: "2024-01-02T08:00:00Z".into(),
                 sender: None,
                 reply_to: None,
+                kind: None,
+                meta: None,
             },
             "2024-01-01T01:00:00Z",
         )
@@ -4608,6 +4831,8 @@ mod tests {
                 deliver_at: "2024-01-03T08:00:00Z".into(),
                 sender: None,
                 reply_to: None,
+                kind: None,
+                meta: None,
             },
             "2024-01-01T02:00:00Z",
         )
@@ -4650,6 +4875,8 @@ mod tests {
                 deliver_at: "2024-02-01T00:00:00Z".into(),
                 sender: Some("user".into()),
                 reply_to: None,
+                kind: None,
+                meta: None,
             },
             "2024-02-01T00:00:00Z",
         )
@@ -4666,12 +4893,75 @@ mod tests {
                 deliver_at: "2024-02-01T06:00:00Z".into(),
                 sender: Some("character".into()),
                 reply_to: Some(user_letter.id.clone()),
+                kind: None,
+                meta: None,
             },
             "2024-02-01T01:00:00Z",
         )
         .expect("reply should save");
         assert_eq!(reply.sender, "character");
         assert_eq!(reply.reply_to.as_deref(), Some(user_letter.id.as_str()));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn character_letters_store_kind_meta_and_reaction() {
+        let path = temp_chat_history_path();
+
+        // 明确指定 kind=gift + meta，回读应原样保留。
+        let gift = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "给你的小东西".into(),
+                body: "在沙滩上捡的，形状像你的耳朵。".into(),
+                mood: Some("playful".into()),
+                deliver_at: "2024-03-01T08:00:00Z".into(),
+                sender: None,
+                reply_to: None,
+                kind: Some("gift".into()),
+                meta: Some(r#"{"item":"贝壳"}"#.into()),
+            },
+            "2024-03-01T00:00:00Z",
+        )
+        .expect("gift keepsake should save");
+        assert_eq!(gift.kind, "gift");
+        assert_eq!(gift.meta.as_deref(), Some(r#"{"item":"贝壳"}"#));
+        assert!(gift.reaction.is_none());
+
+        // 不指定 kind 时按 postcard 兜底。
+        let fallback = insert_character_letter_to_path(
+            &path,
+            AddCharacterLetterRequest {
+                character_id: "lulin".into(),
+                subject: "无 kind".into(),
+                body: "兜底为明信片".into(),
+                mood: None,
+                deliver_at: "2024-03-02T08:00:00Z".into(),
+                sender: None,
+                reply_to: None,
+                kind: None,
+                meta: None,
+            },
+            "2024-03-02T00:00:00Z",
+        )
+        .expect("fallback keepsake should save");
+        assert_eq!(fallback.kind, "postcard");
+
+        // 写入回应：reaction 落库，且自动标记已读。
+        let reacted = set_character_letter_reaction_to_path(
+            &path,
+            &gift.id,
+            Some(r#"{"emoji":"🥰","text":"好喜欢","at":1709280000000}"#),
+            "2024-03-01T09:00:00Z",
+        )
+        .expect("reaction should save");
+        assert_eq!(
+            reacted.reaction.as_deref(),
+            Some(r#"{"emoji":"🥰","text":"好喜欢","at":1709280000000}"#)
+        );
+        assert_eq!(reacted.read_at.as_deref(), Some("2024-03-01T09:00:00Z"));
 
         let _ = fs::remove_file(path);
     }

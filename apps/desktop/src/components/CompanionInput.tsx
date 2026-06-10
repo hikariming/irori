@@ -1,6 +1,8 @@
-import { Button, TextArea, Tooltip } from "@heroui/react";
+import { Button, TextArea } from "@heroui/react";
 import { useState } from "react";
 
+import { attachmentKindLabel, formatAttachmentSize } from "./attachment-model";
+import type { StagedAttachment } from "./desktop-backend";
 import { canSendMessage, defaultComposerState } from "./input-model";
 import {
   DEFAULT_REVIEW_MODE,
@@ -9,25 +11,70 @@ import {
   type ReviewMode
 } from "./review-mode-model";
 
-type ToolAction = {
-  id: string;
-  label: string;
-  icon: string;
-};
-
-const toolActions: ToolAction[] = [
-  { id: "attach", label: "添加上下文", icon: "+" },
-  { id: "voice", label: "语音输入", icon: "⌁" },
-  { id: "prompt", label: "提示模板", icon: "/" }
-];
-
 type CompanionInputProps = {
   disabled?: boolean;
   isSending?: boolean;
   reviewMode?: ReviewMode;
+  attachments?: StagedAttachment[];
+  isStagingFiles?: boolean;
+  onRemoveAttachment?: (id: string) => void;
   onReviewModeChange?: (mode: ReviewMode) => void;
   onSend?: (draft: string) => Promise<void> | void;
 };
+
+function AttachmentIcon({ kind }: { kind: StagedAttachment["kind"] }) {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      {kind === "image" ? (
+        <>
+          <rect x="3" y="4" width="18" height="16" rx="2" />
+          <circle cx="8.5" cy="9" r="1.5" />
+          <path d="M21 16l-5-5L5 20" />
+        </>
+      ) : (
+        <>
+          <path d="M14 3v5h5" />
+          <path d="M6 3h8l5 5v11a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function AttachmentChips({
+  attachments,
+  isStaging,
+  onRemove
+}: {
+  attachments: StagedAttachment[];
+  isStaging: boolean;
+  onRemove?: (id: string) => void;
+}) {
+  if (attachments.length === 0 && !isStaging) {
+    return null;
+  }
+
+  return (
+    <div className="composer-attachments" aria-label="已附文件">
+      {attachments.map((attachment) => (
+        <span className="composer-attachment" key={attachment.id} title={`${attachmentKindLabel(attachment.kind)} · ${formatAttachmentSize(attachment.size)}`}>
+          <AttachmentIcon kind={attachment.kind} />
+          <span className="composer-attachment__name">{attachment.name}</span>
+          <span className="composer-attachment__size">{formatAttachmentSize(attachment.size)}</span>
+          <button
+            type="button"
+            className="composer-attachment__remove"
+            aria-label={`移除 ${attachment.name}`}
+            onClick={() => onRemove?.(attachment.id)}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      {isStaging ? <span className="composer-attachment is-staging">正在收下文件…</span> : null}
+    </div>
+  );
+}
 
 function ReviewModeIcon({ risky }: { risky: boolean }) {
   return (
@@ -99,11 +146,16 @@ export function CompanionInput({
   disabled = false,
   isSending = false,
   reviewMode = DEFAULT_REVIEW_MODE,
+  attachments = [],
+  isStagingFiles = false,
+  onRemoveAttachment,
   onReviewModeChange,
   onSend
 }: CompanionInputProps) {
   const [draft, setDraft] = useState(defaultComposerState.draft);
-  const isSendable = canSendMessage({ draft, disabled });
+  // 有附件时即使没打字也能发：让角色直接处理拖进来的文件。
+  const hasAttachments = attachments.length > 0;
+  const isSendable = canSendMessage({ draft, disabled }) || (!disabled && hasAttachments);
 
   async function sendMessage() {
     if (!isSendable) {
@@ -118,29 +170,26 @@ export function CompanionInput({
   return (
     <section className="companion-input-shell" aria-label="消息输入">
       <div className="composer-card">
+        <AttachmentChips attachments={attachments} isStaging={isStagingFiles} onRemove={onRemoveAttachment} />
         <TextArea
           aria-label="输入给角色的消息"
           className="composer-textarea"
           disabled={disabled}
           maxLength={1200}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder={disabled ? "先在系统设置里配置模型供应商..." : "跟示璃说点什么，或者丢一个任务让 ta 陪你拆..."}
+          placeholder={
+            disabled
+              ? "先在系统设置里配置模型供应商..."
+              : hasAttachments
+                ? "想让 ta 怎么处理这些文件？（留空直接发也行）"
+                : "跟示璃说点什么，或者把文件拖进来让 ta 陪你看..."
+          }
           value={draft}
         />
 
         <div className="composer-footer">
           <div className="composer-tools" aria-label="输入工具">
             <ReviewModeSelector reviewMode={reviewMode} onReviewModeChange={onReviewModeChange} />
-            {toolActions.map((action) => (
-              <Tooltip key={action.id}>
-                <Tooltip.Trigger>
-                  <Button aria-label={action.label} className="composer-tool-button" type="button">
-                    {action.icon}
-                  </Button>
-                </Tooltip.Trigger>
-                <Tooltip.Content>{action.label}</Tooltip.Content>
-              </Tooltip>
-            ))}
           </div>
 
           <div className="composer-send-area">

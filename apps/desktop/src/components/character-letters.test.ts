@@ -4,23 +4,23 @@ import { test } from "node:test";
 import type { CharacterCard } from "./character-cards.ts";
 import { defaultCharacterState } from "./character-state.ts";
 import {
-  canSubmitLetterDraft,
-  composeLetterPrompt,
-  composeLetterReplyPrompt,
-  createInitialLetterDraft,
+  chooseKeepsakeKind,
+  composeGiftPrompt,
+  composeNotePrompt,
+  composePostcardPrompt,
+  composeReactionReplyPrompt,
+  formatKeepsakeEta,
   formatLetterTime,
   isDelivered,
+  KEEPSAKE_KINDS,
   LETTER_TURN_THRESHOLD,
-  MIN_LETTER_GAP_MS,
-  parseLetterReply,
-  pickDeliverAt,
-  pickReplyDeliverAt,
+  parseKeepsake,
+  pickKeepsakeDeliverAt,
   sanitizeLetters,
   shouldTryLetterAfterChat,
-  shouldWriteLetter,
   summarizeRecentDialogue,
-  toggleLetterDraftRecipient,
-  type CharacterLetter
+  type CharacterLetter,
+  type KeepsakeKind
 } from "./character-letters.ts";
 
 const card = {
@@ -34,43 +34,50 @@ function familiarState() {
   return { ...defaultCharacterState("lulin"), affinity: 40, energy: 80 };
 }
 
-test("shouldWriteLetter requires more than a stranger relationship", () => {
-  const stranger = { ...defaultCharacterState("lulin"), affinity: 10, energy: 80 };
-  assert.equal(shouldWriteLetter(stranger, null, 10 * MIN_LETTER_GAP_MS), false);
-  assert.equal(shouldWriteLetter(familiarState(), null, 10 * MIN_LETTER_GAP_MS), true);
+function closeState() {
+  return { ...defaultCharacterState("lulin"), affinity: 75, energy: 90 };
+}
+
+const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
+
+test("chooseKeepsakeKind returns null for strangers", () => {
+  const stranger = { ...defaultCharacterState("lulin"), affinity: 10, energy: 90 };
+  assert.equal(chooseKeepsakeKind(stranger, {}, Date.now(), () => 0), null);
 });
 
-test("shouldWriteLetter respects the re-write gap and energy floor", () => {
-  const now = 10 * MIN_LETTER_GAP_MS;
-  assert.equal(shouldWriteLetter(familiarState(), now - MIN_LETTER_GAP_MS - 1, now), true);
-  assert.equal(shouldWriteLetter(familiarState(), now - 1_000, now), false);
-  const tired = { ...familiarState(), energy: 10 };
-  assert.equal(shouldWriteLetter(tired, null, now), false);
+test("chooseKeepsakeKind never returns gift below the close tier", () => {
+  // familiar：礼物门槛不到，掷再多次也只会是便利贴/明信片。
+  for (let roll = 0; roll < 1; roll += 0.05) {
+    const kind = chooseKeepsakeKind(familiarState(), {}, Date.now(), () => roll);
+    assert.notEqual(kind, "gift");
+    assert.ok(kind === "note" || kind === "postcard");
+  }
 });
 
-test("composeLetterPrompt is persona-aware and asks for the subject/body format", () => {
-  const prompt = composeLetterPrompt(card, familiarState(), Date.now());
-  assert.match(prompt, /璐林/);
-  assert.match(prompt, /安静的研究者/);
-  assert.match(prompt, /主题：/);
-  assert.match(prompt, /正文：/);
+test("chooseKeepsakeKind can pick gift once close enough", () => {
+  // 把便利贴/明信片都压在冷却里，只剩礼物可选。
+  const lastByKind = { note: Date.now(), postcard: Date.now() };
+  const kind = chooseKeepsakeKind(closeState(), lastByKind, Date.now(), () => 0.0);
+  assert.equal(kind, "gift");
 });
 
-test("composeLetterPrompt weaves in recent dialogue when provided", () => {
-  const dialogue = "ta：今天好累\n你：抱抱，早点休息";
-  const prompt = composeLetterPrompt(card, familiarState(), Date.now(), dialogue);
-  assert.match(prompt, /仅供你回味/);
-  assert.match(prompt, /今天好累/);
-  // 没传对话时不应出现「最近聊到」回味段落，也没有具体对话内容。
-  const noDialogue = composeLetterPrompt(card, familiarState(), Date.now());
-  assert.doesNotMatch(noDialogue, /仅供你回味/);
-  assert.doesNotMatch(noDialogue, /今天好累/);
+test("chooseKeepsakeKind skips kinds still in cooldown", () => {
+  const now = 100 * DAY;
+  // 便利贴刚送过（6h 冷却内），明信片也刚送过（20h 冷却内）→ 只能选礼物。
+  const lastByKind = { note: now - HOUR, postcard: now - 2 * HOUR };
+  const kind = chooseKeepsakeKind(closeState(), lastByKind, now, () => 0.99);
+  assert.equal(kind, "gift");
+});
+
+test("chooseKeepsakeKind returns null when everything is in cooldown", () => {
+  const now = 100 * DAY;
+  const lastByKind = { note: now - HOUR, postcard: now - HOUR, gift: now - HOUR };
+  assert.equal(chooseKeepsakeKind(closeState(), lastByKind, now, () => 0), null);
 });
 
 test("shouldTryLetterAfterChat gates on turn count then a dice roll", () => {
-  // 没聊够轮数，骰子再小也不写。
   assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD - 1, () => 0), false);
-  // 聊够了：骰子低于概率才写。
   assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD, () => 0), true);
   assert.equal(shouldTryLetterAfterChat(LETTER_TURN_THRESHOLD, () => 0.99), false);
 });
@@ -78,121 +85,122 @@ test("shouldTryLetterAfterChat gates on turn count then a dice roll", () => {
 test("summarizeRecentDialogue keeps the tail, labels speakers, and trims long lines", () => {
   const turns = Array.from({ length: 8 }, (_, i) => ({ user: `问题${i}`, reply: `回答${i}` }));
   const summary = summarizeRecentDialogue(turns, 3);
-  // 只保留尾部 3 回合。
   assert.doesNotMatch(summary, /问题4/);
   assert.match(summary, /ta：问题7/);
   assert.match(summary, /你：回答7/);
-  // 超长行被裁短。
   const long = summarizeRecentDialogue([{ user: "好".repeat(100), reply: "" }], 1);
   assert.ok(long.length <= "ta：".length + 60);
 });
 
-test("composeLetterReplyPrompt echoes the user letter and asks for memory markers", () => {
-  const prompt = composeLetterReplyPrompt(
-    card,
-    familiarState(),
-    { subject: "想你了", body: "今天养了只猫，取名团子。" },
-    Date.now()
-  );
+test("composePostcardPrompt is persona-aware and asks for the place/body format", () => {
+  const prompt = composePostcardPrompt(card, familiarState(), Date.now());
   assert.match(prompt, /璐林/);
-  assert.match(prompt, /想你了/);
-  assert.match(prompt, /团子/);
-  assert.match(prompt, /\[memory:fact\]/);
-  assert.match(prompt, /主题：/);
+  assert.match(prompt, /安静的研究者/);
+  assert.match(prompt, /明信片/);
+  assert.match(prompt, /地点：/);
   assert.match(prompt, /正文：/);
 });
 
-test("parseLetterReply extracts subject and body and strips markers", () => {
-  const reply = "主题：好久不见\n正文：最近天气转凉了。\n[sticker:warm]\n[memory:like] 用户喜欢猫\n记得加件外套。";
-  const { subject, body } = parseLetterReply(reply);
-  assert.equal(subject, "好久不见");
-  assert.match(body, /最近天气转凉了。/);
-  assert.match(body, /记得加件外套。/);
-  assert.doesNotMatch(body, /sticker|memory/);
+test("composePostcardPrompt weaves in recent dialogue when provided", () => {
+  const dialogue = "ta：今天好累\n你：抱抱，早点休息";
+  const prompt = composePostcardPrompt(card, familiarState(), Date.now(), dialogue);
+  assert.match(prompt, /仅供你回味/);
+  assert.match(prompt, /今天好累/);
+  const noDialogue = composePostcardPrompt(card, familiarState(), Date.now());
+  assert.doesNotMatch(noDialogue, /仅供你回味/);
 });
 
-test("parseLetterReply falls back when the format is missing", () => {
-  const { subject, body } = parseLetterReply("今天我去了海边，想起了你。");
-  assert.equal(body, "今天我去了海边，想起了你。");
-  assert.ok(subject.length > 0);
+test("composeNotePrompt asks for a tiny one-liner with no labels", () => {
+  const prompt = composeNotePrompt(card, familiarState(), Date.now());
+  assert.match(prompt, /便利贴/);
+  assert.match(prompt, /一到两句/);
+  assert.doesNotMatch(prompt, /地点：/);
 });
 
-test("pickDeliverAt lands within the 1-24h delay window", () => {
+test("composeGiftPrompt asks for the gift/note format", () => {
+  const prompt = composeGiftPrompt(card, closeState(), Date.now());
+  assert.match(prompt, /小礼物|礼物：/);
+  assert.match(prompt, /附言：/);
+});
+
+test("composeReactionReplyPrompt echoes the reaction and allows memory markers", () => {
+  const prompt = composeReactionReplyPrompt(
+    card,
+    familiarState(),
+    { kind: "gift", subject: "贝壳", body: "在沙滩上捡的。" },
+    { emoji: "🥰", text: "好喜欢，我也养了只猫叫团子", at: Date.now() }
+  );
+  assert.match(prompt, /璐林/);
+  assert.match(prompt, /🥰/);
+  assert.match(prompt, /团子/);
+  assert.match(prompt, /\[memory:fact\]/);
+});
+
+test("parseKeepsake postcard extracts place into meta and body", () => {
+  const parsed = parseKeepsake("postcard", "地点：海边咖啡馆\n正文：一个人看海，想起你说过想来。");
+  assert.equal(parsed.meta?.place, "海边咖啡馆");
+  assert.match(parsed.body, /一个人看海/);
+  assert.equal(parsed.subject, "海边咖啡馆");
+});
+
+test("parseKeepsake gift extracts item into meta", () => {
+  const parsed = parseKeepsake("gift", "礼物：贝壳\n附言：形状像你的耳朵。\n[memory:like] 用户喜欢海");
+  assert.equal(parsed.meta?.item, "贝壳");
+  assert.match(parsed.body, /形状像你的耳朵/);
+  assert.doesNotMatch(parsed.body, /memory/);
+});
+
+test("parseKeepsake note keeps a short body and no meta", () => {
+  const parsed = parseKeepsake("note", "记得喝水，别熬太晚。");
+  assert.equal(parsed.meta, null);
+  assert.equal(parsed.subject, "便利贴");
+  assert.equal(parsed.body, "记得喝水，别熬太晚。");
+});
+
+test("parseKeepsake falls back when the format is missing", () => {
+  const parsed = parseKeepsake("postcard", "今天我去了海边，想起了你。");
+  assert.match(parsed.body, /今天我去了海边/);
+  assert.ok(parsed.subject.length > 0);
+});
+
+test("pickKeepsakeDeliverAt lands within each kind's window", () => {
   const now = 1_000_000_000_000;
-  assert.equal(pickDeliverAt(now, () => 0), now + 1 * 60 * 60 * 1000);
-  const late = pickDeliverAt(now, () => 0.999999);
-  assert.ok(late > now + 23 * 60 * 60 * 1000);
-  assert.ok(late <= now + 24 * 60 * 60 * 1000);
+  // note: 5min ~ 3h
+  assert.equal(pickKeepsakeDeliverAt("note", now, () => 0), now + 5 * 60 * 1000);
+  assert.ok(pickKeepsakeDeliverAt("note", now, () => 0.999999) <= now + 3 * HOUR);
+  // postcard: 1h ~ 12h
+  assert.equal(pickKeepsakeDeliverAt("postcard", now, () => 0), now + HOUR);
+  assert.ok(pickKeepsakeDeliverAt("postcard", now, () => 0.999999) <= now + 12 * HOUR);
+  // gift: 3h ~ 24h
+  assert.equal(pickKeepsakeDeliverAt("gift", now, () => 0), now + 3 * HOUR);
+  assert.ok(pickKeepsakeDeliverAt("gift", now, () => 0.999999) <= now + DAY);
 });
 
-test("pickReplyDeliverAt shortens replies for close, energetic characters with shared history", () => {
-  const now = 1_000_000_000_000;
-  const quickState = {
-    ...familiarState(),
-    affinity: 92,
-    energy: 95,
-    mood: "warm",
-    meetCount: 8,
-    impressions: [
-      { id: "a", kind: "like", text: "ta 喜欢安静的夜晚", weight: 2, createdAt: now - 1 },
-      { id: "b", kind: "fact", text: "ta 最近在写论文", weight: 1, createdAt: now - 2 }
-    ]
-  };
-  const slowState = {
-    ...familiarState(),
-    affinity: 24,
-    energy: 18,
-    mood: "guarded",
-    meetCount: 1,
-    impressions: [{ id: "g", kind: "grudge", text: "ta 上次语气很冲", weight: 4, createdAt: now - 3 }]
-  };
-
-  const quick = pickReplyDeliverAt(now, quickState, { subject: "今晚", body: "想和你说句话。" }, () => 0);
-  const slow = pickReplyDeliverAt(now, slowState, { subject: "很长的信", body: "慢慢读。".repeat(180) }, () => 0);
-
-  assert.ok(quick >= now + 30 * 60 * 1000);
-  assert.ok(quick <= now + 3 * 60 * 60 * 1000);
-  assert.ok(slow >= now + 24 * 60 * 60 * 1000);
-  assert.ok(slow <= now + 7 * 24 * 60 * 60 * 1000);
-});
-
-test("pickReplyDeliverAt keeps deterministic random placement inside the dynamic window", () => {
-  const now = 1_000_000_000_000;
-  const state = { ...familiarState(), affinity: 60, energy: 60, mood: "calm", meetCount: 3 };
-  const earliest = pickReplyDeliverAt(now, state, { subject: "早", body: "今天好吗" }, () => 0);
-  const latest = pickReplyDeliverAt(now, state, { subject: "早", body: "今天好吗" }, () => 0.999999);
-
-  assert.ok(latest > earliest);
-  assert.ok(latest - earliest >= 12 * 60 * 60 * 1000);
-});
-
-test("letter draft starts from the focused character but supports multiple recipients", () => {
-  const draft = createInitialLetterDraft("lulin");
-  assert.deepEqual(draft.recipientIds, ["lulin"]);
-  assert.equal(canSubmitLetterDraft(draft), false);
-
-  const withSecond = toggleLetterDraftRecipient(draft, "sakuramio");
-  assert.deepEqual(withSecond.recipientIds, ["lulin", "sakuramio"]);
-
-  const withoutFirst = toggleLetterDraftRecipient(withSecond, "lulin");
-  assert.deepEqual(withoutFirst.recipientIds, ["sakuramio"]);
-
-  assert.equal(canSubmitLetterDraft({ ...withoutFirst, body: "晚安，今天也辛苦了。" }), true);
-});
-
-test("reply drafts keep a single locked recipient", () => {
-  const draft = createInitialLetterDraft("lulin", { replyTo: "letter-a", subject: "回复：晚安" });
-  assert.deepEqual(draft.recipientIds, ["lulin"]);
-  assert.equal(draft.replyTo, "letter-a");
-  assert.equal(draft.subject, "回复：晚安");
-  assert.deepEqual(toggleLetterDraftRecipient(draft, "sakuramio").recipientIds, ["lulin"]);
+test("KEEPSAKE_KINDS covers the three forms", () => {
+  assert.deepEqual([...KEEPSAKE_KINDS].sort(), (["gift", "note", "postcard"] as KeepsakeKind[]).sort());
 });
 
 test("isDelivered gates on deliverAt", () => {
   const letter = { deliverAt: 1_000 } as CharacterLetter;
   assert.equal(isDelivered(letter, 999), false);
   assert.equal(isDelivered(letter, 1_000), true);
-  assert.equal(isDelivered(letter, 2_000), true);
+});
+
+test("formatKeepsakeEta reports fuzzy logistics-style arrival windows", () => {
+  // 用一个固定的本地时刻做基准：2026-06-10 16:46。
+  const now = new Date(2026, 5, 10, 16, 46, 0, 0).getTime();
+  assert.equal(formatKeepsakeEta(now + 10 * 60_000, now), "马上就到了");
+  assert.equal(formatKeepsakeEta(now + 45 * 60_000, now), "预计 1 小时内到");
+  assert.equal(formatKeepsakeEta(now + 3 * 60 * 60_000, now), "预计 3 小时后到");
+  // 今晚 23:55 → 同一天的「晚上」。
+  const tonight = new Date(2026, 5, 10, 23, 55, 0, 0).getTime();
+  assert.equal(formatKeepsakeEta(tonight, now), "预计今天晚上到");
+  // 明天上午。
+  const tomorrowMorning = new Date(2026, 5, 11, 9, 0, 0, 0).getTime();
+  assert.equal(formatKeepsakeEta(tomorrowMorning, now), "预计明天上午到");
+  // 更远 → 报日期。
+  const later = new Date(2026, 5, 14, 10, 0, 0, 0).getTime();
+  assert.equal(formatKeepsakeEta(later, now), "预计 6 月 14 日到");
 });
 
 test("formatLetterTime renders relative labels", () => {
@@ -203,37 +211,69 @@ test("formatLetterTime renders relative labels", () => {
   assert.equal(formatLetterTime(now - 2 * 86_400_000, now), "2 天前");
 });
 
-test("sanitizeLetters drops invalid entries and sorts by deliverAt desc", () => {
+test("sanitizeLetters defaults kind to postcard and reads meta/reaction", () => {
   const result = sanitizeLetters([
-    { id: "a", characterId: "lulin", subject: "早", body: "正文a", mood: "calm", createdAt: 100, deliverAt: 200, readAt: null },
-    { id: "b", characterId: "lulin", subject: " ", body: "正文b", mood: "warm", createdAt: 100, deliverAt: 300, readAt: null },
-    { id: "c", characterId: "lulin", subject: "晚", body: "正文c", mood: "bogus", createdAt: 100, deliverAt: 400, readAt: "500" },
-    7
-  ]);
-  assert.equal(result.length, 2);
-  assert.equal(result[0].id, "c");
-  assert.equal(result[0].mood, null);
-  assert.equal(result[0].readAt, 500);
-  assert.equal(result[1].id, "a");
-});
-
-test("sanitizeLetters defaults deliverAt to createdAt when missing", () => {
-  const result = sanitizeLetters([{ id: "a", characterId: "lulin", subject: "s", body: "b", mood: null, createdAt: 150 }]);
-  assert.equal(result[0].deliverAt, 150);
-  assert.equal(result[0].readAt, null);
-});
-
-test("sanitizeLetters reads sender/replyTo and defaults to character", () => {
-  const result = sanitizeLetters([
-    { id: "u", characterId: "lulin", subject: "嗨", body: "我先写", createdAt: 100, deliverAt: 100, readAt: null, sender: "user", replyTo: null },
-    { id: "r", characterId: "lulin", subject: "回你", body: "我回了", createdAt: 200, deliverAt: 300, readAt: null, sender: "character", replyTo: "u" },
-    { id: "d", characterId: "lulin", subject: "默认", body: "没字段", createdAt: 50, deliverAt: 50, readAt: null }
+    {
+      id: "p",
+      characterId: "lulin",
+      subject: "海边",
+      body: "正文p",
+      mood: "calm",
+      createdAt: 100,
+      deliverAt: 400,
+      readAt: null,
+      kind: "postcard",
+      meta: { place: "海边" }
+    },
+    {
+      id: "g",
+      characterId: "lulin",
+      subject: "贝壳",
+      body: "正文g",
+      mood: "warm",
+      createdAt: 100,
+      deliverAt: 300,
+      readAt: null,
+      kind: "gift",
+      meta: { item: "贝壳" },
+      reaction: { emoji: "🥰", text: "谢谢", at: 999 }
+    },
+    {
+      id: "d",
+      characterId: "lulin",
+      subject: "默认",
+      body: "没字段",
+      createdAt: 50,
+      deliverAt: 50,
+      readAt: null
+    }
   ]);
   const byId = Object.fromEntries(result.map((letter) => [letter.id, letter]));
-  assert.equal(byId.u.sender, "user");
-  assert.equal(byId.u.replyTo, null);
-  assert.equal(byId.r.sender, "character");
-  assert.equal(byId.r.replyTo, "u");
-  assert.equal(byId.d.sender, "character");
-  assert.equal(byId.d.replyTo, null);
+  assert.equal(byId.p.kind, "postcard");
+  assert.equal(byId.p.meta?.place, "海边");
+  assert.equal(byId.g.kind, "gift");
+  assert.equal(byId.g.meta?.item, "贝壳");
+  assert.equal(byId.g.reaction?.emoji, "🥰");
+  // 缺 kind/meta 的老数据兜底为明信片、无 meta/reaction。
+  assert.equal(byId.d.kind, "postcard");
+  assert.equal(byId.d.meta, null);
+  assert.equal(byId.d.reaction, null);
+  // 按 deliverAt 倒序。
+  assert.equal(result[0].id, "p");
+});
+
+test("sanitizeLetters drops reactions with neither emoji nor text", () => {
+  const [letter] = sanitizeLetters([
+    {
+      id: "x",
+      characterId: "lulin",
+      subject: "s",
+      body: "b",
+      createdAt: 1,
+      deliverAt: 1,
+      readAt: null,
+      reaction: { at: 5 }
+    }
+  ]);
+  assert.equal(letter.reaction, null);
 });

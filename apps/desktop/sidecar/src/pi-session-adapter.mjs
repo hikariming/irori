@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { delimiter, dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -142,6 +143,66 @@ export function resolveCockapooToolGatePackageRoot() {
   return fileURLToPath(new URL("../extensions/cockapoo-tool-gate", import.meta.url));
 }
 
+// Both the `pi` CLI (child processes) and pi-subagents' parent-side extension
+// resolve their agent dir from this env var (ENV_AGENT_DIR in pi's config).
+export const piAgentDirEnvVar = "PI_CODING_AGENT_DIR";
+
+// App-owned agent dir for subagent children. The model bridge (models.json,
+// agents/*.md pins) is materialized HERE instead of the user's global
+// ~/.pi/agent, so the bridge can never overwrite or delete a pi CLI user's
+// own config. Children are pointed at it via piAgentDirEnvVar.
+export function resolveSubagentAgentDir({ env = process.env } = {}) {
+  return env.COCKAPOO_SUBAGENT_AGENT_DIR || join(homedir(), ".cockapoo", "pi-agent");
+}
+
+// Materialize the subagent model bridge into the app-owned agent dir and point
+// child processes (and pi-subagents' agent discovery) at it through the env.
+// Returns the dir the bridge was written to.
+export function configureSubagentBridge({
+  modelSettings = defaultOpenAiCompatibleSettings,
+  runtimeToken,
+  subagentsRoot,
+  gateExtensionRoot,
+  env = process.env,
+  agentDir = resolveSubagentAgentDir({ env })
+} = {}) {
+  // The parent session keeps the agent dir it was created with; only code that
+  // re-resolves the dir from the env (pi-subagents in-process, spawned `pi`
+  // children) follows this pointer.
+  env[piAgentDirEnvVar] = agentDir;
+
+  const native = resolveNativePiProvider(modelSettings);
+
+  if (native) {
+    env[native.envVar] = runtimeToken;
+    // Drop any stale models.json bridge left by a previous non-native session.
+    clearSubagentModelsJson({ agentDir });
+  } else {
+    env[subagentApiKeyEnvVar] = runtimeToken;
+    try {
+      materializeSubagentModelsJson({ agentDir, settings: modelSettings });
+    } catch {
+      // Best-effort: without the bridge the child can't authenticate and will
+      // surface a clear auth error, which is no worse than before.
+    }
+  }
+
+  try {
+    materializeSubagentModelOverrides({
+      packageAgentsDir: join(subagentsRoot, "agents"),
+      agentDir,
+      modelRef: native ? native.modelRef : subagentBridgeModelRef(modelSettings),
+      // Pin the gate INTO each child — children don't inherit it otherwise.
+      extensions: gateExtensionRoot
+    });
+  } catch {
+    // Best-effort: if we can't write overrides the child falls back to its
+    // default model (and will surface a clear auth error), no worse than before.
+  }
+
+  return agentDir;
+}
+
 // pi-subagents spawns children by exec'ing the `pi` CLI (hardcoded on non-Windows).
 // We embed the SDK as a library, so `pi` is not on PATH — but the SDK ships one
 // in the (pnpm) store. Locate the bin dir that actually contains an executable
@@ -255,8 +316,9 @@ export async function createCockapooPiSession(options) {
     //      read from an env var (name on disk, secret only in env). The parent uses
     //      an in-memory registry that ignores models.json, so this only affects
     //      children. Either way the key is passed by env and never written to disk.
-    const modelSettings = options?.modelSettings ?? defaultOpenAiCompatibleSettings;
-    const native = resolveNativePiProvider(modelSettings);
+    //
+    // The bridge lands in an app-owned agent dir (resolveSubagentAgentDir) that
+    // children pick up via PI_CODING_AGENT_DIR — never in the user's ~/.pi/agent.
 
     // pi-subagents spawns children via `pi` on PATH; make the bundled one findable.
     ensureBundledPiOnPath();
@@ -266,32 +328,12 @@ export async function createCockapooPiSession(options) {
       additionalPackageRoots.push(resolveCockapooToolGatePackageRoot());
     }
 
-    if (native) {
-      process.env[native.envVar] = options.runtimeToken;
-      // Drop any stale models.json bridge left by a previous non-native session.
-      clearSubagentModelsJson({ agentDir });
-    } else {
-      process.env[subagentApiKeyEnvVar] = options.runtimeToken;
-      try {
-        materializeSubagentModelsJson({ agentDir, settings: modelSettings });
-      } catch {
-        // Best-effort: without the bridge the child can't authenticate and will
-        // surface a clear auth error, which is no worse than before.
-      }
-    }
-
-    try {
-      materializeSubagentModelOverrides({
-        packageAgentsDir: join(subagentsRoot, "agents"),
-        agentDir,
-        modelRef: native ? native.modelRef : subagentBridgeModelRef(modelSettings),
-        // Pin the gate INTO each child — children don't inherit it otherwise.
-        extensions: options?.gatePolicy ? resolveCockapooToolGatePackageRoot() : undefined
-      });
-    } catch {
-      // Best-effort: if we can't write overrides the child falls back to its
-      // default model (and will surface a clear auth error), no worse than before.
-    }
+    configureSubagentBridge({
+      modelSettings: options?.modelSettings ?? defaultOpenAiCompatibleSettings,
+      runtimeToken: options.runtimeToken,
+      subagentsRoot,
+      gateExtensionRoot: options?.gatePolicy ? resolveCockapooToolGatePackageRoot() : undefined
+    });
   }
 
   const resourceLoader = new DefaultResourceLoader(buildPiResourceLoaderOptions({

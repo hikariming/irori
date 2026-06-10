@@ -103,9 +103,15 @@ async function main() {
   rl.close();
 }
 
+// Exit only after the final output has drained: process.exit() does not wait
+// for a piped stdout/stderr, so a large response could otherwise be truncated.
+function exitAfterDrain(stream, code) {
+  stream.write("", () => process.exit(code));
+}
+
 main()
-  .then(() => process.exit(0))
+  .then(() => exitAfterDrain(process.stdout, 0))
   .catch((error) => {
     process.stderr.write(error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    exitAfterDrain(process.stderr, 1);
   });

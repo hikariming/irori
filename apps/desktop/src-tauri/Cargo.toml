@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Cockapoo Pi Companion desktop shell"
 authors = ["Cockapoo"]
 edition = "2021"
+license = "Apache-2.0"
 
 [lib]
 name = "cockapoo_pi_companion_lib"

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import type { PiPromptProgressEvent, PiToolConfirmRequest } from "./assistant-progress-model.ts";
 import {
@@ -34,7 +35,14 @@ import type { BrowserPanelSnapshot } from "./browser-panel-model.ts";
 import { defaultToolPolicySettings, type ToolPolicySettings } from "./tool-policy-model.ts";
 import { sanitizeCharacterStates, type CharacterStates, type Mood } from "./character-state.ts";
 import { sanitizeMoments, type CharacterMoment, type MomentActorType } from "./character-moments.ts";
-import { sanitizeLetters, type CharacterLetter, type LetterSender } from "./character-letters.ts";
+import {
+  sanitizeLetters,
+  type CharacterLetter,
+  type KeepsakeKind,
+  type KeepsakeMeta,
+  type KeepsakeReaction,
+  type LetterSender
+} from "./character-letters.ts";
 import type { WorkspaceNode, WorkspaceRootId } from "./workspace-model.ts";
 import { sanitizeReviewMode, type ReviewMode } from "./review-mode-model.ts";
 import {
@@ -65,6 +73,25 @@ export type TestModelConnectionRequest = {
   baseUrl: string;
   modelName: string;
   token?: string;
+};
+
+export type AttachmentKind = "image" | "pdf" | "text" | "document" | "file";
+
+/** A file the user dropped onto the chat, after it has been copied into the workspace. */
+export type StagedAttachment = {
+  id: string;
+  name: string;
+  /** Path relative to the workspace root, e.g. `attachments/report.pdf`. */
+  relPath: string;
+  absPath: string;
+  size: number;
+  kind: AttachmentKind;
+};
+
+/** Window-level OS file drag-drop, normalized across the over/drop/cancel phases. */
+export type FileDropEvent = {
+  kind: "over" | "drop" | "cancel";
+  paths: string[];
 };
 
 export type SendPiPromptRequest = {
@@ -119,6 +146,8 @@ export type AddCharacterLetterRequest = {
   deliverAt: string;
   sender?: LetterSender;
   replyTo?: string | null;
+  kind?: KeepsakeKind;
+  meta?: KeepsakeMeta | null;
 };
 
 type CharacterLetterRecord = {
@@ -132,6 +161,10 @@ type CharacterLetterRecord = {
   readAt: string | null;
   sender: string;
   replyTo: string | null;
+  // kind/meta/reaction 由后端以裸 JSON 字符串回传，前端在此解析。
+  kind: string | null;
+  meta: string | null;
+  reaction: string | null;
 };
 
 export type PiPromptResponse = {
@@ -235,6 +268,7 @@ export type DesktopBackend = {
   listCharacterLetters: (characterId?: string, limit?: number) => Promise<CharacterLetter[]>;
   listCharacterMoments: (characterId?: string, limit?: number) => Promise<CharacterMoment[]>;
   markCharacterLetterRead: (letterId: string) => Promise<CharacterLetter>;
+  setCharacterLetterReaction: (letterId: string, reaction: KeepsakeReaction | null) => Promise<CharacterLetter>;
   loadCharacterStates: () => Promise<CharacterStates>;
   saveCharacterStates: (states: CharacterStates) => Promise<void>;
   getMemoryStatus: () => Promise<MemoryStatus>;
@@ -258,6 +292,10 @@ export type DesktopBackend = {
   saveToolPolicySettings: (settings: ToolPolicySettings) => Promise<ToolPolicySettings>;
   saveWebAccessSettings: (request: SaveWebAccessSettingsRequest) => Promise<WebAccessSettingsState>;
   sendPiPrompt: (request: SendPiPromptRequest) => Promise<PiPromptResponse>;
+  /** Copies dropped files into the workspace so the agent can read them by relative path. */
+  stageDroppedFiles: (paths: string[]) => Promise<StagedAttachment[]>;
+  /** Subscribes to window-level OS file drag-drop; resolves to an unlisten function. */
+  onFileDrop: (callback: (event: FileDropEvent) => void) => Promise<() => void>;
   setActiveModelProfile: (profileId: string) => Promise<ModelSettingsState>;
   testModelConnection: (request?: TestModelConnectionRequest) => Promise<PiPromptResponse>;
   toggleCharacterMomentLike: (request: ToggleCharacterMomentLikeRequest) => Promise<CharacterMoment>;
@@ -393,7 +431,22 @@ function fallbackMomentFromRecord(record: CharacterMomentRecord): CharacterMomen
   };
 }
 
+// 后端把 meta/reaction 以 JSON 字符串裸传；解析失败时安静兜底为 null。
+function parseJsonField<T>(raw: string | null): T | null {
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? (parsed as T) : null;
+  } catch {
+    return null;
+  }
+}
+
 function letterFromRecord(record: CharacterLetterRecord) {
+  const kind: KeepsakeKind =
+    record.kind === "note" || record.kind === "gift" ? record.kind : "postcard";
   return {
     id: record.id,
     characterId: record.characterId,
@@ -404,7 +457,10 @@ function letterFromRecord(record: CharacterLetterRecord) {
     deliverAt: parseStoredTimestamp(record.deliverAt).getTime(),
     readAt: record.readAt ? parseStoredTimestamp(record.readAt).getTime() : null,
     sender: record.sender === "user" ? "user" : "character",
-    replyTo: record.replyTo ?? null
+    replyTo: record.replyTo ?? null,
+    kind,
+    meta: parseJsonField<KeepsakeMeta>(record.meta),
+    reaction: parseJsonField<KeepsakeReaction>(record.reaction)
   };
 }
 
@@ -554,7 +610,10 @@ export function createPreviewBackend(): DesktopBackend {
         deliverAt: parseStoredTimestamp(request.deliverAt).getTime(),
         readAt: null,
         sender: request.sender === "user" ? "user" : "character",
-        replyTo: request.replyTo ?? null
+        replyTo: request.replyTo ?? null,
+        kind: request.kind ?? "postcard",
+        meta: request.meta ?? null,
+        reaction: null
       };
       characterLetters = [letter, ...characterLetters];
       return letter;
@@ -569,8 +628,19 @@ export function createPreviewBackend(): DesktopBackend {
     async markCharacterLetterRead(letterId) {
       const target = characterLetters.find((letter) => letter.id === letterId);
       if (!target) {
-        throw new Error("信件不存在。");
+        throw new Error("信物不存在。");
       }
+      if (target.readAt === null) {
+        target.readAt = Date.now();
+      }
+      return target;
+    },
+    async setCharacterLetterReaction(letterId, reaction) {
+      const target = characterLetters.find((letter) => letter.id === letterId);
+      if (!target) {
+        throw new Error("信物不存在。");
+      }
+      target.reaction = reaction;
       if (target.readAt === null) {
         target.readAt = Date.now();
       }
@@ -715,6 +785,13 @@ export function createPreviewBackend(): DesktopBackend {
       }
 
       throw new Error(previewRuntimeMessage);
+    },
+    async stageDroppedFiles() {
+      // 浏览器预览没有文件系统，也跑不了真实 LLM，拖拽直接当无操作。
+      return [];
+    },
+    async onFileDrop() {
+      return () => {};
     },
     async setActiveModelProfile(profileId) {
       state = setSavedActiveModelProfile(state, profileId);
@@ -869,7 +946,12 @@ export function createTauriBackend(): DesktopBackend {
       return sanitizeMoments(records.map(momentFromRecord));
     },
     async addCharacterLetter(request) {
-      const record = await invoke<CharacterLetterRecord>("add_character_letter", { request });
+      // 后端 meta 字段是裸 JSON 字符串，这里序列化后再过桥。
+      const payload = {
+        ...request,
+        meta: request.meta ? JSON.stringify(request.meta) : null
+      };
+      const record = await invoke<CharacterLetterRecord>("add_character_letter", { request: payload });
       const [letter] = sanitizeLetters([letterFromRecord(record)]);
       return letter ?? letterFromRecord(record);
     },
@@ -879,6 +961,14 @@ export function createTauriBackend(): DesktopBackend {
     },
     async markCharacterLetterRead(letterId) {
       const record = await invoke<CharacterLetterRecord>("mark_character_letter_read", { letterId });
+      const [letter] = sanitizeLetters([letterFromRecord(record)]);
+      return letter ?? letterFromRecord(record);
+    },
+    async setCharacterLetterReaction(letterId, reaction) {
+      const record = await invoke<CharacterLetterRecord>("set_character_letter_reaction", {
+        letterId,
+        reaction: reaction ? JSON.stringify(reaction) : null
+      });
       const [letter] = sanitizeLetters([letterFromRecord(record)]);
       return letter ?? letterFromRecord(record);
     },
@@ -977,6 +1067,22 @@ export function createTauriBackend(): DesktopBackend {
     },
     async sendPiPrompt(request) {
       return invoke<PiPromptResponse>("send_pi_prompt", { request });
+    },
+    async stageDroppedFiles(paths) {
+      return invoke<StagedAttachment[]>("stage_dropped_files", { paths });
+    },
+    async onFileDrop(callback) {
+      // Tauri 的 webview 会拦截 OS 文件拖拽并发 drag-drop 事件（HTML5 drop 拿不到真实路径）。
+      return getCurrentWebview().onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "drop") {
+          callback({ kind: "drop", paths: payload.paths });
+        } else if (payload.type === "enter" || payload.type === "over") {
+          callback({ kind: "over", paths: [] });
+        } else {
+          callback({ kind: "cancel", paths: [] });
+        }
+      });
     },
     async setActiveModelProfile(profileId) {
       const saved = await invoke<SavedModelSettings>("set_active_model_profile", { profileId });

@@ -2,6 +2,7 @@
   "name": "@cockapoo-pi-companion/desktop-sidecar",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "description": "Desktop sidecar: a Node process embedding the Pi coding-agent SDK. Spawned on demand by the Tauri backend (apps/desktop/src-tauri) via the `prompt` script over stdio.",
   "scripts": {

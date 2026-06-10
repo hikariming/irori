@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { collectAssistantText, runCockapooPiPrompt, toPiPromptProgressEvent } from "../src/prompt-runner.mjs";
+import {
+  collectAssistantText,
+  createPromptIdleWatchdog,
+  perRunToolGateConfigPath,
+  runCockapooPiPrompt,
+  toPiPromptProgressEvent
+} from "../src/prompt-runner.mjs";
 
 test("runCockapooPiPrompt dry run returns the selected route without calling a model", async () => {
   const result = await runCockapooPiPrompt({
@@ -803,8 +809,9 @@ test("runCockapooPiPrompt writes web access settings before creating the Pi sess
   assert.equal(calls[0].settings.workflow, "none");
 });
 
-test("runCockapooPiPrompt persists the gate config and env pointer when a path is given", async () => {
+test("runCockapooPiPrompt persists a per-run gate config, points the env at it, and removes it after the run", async () => {
   const calls = [];
+  const removed = [];
   const previousEnv = process.env.COCKAPOO_TOOL_GATE_CONFIG;
   delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
 
@@ -821,6 +828,9 @@ test("runCockapooPiPrompt persists the gate config and env pointer when a path i
       toolGateConfigPath: "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json",
       writeToolGateConfig: async (config) => {
         calls.push({ type: "gate", config });
+      },
+      removeToolGateConfig: async (path) => {
+        removed.push(path);
       },
       createSession: async () => {
         calls.push({ type: "session" });
@@ -849,12 +859,15 @@ test("runCockapooPiPrompt persists the gate config and env pointer when a path i
 
     assert.deepEqual(calls.map((call) => call.type), ["gate", "session"]);
     assert.equal(calls[0].config.mode, "managed");
-    assert.equal(calls[0].config.configPath, "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json");
+    // 并发 run 互不覆盖：写入的是按 run 派生的独立文件，不是共享的基础路径。
+    const writtenPath = calls[0].config.configPath;
+    assert.match(writtenPath, /^\/tmp\/cockapoo-workspace\/\.pi\/cockapoo-tool-gate\..+\.json$/);
+    assert.notEqual(writtenPath, "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json");
     assert.ok(Array.isArray(calls[0].config.gatePolicy.allowedToolNames));
-    assert.equal(
-      process.env.COCKAPOO_TOOL_GATE_CONFIG,
-      "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json"
-    );
+    // 子进程经 env 指针找到的就是本 run 的文件。
+    assert.equal(process.env.COCKAPOO_TOOL_GATE_CONFIG, writtenPath);
+    // run 结束后临时围栏文件被清理。
+    assert.deepEqual(removed, [writtenPath]);
   } finally {
     if (previousEnv === undefined) {
       delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
@@ -862,6 +875,17 @@ test("runCockapooPiPrompt persists the gate config and env pointer when a path i
       process.env.COCKAPOO_TOOL_GATE_CONFIG = previousEnv;
     }
   }
+});
+
+test("perRunToolGateConfigPath derives unique sibling paths from the base path", () => {
+  const first = perRunToolGateConfigPath("/data/cockapoo-tool-gate.json", { pid: 42, token: "aaa" });
+  const second = perRunToolGateConfigPath("/data/cockapoo-tool-gate.json", { pid: 42, token: "bbb" });
+
+  assert.equal(first, "/data/cockapoo-tool-gate.42-aaa.json");
+  assert.equal(second, "/data/cockapoo-tool-gate.42-bbb.json");
+  assert.notEqual(perRunToolGateConfigPath("/data/cockapoo-tool-gate.json"), perRunToolGateConfigPath("/data/cockapoo-tool-gate.json"));
+  // 不以 .json 结尾的基础路径也能加后缀。
+  assert.equal(perRunToolGateConfigPath("/data/gate", { pid: 1, token: "x" }), "/data/gate.1-x.json");
 });
 
 test("runCockapooPiPrompt does not persist a gate config when no path is given", async () => {
@@ -905,7 +929,7 @@ test("runCockapooPiPrompt does not persist a gate config when no path is given",
   assert.equal(gateWrites, 0);
 });
 
-test("runCockapooPiPrompt times out stalled model prompts and disposes the session", { timeout: 500 }, async () => {
+test("runCockapooPiPrompt times out idle model prompts and disposes the session", { timeout: 500 }, async () => {
   let disposed = false;
   let unsubscribed = false;
 
@@ -936,11 +960,148 @@ test("runCockapooPiPrompt times out stalled model prompts and disposes the sessi
           }
         })
       }),
-    /模型响应超时/
+    /等待模型活动超时/
   );
 
   assert.equal(unsubscribed, true);
   assert.equal(disposed, true);
+});
+
+test("runCockapooPiPrompt treats promptTimeoutMs as an idle window: steady events keep a long run alive", { timeout: 1000 }, async () => {
+  // 总时长（约 120ms）远超空闲窗口（30ms），但事件间隔都小于窗口，不应超时。
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：慢慢说",
+    promptTimeoutMs: 30,
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            for (let i = 0; i < 12; i += 1) {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              onEvent({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "字" }
+              });
+            }
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: { type: "text_end", content: "说完了。" }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(result.text, "说完了。");
+});
+
+test("runCockapooPiPrompt pauses the idle clock while a tool is executing (e.g. subagent delegation)", { timeout: 1000 }, async () => {
+  // 工具执行（tool_execution_start → end）耗时远超空闲窗口，期间没有任何模型
+  // 事件，也不应超时——子代理委派正是这种形态。
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：派个子代理",
+    promptTimeoutMs: 20,
+    createSession: async () => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            onEvent({ type: "tool_execution_start", toolCallId: "t1", toolName: "subagent", args: {} });
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            onEvent({ type: "tool_execution_end", toolCallId: "t1", toolName: "subagent" });
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: { type: "text_end", content: "子代理跑完了。" }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(result.text, "子代理跑完了。");
+});
+
+test("runCockapooPiPrompt pauses the idle clock while a confirmation waits on the user", { timeout: 1000 }, async () => {
+  // 用户在确认面板上停留远超空闲窗口也不应超时。
+  let confirmSeen = null;
+  const result = await runCockapooPiPrompt({
+    cwd: "/tmp/cockapoo-workspace",
+    modelSettings: {
+      baseUrl: "https://api.openai.com/v1",
+      modelName: "gpt-5.5"
+    },
+    runtimeToken: "sk-test",
+    prompt: "用户：写个文件",
+    promptTimeoutMs: 20,
+    onConfirm: async (confirmRequest) => {
+      confirmSeen = confirmRequest;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return true;
+    },
+    createSession: async (options) => {
+      let onEvent = () => {};
+
+      return {
+        session: {
+          subscribe(callback) {
+            onEvent = callback;
+            return () => {};
+          },
+          async prompt() {
+            // 模拟围栏在工具执行前回询用户（runner 包装后的 onConfirm 会暂停计时）。
+            const approved = await options.onConfirm({ toolName: "write", input: {}, reason: "需要确认" });
+            assert.equal(approved, true);
+            onEvent({
+              type: "message_update",
+              assistantMessageEvent: { type: "text_end", content: "已确认并完成。" }
+            });
+          },
+          dispose() {}
+        }
+      };
+    }
+  });
+
+  assert.equal(result.text, "已确认并完成。");
+  assert.equal(confirmSeen.toolName, "write");
+});
+
+test("createPromptIdleWatchdog is inert without a finite positive window", async () => {
+  const watchdog = createPromptIdleWatchdog(0);
+  const value = await watchdog.race(Promise.resolve("ok"));
+
+  assert.equal(value, "ok");
+  // touch/pause/resume 必须可安全调用。
+  watchdog.touch();
+  watchdog.pause();
+  watchdog.resume();
 });
 
 test("collectAssistantText uses text_end content when deltas are missing", () => {

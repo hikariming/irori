@@ -26,7 +26,7 @@ const TOTAL_STEPS = STEP_TITLES.length;
 const FEATURES: Array<{ title: string; desc: string }> = [
   { title: "角色陪伴", desc: "角色各有人设与做事风格，可操作电脑，编写代码，完成工作。" },
   { title: "虚拟生活", desc: "角色有自己的一天作息：此刻在做什么、心情与精力都会变化。" },
-  { title: "生活圈与信件", desc: "角色会发动态、写信给你，关系慢慢长出来。" },
+  { title: "生活圈与信物", desc: "角色会发动态，还会悄悄给你寄明信片、留便利贴、送小礼物，关系慢慢长出来。" },
   { title: "本地记忆", desc: "ta 会记住你的偏好与重要的事，越聊越懂你。" }
 ];
 

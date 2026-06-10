@@ -10,3 +10,10 @@ apps/*/node_modules/
 apps/*/dist/
 apps/*/src-tauri/target/
 packages/*/node_modules/
+
+# Environment files and local overrides
+.env
+.env.*
+!.env.example
+*.local
+.claude/settings.local.json

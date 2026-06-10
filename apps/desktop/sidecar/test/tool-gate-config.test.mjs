@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -65,6 +65,29 @@ test("writeToolGateConfig round-trips and preserves unknown keys", async () => {
     assert.deepEqual(reloaded.gatePolicy.allowedToolNames, ["read", "edit"]);
     assert.deepEqual(reloaded.gatePolicy.confirmToolNames, ["edit"]);
     assert.deepEqual(reloaded.gatePolicy.protectedPaths, [".env"]);
+
+    // 原子写不留 .tmp 残骸。
+    assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith(".tmp")), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("writeToolGateConfig self-heals a corrupt existing config instead of failing forever", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cockapoo-tool-gate-heal-"));
+  const path = join(dir, "cockapoo-tool-gate.json");
+  await writeFile(path, "{ not valid json");
+
+  try {
+    const written = await writeToolGateConfig({
+      configPath: path,
+      mode: "auto",
+      gatePolicy: { allowedToolNames: ["read"] }
+    });
+
+    assert.deepEqual(written.gatePolicy.allowedToolNames, ["read"]);
+    const reloaded = readToolGateConfigSync(path);
+    assert.deepEqual(reloaded.gatePolicy.allowedToolNames, ["read"]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -101,7 +101,6 @@ button {
 }
 
 .character-row,
-.add-character,
 .session-item,
 .sidebar-footer button {
   border: 1px solid transparent;
@@ -406,27 +405,6 @@ button {
   white-space: nowrap;
 }
 
-.add-character {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 42px;
-  margin: 2px 4px 14px;
-  border-color: var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.68);
-  color: #555864;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.add-character span {
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1;
-}
-
 .session-list {
   min-height: 0;
   overflow: auto;
@@ -575,6 +553,48 @@ button {
   min-width: 0;
   height: 100vh;
   overflow: hidden;
+}
+
+.stage-dropzone {
+  position: absolute;
+  inset: 12px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  background: rgba(247, 244, 238, 0.78);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.stage-dropzone__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 26px 38px;
+  border: 2px dashed var(--accent, #d68e23);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #4a4d57;
+  text-align: center;
+}
+
+.stage-dropzone__card > svg {
+  color: var(--accent, #d68e23);
+}
+
+.stage-dropzone__card p {
+  margin: 2px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #2f323b;
+}
+
+.stage-dropzone__card span {
+  font-size: 12px;
+  color: rgba(111, 113, 124, 0.85);
 }
 
 .chat-layout {
@@ -3272,28 +3292,189 @@ button {
   color: #1f7a64;
 }
 
-.letter-reply-btn {
-  margin-top: 12px;
+/* ----- 信物匣：明信片 / 便利贴 / 小礼物 ------------------------------------ */
+
+.keepsake-kind-icon {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1;
 }
 
-.letter-composer {
+/* 在途「物流」卡片：露发件人 + 类型 + 模糊 ETA，内容封着不剧透。*/
+.keepsake-transit-group {
   width: min(720px, 100%);
   align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-bottom: 14px;
-  padding: 14px 16px;
+}
+
+.keepsake-transit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px dashed rgba(42, 47, 61, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.keepsake-transit.kind-postcard {
+  border-left: 3px dashed rgba(86, 134, 214, 0.55);
+}
+
+.keepsake-transit.kind-note {
+  border-left: 3px dashed rgba(232, 191, 74, 0.66);
+}
+
+.keepsake-transit.kind-gift {
+  border-left: 3px dashed rgba(214, 110, 150, 0.6);
+}
+
+.keepsake-transit-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(84, 88, 100, 0.86);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.keepsake-transit-eta {
+  flex: 0 0 auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(47, 174, 145, 0.12);
+  color: #1f7a64;
+  font-size: 10px;
+  font-weight: 800;
+  animation: keepsake-transit-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes keepsake-transit-pulse {
+  0%,
+  100% {
+    opacity: 0.66;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* 每种信物一点轻微的色彩暗示（左侧描边 + 浅底）。*/
+.letter-card.kind-postcard {
+  border-left: 3px solid rgba(86, 134, 214, 0.5);
+}
+
+.letter-card.kind-note {
+  border-left: 3px solid rgba(232, 191, 74, 0.62);
+}
+
+.letter-card.kind-gift {
+  border-left: 3px solid rgba(214, 110, 150, 0.55);
+}
+
+.keepsake-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.keepsake-place-chip {
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(86, 134, 214, 0.14);
+  color: #3a63b0;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.keepsake-place-chip + p {
+  margin-top: 8px;
+}
+
+.keepsake-gift-item {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(214, 110, 150, 0.12);
+  color: #b14c79;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.keepsake-gift-item + p {
+  margin-top: 10px;
+}
+
+/* 便利贴：暖黄纸条质感。*/
+.letter-card.kind-note .keepsake-note {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(232, 191, 74, 0.12);
+}
+
+.letter-card.kind-note .keepsake-note p {
+  margin-top: 0;
+}
+
+/* 回应条：表情 + 一行短话。*/
+.keepsake-reaction-bar {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border: 1px solid rgba(47, 174, 145, 0.3);
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 14px 46px rgba(36, 40, 52, 0.1);
-  backdrop-filter: blur(18px);
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(42, 47, 61, 0.12);
 }
 
-.letter-composer-subject,
-.letter-composer-body {
-  width: 100%;
+.keepsake-reaction-emojis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.keepsake-reaction-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(42, 47, 61, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.keepsake-reaction-pick:hover {
+  transform: translateY(-1px) scale(1.06);
+  border-color: rgba(47, 174, 145, 0.42);
+  background: rgba(47, 174, 145, 0.12);
+}
+
+.keepsake-reaction-pick:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.keepsake-reaction-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.keepsake-reaction-field {
+  flex: 1;
+  min-width: 0;
   border: 1px solid rgba(42, 47, 61, 0.14);
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.7);
@@ -3303,76 +3484,34 @@ button {
   font-family: inherit;
 }
 
-.letter-composer-subject {
-  font-weight: 700;
-}
-
-.letter-composer-body {
-  line-height: 1.8;
-  resize: vertical;
-}
-
-.letter-composer-subject:focus,
-.letter-composer-body:focus {
+.keepsake-reaction-field:focus {
   outline: none;
   border-color: rgba(47, 174, 145, 0.55);
 }
 
-.letter-composer-actions {
+/* 已回应：显示用户留下的表情/短话。*/
+.keepsake-reaction-done {
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.letter-recipient-picker {
-  display: grid;
-  gap: 8px;
-}
-
-.letter-recipient-picker > span {
-  color: rgba(84, 88, 100, 0.74);
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.letter-recipient-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.letter-recipient-chip {
-  display: inline-flex;
   align-items: center;
-  min-height: 34px;
-  max-width: 100%;
-  gap: 7px;
-  padding: 4px 10px 4px 5px;
-  border: 1px solid rgba(42, 47, 61, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.68);
-  color: rgba(59, 63, 74, 0.82);
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(42, 47, 61, 0.12);
+  color: rgba(84, 88, 100, 0.78);
   font-size: 12px;
-  font-weight: 800;
-  cursor: pointer;
 }
 
-.letter-recipient-chip.is-selected {
-  border-color: rgba(47, 174, 145, 0.42);
+.keepsake-reaction-emoji {
+  font-size: 16px;
+}
+
+.keepsake-reaction-text {
+  padding: 3px 10px;
+  border-radius: 999px;
   background: rgba(47, 174, 145, 0.14);
   color: #1f7a64;
-}
-
-.letter-recipient-chip:disabled {
-  cursor: default;
-  opacity: 0.86;
-}
-
-.letter-recipient-avatar {
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.92);
+  font-weight: 700;
 }
 
 @keyframes progress-pulse {
@@ -3565,7 +3704,6 @@ button {
   backdrop-filter: blur(24px);
 }
 
-.composer-tool-button,
 .composer-send-button {
   border: 1px solid transparent;
   color: #5c606b;
@@ -3589,6 +3727,72 @@ button {
   color: rgba(111, 113, 124, 0.58);
 }
 
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+
+.composer-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  height: 28px;
+  padding: 0 6px 0 9px;
+  border: 1px solid rgba(35, 40, 54, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #4a4d57;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.composer-attachment > svg {
+  flex: none;
+  color: var(--accent, #d68e23);
+}
+
+.composer-attachment__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2f323b;
+}
+
+.composer-attachment__size {
+  flex: none;
+  color: rgba(111, 113, 124, 0.7);
+}
+
+.composer-attachment__remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(35, 40, 54, 0.08);
+  color: #5c606b;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer-attachment__remove:hover {
+  background: rgba(35, 40, 54, 0.16);
+  color: #2f323b;
+}
+
+.composer-attachment.is-staging {
+  border-style: dashed;
+  color: rgba(111, 113, 124, 0.85);
+}
+
 .composer-footer {
   display: flex;
   align-items: center;
@@ -3602,17 +3806,6 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.composer-tool-button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(240, 242, 246, 0.88);
-  font-size: 15px;
-  font-weight: 800;
 }
 
 .composer-mode {
@@ -4321,12 +4514,6 @@ button {
 
 [data-theme="dark"] .character-copy small {
   color: var(--teal-text);
-}
-
-[data-theme="dark"] .add-character {
-  border-color: var(--line);
-  background: rgba(38, 40, 50, 0.68);
-  color: #a0a2ad;
 }
 
 [data-theme="dark"] .session-list h2 {
@@ -5053,7 +5240,6 @@ button {
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.35);
 }
 
-[data-theme="dark"] .composer-tool-button,
 [data-theme="dark"] .composer-send-button {
   color: #a0a2ad;
 }
@@ -5066,8 +5252,41 @@ button {
   color: rgba(140, 143, 156, 0.58);
 }
 
-[data-theme="dark"] .composer-tool-button {
-  background: rgba(44, 46, 56, 0.88);
+[data-theme="dark"] .composer-attachment {
+  border-color: rgba(140, 143, 156, 0.24);
+  background: rgba(40, 44, 56, 0.6);
+  color: #c7c9d2;
+}
+
+[data-theme="dark"] .composer-attachment__name {
+  color: #d8d9e0;
+}
+
+[data-theme="dark"] .composer-attachment__remove {
+  background: rgba(140, 143, 156, 0.18);
+  color: #c7c9d2;
+}
+
+[data-theme="dark"] .composer-attachment__remove:hover {
+  background: rgba(140, 143, 156, 0.3);
+  color: #f0f1f5;
+}
+
+[data-theme="dark"] .stage-dropzone {
+  background: rgba(14, 16, 22, 0.74);
+}
+
+[data-theme="dark"] .stage-dropzone__card {
+  background: rgba(30, 33, 43, 0.8);
+  color: #c7c9d2;
+}
+
+[data-theme="dark"] .stage-dropzone__card p {
+  color: #f0f1f5;
+}
+
+[data-theme="dark"] .stage-dropzone__card span {
+  color: rgba(140, 143, 156, 0.85);
 }
 
 [data-theme="dark"] .composer-send-area span {

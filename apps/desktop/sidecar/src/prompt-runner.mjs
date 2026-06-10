@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
+
 import {
   defaultOpenAiCompatibleSettings,
   formatOpenAiCompatibleRoute,
@@ -12,33 +15,80 @@ import { buildToolRuntime } from "./tool-policy-runtime.mjs";
 import { toolGateConfigEnvVar, writeToolGateConfig as writeToolGateConfigToDisk } from "./tool-gate-config.mjs";
 import { writePiWebAccessConfig } from "./web-access-config.mjs";
 
+// promptTimeoutMs 的语义是“空闲超时”窗口：一次多轮 agent run 没有总时长上限，
+// 只有连续 N 毫秒收不到任何会话事件才算卡死。流式 delta、思考、工具进度都会
+// 重置计时；工具执行期间（含子代理委派，可能要跑好几分钟）和等待用户在确认
+// 面板点按钮期间会整体暂停计时。
 export const defaultPromptTimeoutMs = 120000;
 
-function promptTimeoutError(timeoutMs) {
+function promptIdleTimeoutError(timeoutMs) {
   const seconds = Math.ceil(timeoutMs / 1000);
 
-  return new Error(`模型响应超时（超过 ${seconds} 秒）。请检查模型服务是否仍在响应，或稍后重试。`);
+  return new Error(`等待模型活动超时（连续 ${seconds} 秒没有收到任何模型或工具事件）。请检查模型服务是否仍在响应，或稍后重试。`);
 }
 
-async function withPromptTimeout(promise, timeoutMs) {
+// Idle watchdog for a multi-turn agent run. Unlike a total deadline it only
+// fires after `timeoutMs` with NO session activity: every event re-arms it via
+// touch(), and pause()/resume() (re-entrant, counted) stop the clock entirely
+// while a tool executes or a confirmation waits on the user — both can
+// legitimately take far longer than any reasonable model-stall window.
+export function createPromptIdleWatchdog(timeoutMs) {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return promise;
+    return {
+      touch() {},
+      pause() {},
+      resume() {},
+      race: (promise) => promise
+    };
   }
 
-  let timeoutId;
+  let timer = null;
+  let pauseDepth = 0;
+  let fireTimeout = () => {};
+  const expired = new Promise((_, reject) => {
+    fireTimeout = () => reject(promptIdleTimeoutError(timeoutMs));
+  });
 
-  try {
-    return await Promise.race([
-      promise,
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(promptTimeoutError(timeoutMs));
-        }, timeoutMs);
-      })
-    ]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const disarm = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  const arm = () => {
+    disarm();
+    timer = setTimeout(fireTimeout, timeoutMs);
+  };
+
+  return {
+    touch() {
+      if (pauseDepth === 0) {
+        arm();
+      }
+    },
+    pause() {
+      pauseDepth += 1;
+      disarm();
+    },
+    resume() {
+      pauseDepth = Math.max(0, pauseDepth - 1);
+      if (pauseDepth === 0) {
+        arm();
+      }
+    },
+    async race(promise) {
+      // The promise may already have paused the clock synchronously (e.g. a
+      // tool started before the race begins), so arm through the same guard.
+      if (pauseDepth === 0) {
+        arm();
+      }
+      try {
+        return await Promise.race([promise, expired]);
+      } finally {
+        disarm();
+      }
+    }
+  };
 }
 
 export function collectAssistantText(events) {
@@ -169,6 +219,16 @@ function modelWaitHeartbeatStatus(startedAt) {
   return `等待模型首个输出（${elapsedSeconds}s）`;
 }
 
+// Each run writes its OWN gate file derived from the caller's base path, so
+// concurrent runs (a chat and a scheduled task each spawn their own pi-prompt
+// process) can't overwrite each other's fence: a run's subagent children find
+// exactly this run's file via the env pointer, never another run's allowlist.
+export function perRunToolGateConfigPath(basePath, { pid = process.pid, token = randomUUID() } = {}) {
+  const suffix = `.${pid}-${token}.json`;
+
+  return basePath.endsWith(".json") ? `${basePath.slice(0, -".json".length)}${suffix}` : `${basePath}${suffix}`;
+}
+
 export async function runCockapooPiPrompt({
   cwd,
   modelSettings = defaultOpenAiCompatibleSettings,
@@ -188,12 +248,14 @@ export async function runCockapooPiPrompt({
   writeWebAccessConfig = writePiWebAccessConfig,
   toolGateConfigPath,
   writeToolGateConfig = writeToolGateConfigToDisk,
+  removeToolGateConfig = (path) => rm(path, { force: true }),
   enableSubagents = false,
   // Subagent `context: fork` needs a persisted parent session; callers enabling
   // delegation should pass "persistent". Defaults to in-memory (zero regression).
   sessionMode = "memory",
   toolGateMode = "confirm",
   resolveMemoryBackend = resolveConfiguredMemoryBackend,
+  // 空闲超时窗口（毫秒）：连续这么久没有任何会话事件才超时，见 defaultPromptTimeoutMs。
   promptTimeoutMs = defaultPromptTimeoutMs,
   modelWaitHeartbeatMs = 3000,
   skillsRootPath,
@@ -296,14 +358,17 @@ export async function runCockapooPiPrompt({
 
   // Opt-in: when a config path is given, persist the resolved fence so subagent
   // child processes can inherit the SAME policy via the cockapoo-tool-gate
-  // extension, and point them at it through the environment.
+  // extension, and point them at it through the environment. The file is
+  // per-run (derived from the base path) and removed in the finally below.
+  let runToolGateConfigPath;
   if (toolGateConfigPath) {
+    runToolGateConfigPath = perRunToolGateConfigPath(toolGateConfigPath);
     await writeToolGateConfig({
       gatePolicy: toolRuntime.gatePolicy,
       mode: toolGateMode,
-      configPath: toolGateConfigPath
+      configPath: runToolGateConfigPath
     });
-    process.env[toolGateConfigEnvVar] = toolGateConfigPath;
+    process.env[toolGateConfigEnvVar] = runToolGateConfigPath;
   }
 
   const onToolEvent = runId && onProgressEvent
@@ -322,6 +387,19 @@ export async function runCockapooPiPrompt({
       }
     : undefined;
 
+  const idleWatchdog = createPromptIdleWatchdog(promptTimeoutMs);
+  // 用户在确认面板上想多久都可以，不算模型空闲。
+  const guardedOnConfirm = typeof onConfirm === "function"
+    ? async (confirmRequest) => {
+        idleWatchdog.pause();
+        try {
+          return await onConfirm(confirmRequest);
+        } finally {
+          idleWatchdog.resume();
+        }
+      }
+    : onConfirm;
+
   const { session } = await createSession({
     cwd,
     modelSettings,
@@ -337,7 +415,7 @@ export async function runCockapooPiPrompt({
     skillsRootPath,
     allowedSkillNames,
     onToolEvent,
-    onConfirm
+    onConfirm: guardedOnConfirm
   });
 
   const events = [];
@@ -350,6 +428,16 @@ export async function runCockapooPiPrompt({
     }
   };
   const unsubscribe = session.subscribe((event) => {
+    // Any session event proves the run is alive. Tool execution — including
+    // subagent delegation, which can run for minutes with no parent-side
+    // events — pauses the idle clock entirely until the tool returns.
+    idleWatchdog.touch();
+    if (event.type === "tool_execution_start") {
+      idleWatchdog.pause();
+    } else if (event.type === "tool_execution_end") {
+      idleWatchdog.resume();
+    }
+
     const progressEvent = toPiPromptProgressEvent(event, runId);
     if (progressEvent) {
       if (progressEvent.phase === "thinking" || progressEvent.phase === "answering") {
@@ -372,7 +460,7 @@ export async function runCockapooPiPrompt({
       }, modelWaitHeartbeatMs);
     }
 
-    await withPromptTimeout(session.prompt(memoryPrompt.prompt), promptTimeoutMs);
+    await idleWatchdog.race(session.prompt(memoryPrompt.prompt));
     const text = collectAssistantText(events);
 
     await captureMemoryTurn({
@@ -398,5 +486,14 @@ export async function runCockapooPiPrompt({
     stopHeartbeat();
     unsubscribe();
     session.dispose();
+    if (runToolGateConfigPath) {
+      // Best-effort: a leftover per-run file is unreachable (no env points at
+      // it), so failing to delete must never mask the run's real outcome.
+      try {
+        await removeToolGateConfig(runToolGateConfigPath);
+      } catch {
+        // ignore
+      }
+    }
   }
 }

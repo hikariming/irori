@@ -2,6 +2,7 @@
   "name": "cockapoo-pi-companion",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Local-first desktop companion client built around the Pi coding-agent SDK.",
   "type": "module",
   "scripts": {

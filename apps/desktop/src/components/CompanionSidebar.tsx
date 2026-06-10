@@ -163,10 +163,6 @@ export function CompanionSidebar({
           </div>
         ))}
 
-        <Button className="add-character" type="button">
-          <span>+</span>
-          添加角色
-        </Button>
       </section>
 
       <ScrollShadow className="session-list" hideScrollBar orientation="vertical">

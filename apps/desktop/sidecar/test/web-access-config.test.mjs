@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -57,6 +57,27 @@ test("writePiWebAccessConfig preserves unknown config keys and writes trimmed se
     assert.equal(stored.workflow, "none");
     assert.equal(stored.exaApiKey, "exa-secret-123456");
     assert.equal(stored.geminiApiKey, "gemini-secret-abcdef");
+
+    // 原子写不留 .tmp 残骸。
+    assert.deepEqual((await readdir(dir)).filter((name) => name.endsWith(".tmp")), []);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("writePiWebAccessConfig self-heals a corrupt existing config instead of failing forever", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "cockapoo-web-access-bad-"));
+  const path = join(dir, "web-search.json");
+  await writeFile(path, "{ not valid json");
+
+  try {
+    await writePiWebAccessConfig({
+      configPath: path,
+      settings: { provider: "auto", workflow: "none" }
+    });
+
+    const stored = JSON.parse(await readFile(path, "utf-8"));
+    assert.equal(stored.provider, "auto");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

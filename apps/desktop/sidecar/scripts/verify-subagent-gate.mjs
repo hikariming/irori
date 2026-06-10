@@ -57,8 +57,8 @@ const request = {
   sessionMode: "persistent",
   toolGateConfigPath: gateConfigPath,
   toolGateMode: "auto",
-  // The parent waits on the subagent tool, which spins up its own model loop —
-  // give the whole thing room before the parent-side timeout fires.
+  // 空闲超时窗口（毫秒）：工具执行（含子代理委派）期间计时会暂停，所以这里
+  // 只约束模型两次事件之间的最大静默时长，不再是整个 run 的总时长上限。
   promptTimeoutMs: 280000,
   modelSettings: { baseUrl, modelName },
   runtimeToken: token,
