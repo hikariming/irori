@@ -1,7 +1,7 @@
 # 陪伴沉浸感方案：好感度 / 心情 / 精力 + 多角色生活与互动
 
 > 日期：2026-05-31
-> 目标：让 cockapoo 的少量角色（lulin / cenji / sakuramio / shenyanzhou / shili / tangyuan）
+> 目标：让 irori 的少量角色（lulin / cenji / sakuramio / shenyanzhou / shili / tangyuan）
 > 拥有「自己的状态与生活」，能记住用户、能彼此互动，从而和用户之间形成持续的陪伴沉浸感。
 > 硬约束：记忆与召回保持 **FTS-only（不接 embedding）**，状态用结构化字段，不引入向量检索。
 
@@ -75,7 +75,7 @@ export type Impression = {
 
 沿用项目既有两种模式，本方案建议：
 
-- **MVP**：localStorage（参考 `use-theme.ts` / 已落地的 `character-preferences.ts`），key 如 `cockapoo-character-state`。零 Rust 改动，先把循环跑通。
+- **MVP**：localStorage（参考 `use-theme.ts` / 已落地的 `character-preferences.ts`），key 如 `irori-character-state`。零 Rust 改动，先把循环跑通。
 - **后续**：迁到 Rust 后端（参考 model-settings / tool-policy 的持久化），并入 TencentDB，`impressions` 走现有 **FTS 召回**（与 [[feedback-memory-no-embedding]] 一致，**不接 embedding**）。
 
 ---

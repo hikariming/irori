@@ -2,7 +2,7 @@ import { createTencentDbMemoryBackend } from "../../../../packages/memory/src/ru
 
 // The upstream package is an OpenClaw plugin with no in-process client factory,
 // so the default points at our bundled gateway adapter, which spawns the engine's
-// HTTP gateway (one per character) and speaks cockapoo's memory-client contract.
+// HTTP gateway (one per character) and speaks irori's memory-client contract.
 const defaultTencentDbModuleName = new URL("./tencentdb-memory-client.mjs", import.meta.url).href;
 
 function nonEmptyString(value) {
@@ -60,7 +60,7 @@ export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env
   const requestTencentDb = requestConfig.tencentdb ?? {};
   const backend =
     nonEmptyString(requestConfig.backend) ??
-    nonEmptyString(env.COCKAPOO_MEMORY_BACKEND) ??
+    nonEmptyString(env.IRORI_MEMORY_BACKEND) ??
     "chat-history";
 
   const llm = resolveTencentDbLlm(requestTencentDb.llm, env);
@@ -68,17 +68,17 @@ export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env
   const tencentdb = {
     moduleName:
       nonEmptyString(requestTencentDb.moduleName) ??
-      nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_MODULE) ??
+      nonEmptyString(env.IRORI_TENCENTDB_MEMORY_MODULE) ??
       defaultTencentDbModuleName,
     dataDir:
       nonEmptyString(requestTencentDb.dataDir) ??
-      nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_DATA_DIR),
+      nonEmptyString(env.IRORI_TENCENTDB_MEMORY_DATA_DIR),
     client: requestTencentDb.client
   };
 
   const rootDataDir =
     nonEmptyString(requestTencentDb.rootDataDir) ??
-    nonEmptyString(env.COCKAPOO_TENCENTDB_MEMORY_ROOT);
+    nonEmptyString(env.IRORI_TENCENTDB_MEMORY_ROOT);
   if (rootDataDir) {
     tencentdb.rootDataDir = rootDataDir;
   }

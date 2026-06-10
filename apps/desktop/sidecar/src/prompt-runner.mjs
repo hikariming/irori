@@ -10,7 +10,7 @@ import {
 import { createChatHistoryMemoryBackend } from "./chat-history-memory-backend.mjs";
 import { resolveConfiguredMemoryBackend } from "./configured-memory-backend.mjs";
 import { buildPromptWithMemory, captureMemoryTurn } from "./memory-bridge.mjs";
-import { createCockapooPiSession } from "./pi-session-adapter.mjs";
+import { createIroriPiSession } from "./pi-session-adapter.mjs";
 import { buildToolRuntime } from "./tool-policy-runtime.mjs";
 import { toolGateConfigEnvVar, writeToolGateConfig as writeToolGateConfigToDisk } from "./tool-gate-config.mjs";
 import { writePiWebAccessConfig } from "./web-access-config.mjs";
@@ -229,14 +229,14 @@ export function perRunToolGateConfigPath(basePath, { pid = process.pid, token = 
   return basePath.endsWith(".json") ? `${basePath.slice(0, -".json".length)}${suffix}` : `${basePath}${suffix}`;
 }
 
-export async function runCockapooPiPrompt({
+export async function runIroriPiPrompt({
   cwd,
   modelSettings = defaultOpenAiCompatibleSettings,
   prompt,
   runtimeToken,
   authPath,
   dryRun = false,
-  createSession = createCockapooPiSession,
+  createSession = createIroriPiSession,
   memoryBackend,
   memoryBackendConfig,
   memoryRecallRequest,
@@ -357,7 +357,7 @@ export async function runCockapooPiPrompt({
   }
 
   // Opt-in: when a config path is given, persist the resolved fence so subagent
-  // child processes can inherit the SAME policy via the cockapoo-tool-gate
+  // child processes can inherit the SAME policy via the irori-tool-gate
   // extension, and point them at it through the environment. The file is
   // per-run (derived from the base path) and removed in the finally below.
   let runToolGateConfigPath;

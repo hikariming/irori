@@ -2,9 +2,9 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Integrate Pi web search/fetch access into Cockapoo Pi Companion with a settings UI, provider/key configuration, and a no-key fallback path.
+**Goal:** Integrate Pi web search/fetch access into Irori with a settings UI, provider/key configuration, and a no-key fallback path.
 
-**Architecture:** The desktop sidecar continues to own the embedded Pi SDK session. Cockapoo maps product-level tool ids (`web.search`, `web.fetch`) to the Pi extension tool names registered by `pi-web-access`, loads the package through Pi's `DefaultResourceLoader`, and keeps the safety gate as the final allow/confirm/block authority. Tauri persists web-access settings and the React settings panel edits those settings.
+**Architecture:** The desktop sidecar continues to own the embedded Pi SDK session. Irori maps product-level tool ids (`web.search`, `web.fetch`) to the Pi extension tool names registered by `pi-web-access`, loads the package through Pi's `DefaultResourceLoader`, and keeps the safety gate as the final allow/confirm/block authority. Tauri persists web-access settings and the React settings panel edits those settings.
 
 **Tech Stack:** Tauri 2, React 19, TypeScript, Node sidecar ESM, Pi SDK `@earendil-works/pi-coding-agent`, `pi-web-access`.
 

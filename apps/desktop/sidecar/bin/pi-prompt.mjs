@@ -2,7 +2,7 @@
 
 import readline from "node:readline";
 
-import { runCockapooPiPrompt } from "../src/prompt-runner.mjs";
+import { runIroriPiPrompt } from "../src/prompt-runner.mjs";
 import { createStdinConfirmBridge } from "../src/stdin-confirm-bridge.mjs";
 import { createLlmToolReviewer } from "../src/llm-tool-reviewer.mjs";
 
@@ -80,7 +80,7 @@ async function main() {
     onConfirm = (confirmRequest) => bridge.requestConfirm(confirmRequest);
   }
 
-  const result = await runCockapooPiPrompt({
+  const result = await runIroriPiPrompt({
     ...request,
     onProgressEvent: streamEvents
       ? (event) => writeLine({ type: "progress", event })

@@ -33,7 +33,7 @@ export const nativeProviderMap = [
 // The env var name a child reads its key from when using the models.json bridge.
 // We write this NAME (not the secret) into models.json and set the value in the
 // child's environment, so the key never touches disk.
-export const subagentApiKeyEnvVar = "COCKAPOO_SUBAGENT_API_KEY";
+export const subagentApiKeyEnvVar = "IRORI_SUBAGENT_API_KEY";
 
 // Resolve a pi-native provider mapping for the configured model, or null when the
 // endpoint isn't one pi supports natively (then we bridge via models.json instead).
@@ -153,7 +153,7 @@ export const managedSubagentNames = ["worker", "scout", "planner", "reviewer", "
 // touching node_modules or the user's project repo. The API key is NOT written
 // here — only the non-secret model id.
 // `extensions` (optional): an absolute extension path (or comma-separated list)
-// pinned into each child agent so the Cockapoo gate loads INSIDE the child —
+// pinned into each child agent so the Irori gate loads INSIDE the child —
 // children do NOT inherit the parent's additionalExtensionPaths, so this is the
 // only way the fence reaches them. pi-subagents always re-adds its own runtime
 // extensions, so pinning here doesn't break delegation.

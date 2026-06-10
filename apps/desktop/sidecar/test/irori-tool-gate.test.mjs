@@ -9,7 +9,7 @@ import {
   closureGateActiveFlag,
   createInheritedToolGateExtension,
   createSubagentToolGateExtension
-} from "../src/extensions/cockapoo-tool-gate.mjs";
+} from "../src/extensions/irori-tool-gate.mjs";
 
 function captureHandler(factory) {
   let handler;
@@ -28,8 +28,8 @@ function captureHandler(factory) {
 }
 
 async function writeConfig(overrides = {}) {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-inherited-gate-"));
-  const configPath = join(dir, "cockapoo-tool-gate.json");
+  const dir = await mkdtemp(join(tmpdir(), "irori-inherited-gate-"));
+  const configPath = join(dir, "irori-tool-gate.json");
   await writeToolGateConfig({
     configPath,
     mode: overrides.mode ?? "confirm",
@@ -151,7 +151,7 @@ test("inherited gate still blocks dangerous bash under managed mode", async () =
 
 test("inherited gate fails closed when the config file is absent", async () => {
   const handler = captureHandler(createInheritedToolGateExtension({
-    configPath: join(tmpdir(), "cockapoo-absent-gate-config.json")
+    configPath: join(tmpdir(), "irori-absent-gate-config.json")
   }));
   const result = await handler({ toolName: "read", input: { path: "src/app.ts" } });
   assert.equal(result.block, true);

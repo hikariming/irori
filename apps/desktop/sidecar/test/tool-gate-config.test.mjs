@@ -38,8 +38,8 @@ test("buildToolGateConfig keeps a valid mode and explicit protectedPaths", () =>
 });
 
 test("writeToolGateConfig round-trips and preserves unknown keys", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-tool-gate-"));
-  const path = join(dir, "cockapoo-tool-gate.json");
+  const dir = await mkdtemp(join(tmpdir(), "irori-tool-gate-"));
+  const path = join(dir, "irori-tool-gate.json");
   await writeFile(path, JSON.stringify({ note: "keep me" }, null, 2));
 
   try {
@@ -74,8 +74,8 @@ test("writeToolGateConfig round-trips and preserves unknown keys", async () => {
 });
 
 test("writeToolGateConfig self-heals a corrupt existing config instead of failing forever", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-tool-gate-heal-"));
-  const path = join(dir, "cockapoo-tool-gate.json");
+  const dir = await mkdtemp(join(tmpdir(), "irori-tool-gate-heal-"));
+  const path = join(dir, "irori-tool-gate.json");
   await writeFile(path, "{ not valid json");
 
   try {
@@ -94,7 +94,7 @@ test("writeToolGateConfig self-heals a corrupt existing config instead of failin
 });
 
 test("readToolGateConfigSync fails closed on a missing file", () => {
-  const config = readToolGateConfigSync(join(tmpdir(), "cockapoo-no-such-gate-config.json"));
+  const config = readToolGateConfigSync(join(tmpdir(), "irori-no-such-gate-config.json"));
 
   assert.deepEqual(config.gatePolicy.allowedToolNames, []);
   assert.equal(config.mode, "confirm");
@@ -102,8 +102,8 @@ test("readToolGateConfigSync fails closed on a missing file", () => {
 });
 
 test("readToolGateConfigSync fails closed on corrupt JSON", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-tool-gate-bad-"));
-  const path = join(dir, "cockapoo-tool-gate.json");
+  const dir = await mkdtemp(join(tmpdir(), "irori-tool-gate-bad-"));
+  const path = join(dir, "irori-tool-gate.json");
   await writeFile(path, "{ not valid json");
 
   try {

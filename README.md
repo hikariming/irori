@@ -1,10 +1,10 @@
-# Cockapoo Pi Companion
+# Irori
 
 > 中文简介：本地优先的 AI 伴侣桌面客户端，基于 Pi coding-agent SDK 构建。（中文文档待补充）
 
-Cockapoo Pi Companion is a local-first AI companion and coding-agent desktop client built on the [Pi coding-agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi owns the embedded agent runtime; Cockapoo owns the product layer: character cards, local memory, a fail-closed safety confirmation gate, character skills, scheduled tasks, and subagents.
+Irori is a local-first AI companion and coding-agent desktop client built on the [Pi coding-agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). Pi owns the embedded agent runtime; Irori owns the product layer: character cards, local memory, a fail-closed safety confirmation gate, character skills, scheduled tasks, and subagents.
 
-![Cockapoo Pi Companion concept board](apps/desktop/public/assets/cockapoo-pi-companion-cn-concept.png)
+![Irori concept board](apps/desktop/public/assets/irori-cn-concept.png)
 
 ## Workspace
 

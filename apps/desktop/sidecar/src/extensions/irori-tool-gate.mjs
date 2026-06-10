@@ -9,7 +9,7 @@ import { createToolPolicyGateExtension } from "../tool-policy-gate.mjs";
 // parent already runs the closure gate (which owns the desktop confirm channel),
 // so the loadable package gate must NOT double-gate there. A subagent child is a
 // fresh OS process (flag unset) → it enforces.
-export const closureGateActiveFlag = "__cockapooToolGateClosureActive";
+export const closureGateActiveFlag = "__iroriToolGateClosureActive";
 
 // A subagent child has no desktop confirm channel, so a confirm decision fails
 // closed. Instead of a dead-end block we tell the model to escalate over
@@ -43,7 +43,7 @@ export function createInheritedToolGateExtension({
 }
 
 // Loadable variant: no-ops in the parent (closure gate already active), enforces
-// in subagent children. This is what the cockapoo-tool-gate extension package
+// in subagent children. This is what the irori-tool-gate extension package
 // re-exports as its default.
 export function createSubagentToolGateExtension(options = {}) {
   return (pi) => {

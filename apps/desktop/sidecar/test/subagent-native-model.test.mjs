@@ -52,7 +52,7 @@ test("subagentBridgeModelRef pins to the custom provider + model id", () => {
 });
 
 test("materializeSubagentModelsJson writes models.json atomically; clear removes it", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-modelsjson-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-modelsjson-"));
   const agentDir = join(dir, "agentdir");
   try {
     const target = materializeSubagentModelsJson({
@@ -129,7 +129,7 @@ test("injectAgentFrontmatter skips empty values", () => {
 });
 
 test("materializeSubagentModelOverrides pins both model and gate extension", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-agents-ext-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-agents-ext-"));
   const pkgAgents = join(dir, "pkg-agents");
   const agentDir = join(dir, "agentdir");
   await mkdir(pkgAgents, { recursive: true });
@@ -140,20 +140,20 @@ test("materializeSubagentModelOverrides pins both model and gate extension", asy
       packageAgentsDir: pkgAgents,
       agentDir,
       modelRef: "deepseek/deepseek-v4-pro",
-      extensions: "/abs/cockapoo-tool-gate",
+      extensions: "/abs/irori-tool-gate",
       agents: ["worker"]
     });
 
     const worker = await readFile(join(agentDir, "agents", "worker.md"), "utf-8");
     assert.match(worker, /model: deepseek\/deepseek-v4-pro/);
-    assert.match(worker, /extensions: \/abs\/cockapoo-tool-gate/);
+    assert.match(worker, /extensions: \/abs\/irori-tool-gate/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("materializeSubagentModelOverrides writes model-pinned copies into the agent dir", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-agents-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-agents-"));
   const pkgAgents = join(dir, "pkg-agents");
   const agentDir = join(dir, "agentdir");
   await mkdir(pkgAgents, { recursive: true });
@@ -184,7 +184,7 @@ test("materializeSubagentModelOverrides writes model-pinned copies into the agen
 });
 
 test("clearSubagentModelOverrides removes stale pins; safe when none exist", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-agents-clear-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-agents-clear-"));
   const pkgAgents = join(dir, "pkg-agents");
   const agentDir = join(dir, "agentdir");
   await mkdir(pkgAgents, { recursive: true });

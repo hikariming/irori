@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add Cenji, a rain-night debugging female engineer companion character, as a complete Cockapoo character card with generated visual assets.
+**Goal:** Add Cenji, a rain-night debugging female engineer companion character, as a complete Irori character card with generated visual assets.
 
 **Architecture:** Follow the existing simple character-card package shape used by the other `characters/*.card` packages. Generate source images, post-process them into avatar, portrait, background, and the nine required sticker assets, then copy the finished package into `apps/desktop/public/characters`.
 

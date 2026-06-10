@@ -1148,7 +1148,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   </header>
 
                   {renderToolGroup("builtinTools", "Pi 内置工具", toolPolicyView.toolOrder.filter((tool) => !tool.id.includes(".")))}
-                  {renderToolGroup("customTools", "Cockapoo 工具", toolPolicyView.toolOrder.filter((tool) => tool.id.includes(".")))}
+                  {renderToolGroup("customTools", "Irori 工具", toolPolicyView.toolOrder.filter((tool) => tool.id.includes(".")))}
                   {renderToolGroup("confirmTools", "需要确认", toolPolicyView.toolOrder)}
                 </article>
               </div>

@@ -19,13 +19,13 @@ test("Pi SDK is available to the local agent", () => {
 
 test("buildPiSessionOptions wires auth, registry, session manager, cwd and selected model", () => {
   const options = buildPiSessionOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     modelSettings: defaultOpenAiCompatibleSettings,
-    authPath: "/tmp/cockapoo-auth/auth.json",
+    authPath: "/tmp/irori-auth/auth.json",
     runtimeToken: "sk-test"
   });
 
-  assert.equal(options.cwd, "/tmp/cockapoo-workspace");
+  assert.equal(options.cwd, "/tmp/irori-workspace");
   assert.equal(options.model.provider, "openai-compatible");
   assert.equal(options.model.id, "gpt-5.5");
   assert.ok(options.authStorage);
@@ -38,15 +38,15 @@ test("buildPiSessionOptions passes resolved tool allowlist and custom tool defin
     {
       name: "memory_read",
       label: "Memory Read",
-      description: "Read Cockapoo memory",
+      description: "Read Irori memory",
       parameters: {},
       execute: async () => ({ content: [{ type: "text", text: "" }] })
     }
   ];
   const options = buildPiSessionOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     modelSettings: defaultOpenAiCompatibleSettings,
-    authPath: "/tmp/cockapoo-auth/auth.json",
+    authPath: "/tmp/irori-auth/auth.json",
     runtimeToken: "sk-test",
     tools: ["read", "grep", "memory_read"],
     customTools
@@ -68,7 +68,7 @@ test("buildPiResourceLoaderOptions loads pi-web-access as a local extension pack
   assert.equal(typeof piSessionAdapter.buildPiResourceLoaderOptions, "function");
 
   const options = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: ["provider-override", "tool-gate"],
     webAccessPackageRoot: "/tmp/pi-web-access"
@@ -86,17 +86,17 @@ test("resolvePiSubagentsPackageRoot locates the bundled pi-subagents package", (
   assert.match(packageRoot, /pi-subagents/);
 });
 
-test("resolveCockapooToolGatePackageRoot points at the local gate extension package", () => {
-  assert.equal(typeof piSessionAdapter.resolveCockapooToolGatePackageRoot, "function");
+test("resolveIroriToolGatePackageRoot points at the local gate extension package", () => {
+  assert.equal(typeof piSessionAdapter.resolveIroriToolGatePackageRoot, "function");
 
-  const packageRoot = piSessionAdapter.resolveCockapooToolGatePackageRoot();
+  const packageRoot = piSessionAdapter.resolveIroriToolGatePackageRoot();
 
-  assert.match(packageRoot, /extensions\/cockapoo-tool-gate$/);
+  assert.match(packageRoot, /extensions\/irori-tool-gate$/);
 });
 
 test("buildPiResourceLoaderOptions appends opt-in subagent package roots after web access", () => {
   const options = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: [],
     webAccessPackageRoot: "/tmp/pi-web-access",
@@ -108,7 +108,7 @@ test("buildPiResourceLoaderOptions appends opt-in subagent package roots after w
 
 test("buildPiResourceLoaderOptions drops a missing web access root but keeps additional roots", () => {
   const options = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: [],
     webAccessPackageRoot: "",
@@ -120,7 +120,7 @@ test("buildPiResourceLoaderOptions drops a missing web access root but keeps add
 
 test("buildPiResourceLoaderOptions exposes the skills root when a path is given", () => {
   const withRoot = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: [],
     webAccessPackageRoot: "/tmp/pi-web-access",
@@ -130,7 +130,7 @@ test("buildPiResourceLoaderOptions exposes the skills root when a path is given"
   assert.deepEqual(withRoot.additionalSkillPaths, ["/tmp/skills"]);
 
   const withoutRoot = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: [],
     webAccessPackageRoot: "/tmp/pi-web-access"
@@ -149,7 +149,7 @@ test("skillsOverride whitelists only the character's assigned skills", () => {
   };
 
   const allowed = piSessionAdapter.buildPiResourceLoaderOptions({
-    cwd: "/tmp/cockapoo-workspace",
+    cwd: "/tmp/irori-workspace",
     agentDir: "/tmp/pi-agent",
     extensionFactories: [],
     webAccessPackageRoot: "/tmp/pi-web-access",
@@ -170,7 +170,7 @@ test("skillsOverride hides every skill when the character has none assigned", ()
 
   for (const allowedSkillNames of [undefined, [], null]) {
     const filtered = piSessionAdapter.buildPiResourceLoaderOptions({
-      cwd: "/tmp/cockapoo-workspace",
+      cwd: "/tmp/irori-workspace",
       agentDir: "/tmp/pi-agent",
       extensionFactories: [],
       webAccessPackageRoot: "/tmp/pi-web-access",
@@ -212,22 +212,22 @@ test("ensureBundledPiOnPath is a no-op when no bin dir is found", () => {
 test("resolveSubagentAgentDir defaults to an app-owned dir, never the user's ~/.pi/agent", () => {
   const dir = piSessionAdapter.resolveSubagentAgentDir({ env: {} });
 
-  assert.equal(dir, join(homedir(), ".cockapoo", "pi-agent"));
+  assert.equal(dir, join(homedir(), ".irori", "pi-agent"));
   assert.doesNotMatch(dir, /\.pi\/agent/);
 });
 
-test("resolveSubagentAgentDir honors the COCKAPOO_SUBAGENT_AGENT_DIR override", () => {
+test("resolveSubagentAgentDir honors the IRORI_SUBAGENT_AGENT_DIR override", () => {
   const dir = piSessionAdapter.resolveSubagentAgentDir({
-    env: { COCKAPOO_SUBAGENT_AGENT_DIR: "/custom/agent-dir" }
+    env: { IRORI_SUBAGENT_AGENT_DIR: "/custom/agent-dir" }
   });
 
   assert.equal(dir, "/custom/agent-dir");
 });
 
 test("configureSubagentBridge materializes the models.json bridge in the app-owned dir and points children at it", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-subagent-bridge-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-subagent-bridge-"));
   const subagentsRoot = join(dir, "pi-subagents");
-  const agentDir = join(dir, "cockapoo-agent");
+  const agentDir = join(dir, "irori-agent");
   await mkdir(join(subagentsRoot, "agents"), { recursive: true });
   await writeFile(join(subagentsRoot, "agents", "worker.md"), "---\nname: worker\n---\nWorker body.\n");
   const env = {};
@@ -237,7 +237,7 @@ test("configureSubagentBridge materializes the models.json bridge in the app-own
       modelSettings: { baseUrl: "https://my-llm.internal/v1", modelName: "house-model" },
       runtimeToken: "sk-secret",
       subagentsRoot,
-      gateExtensionRoot: "/abs/cockapoo-tool-gate",
+      gateExtensionRoot: "/abs/irori-tool-gate",
       env,
       agentDir
     });
@@ -246,21 +246,21 @@ test("configureSubagentBridge materializes the models.json bridge in the app-own
     // 子进程与 pi-subagents 的 agent 发现都跟随这个 env 指针。
     assert.equal(env.PI_CODING_AGENT_DIR, agentDir);
     // 通用桥：key 经 env 传递，磁盘上只有 env 变量名。
-    assert.equal(env.COCKAPOO_SUBAGENT_API_KEY, "sk-secret");
+    assert.equal(env.IRORI_SUBAGENT_API_KEY, "sk-secret");
     const models = JSON.parse(await readFile(join(agentDir, "models.json"), "utf-8"));
     assert.equal(models.providers["openai-compatible"].baseUrl, "https://my-llm.internal/v1");
     const worker = await readFile(join(agentDir, "agents", "worker.md"), "utf-8");
     assert.match(worker, /model: openai-compatible\/house-model/);
-    assert.match(worker, /extensions: \/abs\/cockapoo-tool-gate/);
+    assert.match(worker, /extensions: \/abs\/irori-tool-gate/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 test("configureSubagentBridge native fast path passes the key via the provider env var and drops a stale bridge", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-subagent-native-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-subagent-native-"));
   const subagentsRoot = join(dir, "pi-subagents");
-  const agentDir = join(dir, "cockapoo-agent");
+  const agentDir = join(dir, "irori-agent");
   await mkdir(join(subagentsRoot, "agents"), { recursive: true });
   await writeFile(join(subagentsRoot, "agents", "worker.md"), "---\nname: worker\n---\nWorker body.\n");
   await mkdir(agentDir, { recursive: true });
@@ -279,7 +279,7 @@ test("configureSubagentBridge native fast path passes the key via the provider e
 
     assert.equal(env.PI_CODING_AGENT_DIR, agentDir);
     assert.equal(env.DEEPSEEK_API_KEY, "sk-secret");
-    assert.equal(env.COCKAPOO_SUBAGENT_API_KEY, undefined);
+    assert.equal(env.IRORI_SUBAGENT_API_KEY, undefined);
     assert.deepEqual((await readdir(agentDir)).filter((name) => name === "models.json"), []);
     const worker = await readFile(join(agentDir, "agents", "worker.md"), "utf-8");
     assert.match(worker, /model: deepseek\/deepseek-v4-pro/);

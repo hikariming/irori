@@ -40,8 +40,8 @@
 ```
 send_pi_prompt (src-tauri/src/lib.rs:435)          // Rust，能访问 SQLite
   └─ 把请求 JSON 经 stdin 交给 sidecar
-runCockapooPiPrompt (sidecar/src/prompt-runner.mjs:172)
-  └─ createCockapooPiSession (pi-session-adapter.mjs:203)
+runIroriPiPrompt (sidecar/src/prompt-runner.mjs:172)
+  └─ createIroriPiSession (pi-session-adapter.mjs:203)
         └─ buildPiResourceLoaderOptions (:188)
               // 当前只传 additionalExtensionPaths / extensionFactories
               // 没有 additionalSkillPaths，没有 skillsOverride
@@ -57,7 +57,7 @@ runCockapooPiPrompt (sidecar/src/prompt-runner.mjs:172)
 ## 2. 存储层
 
 ### 2a. Skill 文件库（文件系统）
-路径：`<appDataDir>/cockapoo/skills/<skill-name>/SKILL.md`（可选 `scripts/`、
+路径：`<appDataDir>/irori/skills/<skill-name>/SKILL.md`（可选 `scripts/`、
 `references/`）。App 首启时与 SQLite 同期确保目录存在。
 
 `SKILL.md` 示例：
@@ -108,16 +108,16 @@ CREATE TABLE character_skill (
 目录，加进 stdin 请求 JSON（与现有 `modelSettings`/`toolPolicySettings` 同级）：
 ```jsonc
 { ...现有字段,
-  "skillsRootPath": "<appData>/cockapoo/skills",
+  "skillsRootPath": "<appData>/irori/skills",
   "allowedSkillNames": ["tarot-reading", "weather-lookup"] }
 ```
 > Rust 查 DB、传扁平数据；sidecar 保持无 DB 依赖。
 
-### 3b. `runCockapooPiPrompt` 透传（`prompt-runner.mjs:172`）
+### 3b. `runIroriPiPrompt` 透传（`prompt-runner.mjs:172`）
 新增入参 `skillsRootPath`、`allowedSkillNames`，原样传给 `createSession({...})`（`:313`）。
 （同时 `bin/pi-prompt.mjs` 解析 stdin 时把这两个字段读出并传入。）
 
-### 3c. `buildPiResourceLoaderOptions` + `createCockapooPiSession`（`pi-session-adapter.mjs:188,203`）
+### 3c. `buildPiResourceLoaderOptions` + `createIroriPiSession`（`pi-session-adapter.mjs:188,203`）
 ```js
 export function buildPiResourceLoaderOptions({
   cwd, agentDir, extensionFactories,
@@ -139,7 +139,7 @@ export function buildPiResourceLoaderOptions({
   };
 }
 ```
-`createCockapooPiSession` 把 `options.skillsRootPath` / `options.allowedSkillNames`
+`createIroriPiSession` 把 `options.skillsRootPath` / `options.allowedSkillNames`
 透传进 `buildPiResourceLoaderOptions`（已在 `:260` 调用）。
 
 > 即便 pi 默认目录（`~/.pi/agent/skills` 等）混入别的 skill，白名单过滤也会一并

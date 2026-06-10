@@ -13,7 +13,7 @@ const supportedCustomToolNames = {
   "web.fetch": ["fetch_content", "get_search_content"],
   "web.search": "web_search",
   "browser.view": "browser_view",
-  // 一个 Cockapoo id 展开成三个 pi 工具名：建 / 列 / 取消，三者同进退、同围栏放行。
+  // 一个 Irori id 展开成三个 pi 工具名：建 / 列 / 取消，三者同进退、同围栏放行。
   "schedule.create": ["schedule_create", "schedule_list", "schedule_cancel"]
 };
 
@@ -79,8 +79,8 @@ export function createMemoryReadTool({ memoryBackend, recallRequest }) {
   return {
     name: "memory_read",
     label: "Memory Read",
-    description: "Search Cockapoo memory for relevant user, character, project, or session context.",
-    promptSnippet: "memory_read - Search Cockapoo memory for relevant long-term or session context.",
+    description: "Search Irori memory for relevant user, character, project, or session context.",
+    promptSnippet: "memory_read - Search Irori memory for relevant long-term or session context.",
     promptGuidelines: [
       "Use memory_read when the user asks about preferences, prior context, project background, or continuity."
     ],
@@ -91,7 +91,7 @@ export function createMemoryReadTool({ memoryBackend, recallRequest }) {
     execute: async (_toolCallId, params = {}) => {
       if (!memoryBackend || !recallRequest) {
         return {
-          content: [{ type: "text", text: "当前没有可用的 Cockapoo 记忆后端。" }],
+          content: [{ type: "text", text: "当前没有可用的 Irori 记忆后端。" }],
           details: { memories: [] }
         };
       }
@@ -116,7 +116,7 @@ export function createMemoryWriteTool({ memoryBackend, recallRequest, requiresAp
   return {
     name: "memory_write",
     label: "Memory Write",
-    description: "Save an explicit, non-sensitive Cockapoo memory through the active memory backend.",
+    description: "Save an explicit, non-sensitive Irori memory through the active memory backend.",
     promptSnippet: "memory_write - Save explicit long-term or session memory after checking privacy and approval rules.",
     promptGuidelines: [
       "Use memory_write only for durable preferences, project context, session summaries, or user-approved facts.",
@@ -133,7 +133,7 @@ export function createMemoryWriteTool({ memoryBackend, recallRequest, requiresAp
     execute: async (_toolCallId, params = {}) => {
       if (!memoryBackend || !recallRequest) {
         return {
-          content: [{ type: "text", text: "当前没有可用的 Cockapoo 记忆后端，无法保存记忆。" }],
+          content: [{ type: "text", text: "当前没有可用的 Irori 记忆后端，无法保存记忆。" }],
           details: { status: "unavailable" }
         };
       }
@@ -214,7 +214,7 @@ export function createBrowserViewTool({ browserSnapshot, onBrowserEvent } = {}) 
   return {
     name: "browser_view",
     label: "Browser View",
-    description: "Open a public URL in Cockapoo's read-only right-side browser panel or report the current panel metadata.",
+    description: "Open a public URL in Irori's read-only right-side browser panel or report the current panel metadata.",
     promptSnippet: "browser_view - Open a source URL in the right-side browser panel or inspect its current URL/title metadata.",
     promptGuidelines: [
       "Use browser_view when a source should be visible to the user in the right-side browser panel.",
@@ -560,7 +560,7 @@ export function buildToolRuntime({
   };
 
   // Translate the policy into the Pi tool names the tool_call hook sees, so the
-  // gate extension can evaluate concrete calls without knowing Cockapoo tool ids.
+  // gate extension can evaluate concrete calls without knowing Irori tool ids.
   const confirmToolNames = resolved.alwaysConfirm
     .flatMap((toolId) => {
       if (!toolId.includes(".")) {

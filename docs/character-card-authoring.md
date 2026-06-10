@@ -1,6 +1,6 @@
-# Cockapoo 角色卡制作规范
+# Irori 角色卡制作规范
 
-本文档描述 Cockapoo Pi Companion 当前实际加载的角色卡包格式。`characters/shili.card` 是参考实现，桌面端会把可用角色包复制到 `apps/desktop/public/characters/` 下供前端直接加载。
+本文档描述 Irori 当前实际加载的角色卡包格式。`characters/shili.card` 是参考实现，桌面端会把可用角色包复制到 `apps/desktop/public/characters/` 下供前端直接加载。
 
 本规范以前端解析器 `apps/desktop/src/components/character-cards.ts` 的实际行为为准。解析器只读取下文列出的字段，未列出的字段会被忽略。
 

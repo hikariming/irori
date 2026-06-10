@@ -13,7 +13,7 @@ function toolTargetSummary(toolName, input = {}) {
 }
 
 /**
- * Pi extension factory that enforces the Cockapoo tool-policy fence inside the
+ * Pi extension factory that enforces the Irori tool-policy fence inside the
  * native tool_call hook. Returns { block, reason } to stop a call, or undefined
  * to let it run. Every decision is mirrored to onToolEvent so the desktop can
  * show what the companion did or was stopped from doing.

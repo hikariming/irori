@@ -493,7 +493,7 @@ fn default_web_access_workflow() -> String {
 
 #[tauri::command]
 fn companion_status() -> &'static str {
-    "Cockapoo Pi Companion desktop shell is ready."
+    "Irori desktop shell is ready."
 }
 
 #[tauri::command]
@@ -1687,13 +1687,13 @@ fn skills_root_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 /// 子代理委派需要一个稳定的 gate 配置路径：sidecar 把策略写到这里，子进程经
-/// COCKAPOO_TOOL_GATE_CONFIG 环境变量继承后读取同一份围栏。
+/// IRORI_TOOL_GATE_CONFIG 环境变量继承后读取同一份围栏。
 fn tool_gate_config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app
         .path()
         .app_data_dir()
         .map_err(|error| error.to_string())?
-        .join("cockapoo-tool-gate.json"))
+        .join("irori-tool-gate.json"))
 }
 
 fn build_memory_backend_config_payload(
@@ -4141,7 +4141,7 @@ pub fn run() {
             update_skill
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run Cockapoo Pi Companion");
+        .expect("failed to run Irori");
 }
 
 #[cfg(test)]
@@ -4187,7 +4187,7 @@ mod tests {
     use chrono::TimeZone;
 
     fn temp_skills_root() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cockapoo-skills-{}", temp_path_nonce()))
+        std::env::temp_dir().join(format!("irori-skills-{}", temp_path_nonce()))
     }
 
     fn save_skill_request(name: &str, description: &str, body: &str) -> SaveSkillRequest {
@@ -4214,29 +4214,29 @@ mod tests {
 
     fn temp_settings_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "cockapoo-model-settings-{}.json",
+            "irori-model-settings-{}.json",
             temp_path_nonce()
         ))
     }
 
     fn temp_chat_history_path() -> std::path::PathBuf {
         std::env::temp_dir().join(format!(
-            "cockapoo-chat-history-{}.sqlite3",
+            "irori-chat-history-{}.sqlite3",
             temp_path_nonce()
         ))
     }
 
     fn temp_tool_policy_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cockapoo-tool-policy-{}.json", temp_path_nonce()))
+        std::env::temp_dir().join(format!("irori-tool-policy-{}.json", temp_path_nonce()))
     }
 
     fn temp_web_access_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("cockapoo-web-access-{}.json", temp_path_nonce()))
+        std::env::temp_dir().join(format!("irori-web-access-{}.json", temp_path_nonce()))
     }
 
     #[test]
     fn review_mode_round_trips_and_sanitizes() {
-        let path = std::env::temp_dir().join(format!("cockapoo-review-mode-{}.json", temp_path_nonce()));
+        let path = std::env::temp_dir().join(format!("irori-review-mode-{}.json", temp_path_nonce()));
 
         // Missing file → safe default.
         assert_eq!(read_review_mode_from_path(&path).expect("default"), "default");
@@ -4266,7 +4266,7 @@ mod tests {
 
     #[test]
     fn unique_attachment_path_avoids_clobbering_existing_files() {
-        let dir = std::env::temp_dir().join(format!("cockapoo-attach-{}", temp_path_nonce()));
+        let dir = std::env::temp_dir().join(format!("irori-attach-{}", temp_path_nonce()));
         fs::create_dir_all(&dir).expect("create dir");
 
         // 目录里没有同名文件时，直接用原名。
@@ -4288,7 +4288,7 @@ mod tests {
     #[test]
     fn missed_task_policy_round_trips_and_defaults_catchup() {
         let path =
-            std::env::temp_dir().join(format!("cockapoo-missed-policy-{}.json", temp_path_nonce()));
+            std::env::temp_dir().join(format!("irori-missed-policy-{}.json", temp_path_nonce()));
 
         // 缺文件 → 默认补跑。
         assert_eq!(read_missed_task_policy_from_path(&path).expect("default"), "catchup");
@@ -4336,7 +4336,7 @@ mod tests {
     #[test]
     fn skip_missed_task_reschedules_recurring_and_disables_once() {
         let path =
-            std::env::temp_dir().join(format!("cockapoo-skip-{}.sqlite", temp_path_nonce()));
+            std::env::temp_dir().join(format!("irori-skip-{}.sqlite", temp_path_nonce()));
         init_chat_history_at_path(&path).expect("init");
 
         let make = |kind: &str, spec: &str| SaveScheduledTaskRequest {
@@ -4372,7 +4372,7 @@ mod tests {
     #[test]
     fn advanced_settings_round_trip_defaults_subagents_off() {
         let path =
-            std::env::temp_dir().join(format!("cockapoo-advanced-{}.json", temp_path_nonce()));
+            std::env::temp_dir().join(format!("irori-advanced-{}.json", temp_path_nonce()));
 
         // Missing file → subagents off.
         assert!(!read_advanced_settings_from_path(&path).expect("default").enable_subagents);
@@ -4392,7 +4392,7 @@ mod tests {
 
     #[test]
     fn read_workspace_dir_sorts_folders_first_and_reports_sizes() {
-        let base = std::env::temp_dir().join(format!("cockapoo-ws-{}", temp_path_nonce()));
+        let base = std::env::temp_dir().join(format!("irori-ws-{}", temp_path_nonce()));
         fs::create_dir_all(base.join("zeta-dir")).expect("subdir should create");
         fs::write(base.join("alpha.txt"), b"hello").expect("file should write");
 
@@ -4545,7 +4545,7 @@ mod tests {
     #[test]
     fn memory_backend_config_points_to_local_tencentdb_directory() {
         let value = build_memory_backend_config_payload(
-            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+            PathBuf::from("/tmp/irori-app-data/memory-tdai").as_path(),
             &StoredModelProfile {
                 id: "m1".to_string(),
                 name: "Pi".to_string(),
@@ -4558,11 +4558,11 @@ mod tests {
         assert_eq!(value["backend"], "tencentdb");
         assert_eq!(
             value["tencentdb"]["dataDir"],
-            "/tmp/cockapoo-app-data/memory-tdai"
+            "/tmp/irori-app-data/memory-tdai"
         );
         assert_eq!(
             value["tencentdb"]["rootDataDir"],
-            "/tmp/cockapoo-app-data/memory-tdai"
+            "/tmp/irori-app-data/memory-tdai"
         );
         assert_eq!(value["tencentdb"]["llm"]["baseUrl"], "https://pi.example/v1");
         assert_eq!(value["tencentdb"]["llm"]["model"], "pi-1");
@@ -4572,7 +4572,7 @@ mod tests {
     #[test]
     fn memory_backend_config_omits_api_key_when_token_blank() {
         let value = build_memory_backend_config_payload(
-            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
+            PathBuf::from("/tmp/irori-app-data/memory-tdai").as_path(),
             &StoredModelProfile {
                 id: "m1".to_string(),
                 name: "Pi".to_string(),
@@ -4588,13 +4588,13 @@ mod tests {
     #[test]
     fn memory_status_reports_local_backend_paths() {
         let status = memory_status_from_paths(
-            PathBuf::from("/tmp/cockapoo-app-data/memory-tdai").as_path(),
-            PathBuf::from("/tmp/cockapoo-sidecar").as_path(),
+            PathBuf::from("/tmp/irori-app-data/memory-tdai").as_path(),
+            PathBuf::from("/tmp/irori-sidecar").as_path(),
         );
 
         assert_eq!(status.configured_backend, "tencentdb");
         assert_eq!(status.fallback_backend, "chat-history");
-        assert_eq!(status.memory_dir, "/tmp/cockapoo-app-data/memory-tdai");
+        assert_eq!(status.memory_dir, "/tmp/irori-app-data/memory-tdai");
         assert!(!status.vectors_db_exists);
     }
 
@@ -5064,7 +5064,7 @@ mod tests {
         });
 
         let payload = build_sidecar_prompt_payload(
-            "/tmp/cockapoo-workspace".into(),
+            "/tmp/irori-workspace".into(),
             &stored,
             "你好".to_string(),
             Some(serde_json::json!({ "sessionId": "session-1" })),
@@ -5077,7 +5077,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(payload["cwd"], "/tmp/cockapoo-workspace");
+        assert_eq!(payload["cwd"], "/tmp/irori-workspace");
         assert_eq!(payload["toolPolicySettings"], tool_policy_settings);
         assert_eq!(payload["webAccessSettings"]["provider"], "auto");
         assert_eq!(payload["webAccessSettings"]["workflow"], "none");
@@ -5087,12 +5087,12 @@ mod tests {
     #[test]
     fn sidecar_prompt_command_suppresses_pnpm_script_output() {
         let args = sidecar_prompt_command_args(
-            PathBuf::from("/tmp/cockapoo-sidecar").as_path(),
+            PathBuf::from("/tmp/irori-sidecar").as_path(),
         );
 
         assert_eq!(args[0], "--silent");
         assert_eq!(args[1], "--dir");
-        assert_eq!(args[2], "/tmp/cockapoo-sidecar");
+        assert_eq!(args[2], "/tmp/irori-sidecar");
         assert_eq!(args[3], "prompt");
     }
 
@@ -5287,7 +5287,7 @@ mod tests {
         };
 
         let payload = build_sidecar_prompt_payload(
-            "/tmp/cockapoo-workspace".into(),
+            "/tmp/irori-workspace".into(),
             &stored,
             "请只回复 OK".to_string(),
             None,
@@ -5314,7 +5314,7 @@ mod tests {
         };
 
         let payload = build_sidecar_prompt_payload(
-            "/tmp/cockapoo-workspace".into(),
+            "/tmp/irori-workspace".into(),
             &stored,
             "请打开来源".to_string(),
             None,

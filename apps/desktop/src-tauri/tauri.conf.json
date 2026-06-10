@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Cockapoo Pi Companion",
+  "productName": "Irori",
   "version": "0.1.0",
-  "identifier": "ai.cockapoo.pi-companion",
+  "identifier": "ai.irori.app",
   "build": {
     "beforeDevCommand": "pnpm dev:vite",
     "devUrl": "http://127.0.0.1:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Cockapoo Pi Companion",
+        "title": "Irori",
         "width": 1280,
         "height": 820,
         "minWidth": 980,

@@ -5,13 +5,13 @@ import {
   collectAssistantText,
   createPromptIdleWatchdog,
   perRunToolGateConfigPath,
-  runCockapooPiPrompt,
+  runIroriPiPrompt,
   toPiPromptProgressEvent
 } from "../src/prompt-runner.mjs";
 
-test("runCockapooPiPrompt dry run returns the selected route without calling a model", async () => {
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+test("runIroriPiPrompt dry run returns the selected route without calling a model", async () => {
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "http://localhost:11434/v1",
       modelName: "qwen3-coder"
@@ -99,11 +99,11 @@ test("toPiPromptProgressEvent maps assistant thinking boundaries", () => {
   );
 });
 
-test("runCockapooPiPrompt forwards streaming progress events", async () => {
+test("runIroriPiPrompt forwards streaming progress events", async () => {
   const progressEvents = [];
 
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -172,11 +172,11 @@ test("runCockapooPiPrompt forwards streaming progress events", async () => {
   ]);
 });
 
-test("runCockapooPiPrompt emits status heartbeats while waiting for first model output", { timeout: 500 }, async () => {
+test("runIroriPiPrompt emits status heartbeats while waiting for first model output", { timeout: 500 }, async () => {
   const progressEvents = [];
 
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -225,11 +225,11 @@ test("runCockapooPiPrompt emits status heartbeats while waiting for first model 
   assert.ok(progressEvents.some((event) => event.status?.startsWith("等待模型首个输出")));
 });
 
-test("runCockapooPiPrompt requires a token outside dry run", async () => {
+test("runIroriPiPrompt requires a token outside dry run", async () => {
   await assert.rejects(
     () =>
-      runCockapooPiPrompt({
-        cwd: "/tmp/cockapoo-workspace",
+      runIroriPiPrompt({
+        cwd: "/tmp/irori-workspace",
         modelSettings: {
           baseUrl: "https://api.openai.com/v1",
           modelName: "gpt-5.5"
@@ -240,9 +240,9 @@ test("runCockapooPiPrompt requires a token outside dry run", async () => {
   );
 });
 
-test("runCockapooPiPrompt reports the real OpenAI-compatible request route", async () => {
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+test("runIroriPiPrompt reports the real OpenAI-compatible request route", async () => {
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
       modelName: "GLM-5.1"
@@ -279,11 +279,11 @@ test("runCockapooPiPrompt reports the real OpenAI-compatible request route", asy
   );
 });
 
-test("runCockapooPiPrompt forwards the skills root and allowed skill names to the session", async () => {
+test("runIroriPiPrompt forwards the skills root and allowed skill names to the session", async () => {
   let captured = null;
 
-  await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: { baseUrl: "https://api.example.com/v1", modelName: "demo" },
     runtimeToken: "sk-test",
     prompt: "你好",
@@ -315,11 +315,11 @@ test("runCockapooPiPrompt forwards the skills root and allowed skill names to th
   assert.deepEqual(captured.allowedSkillNames, ["tarot-reading", "weather-lookup"]);
 });
 
-test("runCockapooPiPrompt injects recalled memory and captures successful turns", async () => {
+test("runIroriPiPrompt injects recalled memory and captures successful turns", async () => {
   let promptSentToPi = "";
   const capturedTurns = [];
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -387,11 +387,11 @@ test("runCockapooPiPrompt injects recalled memory and captures successful turns"
   assert.equal(capturedTurns[0].assistantText, "好，我先接记忆上下文。");
 });
 
-test("runCockapooPiPrompt can recall memory for opening messages without capturing a turn", async () => {
+test("runIroriPiPrompt can recall memory for opening messages without capturing a turn", async () => {
   let promptSentToPi = "";
   let captureCount = 0;
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -453,10 +453,10 @@ test("runCockapooPiPrompt can recall memory for opening messages without capturi
   assert.equal(captureCount, 0);
 });
 
-test("runCockapooPiPrompt uses chat history memory when no backend is provided", async () => {
+test("runIroriPiPrompt uses chat history memory when no backend is provided", async () => {
   let promptSentToPi = "";
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -509,11 +509,11 @@ test("runCockapooPiPrompt uses chat history memory when no backend is provided",
   assert.equal(result.memoryBackendSource, "chat-history");
 });
 
-test("runCockapooPiPrompt uses configured memory backend before chat history fallback", async () => {
+test("runIroriPiPrompt uses configured memory backend before chat history fallback", async () => {
   let promptSentToPi = "";
   const capturedTurns = [];
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -590,10 +590,10 @@ test("runCockapooPiPrompt uses configured memory backend before chat history fal
   assert.equal(capturedTurns[0].assistantText, "已经走配置记忆后端。");
 });
 
-test("runCockapooPiPrompt applies tool policy settings to the Pi session", async () => {
+test("runIroriPiPrompt applies tool policy settings to the Pi session", async () => {
   let sessionOptions;
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -691,11 +691,11 @@ test("runCockapooPiPrompt applies tool policy settings to the Pi session", async
   assert.deepEqual(result.toolPolicy.registeredCustomTools, ["memory.read", "memory.write", "web.fetch", "web.search", "browser.view"]);
 });
 
-test("runCockapooPiPrompt forwards browser view tool events as prompt progress", async () => {
+test("runIroriPiPrompt forwards browser view tool events as prompt progress", async () => {
   const progressEvents = [];
 
-  await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -759,11 +759,11 @@ test("runCockapooPiPrompt forwards browser view tool events as prompt progress",
   });
 });
 
-test("runCockapooPiPrompt writes web access settings before creating the Pi session", async () => {
+test("runIroriPiPrompt writes web access settings before creating the Pi session", async () => {
   const calls = [];
 
-  await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -809,15 +809,15 @@ test("runCockapooPiPrompt writes web access settings before creating the Pi sess
   assert.equal(calls[0].settings.workflow, "none");
 });
 
-test("runCockapooPiPrompt persists a per-run gate config, points the env at it, and removes it after the run", async () => {
+test("runIroriPiPrompt persists a per-run gate config, points the env at it, and removes it after the run", async () => {
   const calls = [];
   const removed = [];
-  const previousEnv = process.env.COCKAPOO_TOOL_GATE_CONFIG;
-  delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
+  const previousEnv = process.env.IRORI_TOOL_GATE_CONFIG;
+  delete process.env.IRORI_TOOL_GATE_CONFIG;
 
   try {
-    await runCockapooPiPrompt({
-      cwd: "/tmp/cockapoo-workspace",
+    await runIroriPiPrompt({
+      cwd: "/tmp/irori-workspace",
       modelSettings: {
         baseUrl: "https://api.openai.com/v1",
         modelName: "gpt-5.5"
@@ -825,7 +825,7 @@ test("runCockapooPiPrompt persists a per-run gate config, points the env at it, 
       runtimeToken: "sk-test",
       prompt: "用户：派个子代理改代码",
       toolGateMode: "managed",
-      toolGateConfigPath: "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json",
+      toolGateConfigPath: "/tmp/irori-workspace/.pi/irori-tool-gate.json",
       writeToolGateConfig: async (config) => {
         calls.push({ type: "gate", config });
       },
@@ -861,38 +861,38 @@ test("runCockapooPiPrompt persists a per-run gate config, points the env at it, 
     assert.equal(calls[0].config.mode, "managed");
     // 并发 run 互不覆盖：写入的是按 run 派生的独立文件，不是共享的基础路径。
     const writtenPath = calls[0].config.configPath;
-    assert.match(writtenPath, /^\/tmp\/cockapoo-workspace\/\.pi\/cockapoo-tool-gate\..+\.json$/);
-    assert.notEqual(writtenPath, "/tmp/cockapoo-workspace/.pi/cockapoo-tool-gate.json");
+    assert.match(writtenPath, /^\/tmp\/irori-workspace\/\.pi\/irori-tool-gate\..+\.json$/);
+    assert.notEqual(writtenPath, "/tmp/irori-workspace/.pi/irori-tool-gate.json");
     assert.ok(Array.isArray(calls[0].config.gatePolicy.allowedToolNames));
     // 子进程经 env 指针找到的就是本 run 的文件。
-    assert.equal(process.env.COCKAPOO_TOOL_GATE_CONFIG, writtenPath);
+    assert.equal(process.env.IRORI_TOOL_GATE_CONFIG, writtenPath);
     // run 结束后临时围栏文件被清理。
     assert.deepEqual(removed, [writtenPath]);
   } finally {
     if (previousEnv === undefined) {
-      delete process.env.COCKAPOO_TOOL_GATE_CONFIG;
+      delete process.env.IRORI_TOOL_GATE_CONFIG;
     } else {
-      process.env.COCKAPOO_TOOL_GATE_CONFIG = previousEnv;
+      process.env.IRORI_TOOL_GATE_CONFIG = previousEnv;
     }
   }
 });
 
 test("perRunToolGateConfigPath derives unique sibling paths from the base path", () => {
-  const first = perRunToolGateConfigPath("/data/cockapoo-tool-gate.json", { pid: 42, token: "aaa" });
-  const second = perRunToolGateConfigPath("/data/cockapoo-tool-gate.json", { pid: 42, token: "bbb" });
+  const first = perRunToolGateConfigPath("/data/irori-tool-gate.json", { pid: 42, token: "aaa" });
+  const second = perRunToolGateConfigPath("/data/irori-tool-gate.json", { pid: 42, token: "bbb" });
 
-  assert.equal(first, "/data/cockapoo-tool-gate.42-aaa.json");
-  assert.equal(second, "/data/cockapoo-tool-gate.42-bbb.json");
-  assert.notEqual(perRunToolGateConfigPath("/data/cockapoo-tool-gate.json"), perRunToolGateConfigPath("/data/cockapoo-tool-gate.json"));
+  assert.equal(first, "/data/irori-tool-gate.42-aaa.json");
+  assert.equal(second, "/data/irori-tool-gate.42-bbb.json");
+  assert.notEqual(perRunToolGateConfigPath("/data/irori-tool-gate.json"), perRunToolGateConfigPath("/data/irori-tool-gate.json"));
   // 不以 .json 结尾的基础路径也能加后缀。
   assert.equal(perRunToolGateConfigPath("/data/gate", { pid: 1, token: "x" }), "/data/gate.1-x.json");
 });
 
-test("runCockapooPiPrompt does not persist a gate config when no path is given", async () => {
+test("runIroriPiPrompt does not persist a gate config when no path is given", async () => {
   let gateWrites = 0;
 
-  await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -929,14 +929,14 @@ test("runCockapooPiPrompt does not persist a gate config when no path is given",
   assert.equal(gateWrites, 0);
 });
 
-test("runCockapooPiPrompt times out idle model prompts and disposes the session", { timeout: 500 }, async () => {
+test("runIroriPiPrompt times out idle model prompts and disposes the session", { timeout: 500 }, async () => {
   let disposed = false;
   let unsubscribed = false;
 
   await assert.rejects(
     () =>
-      runCockapooPiPrompt({
-        cwd: "/tmp/cockapoo-workspace",
+      runIroriPiPrompt({
+        cwd: "/tmp/irori-workspace",
         modelSettings: {
           baseUrl: "https://api.openai.com/v1",
           modelName: "gpt-5.5"
@@ -967,10 +967,10 @@ test("runCockapooPiPrompt times out idle model prompts and disposes the session"
   assert.equal(disposed, true);
 });
 
-test("runCockapooPiPrompt treats promptTimeoutMs as an idle window: steady events keep a long run alive", { timeout: 1000 }, async () => {
+test("runIroriPiPrompt treats promptTimeoutMs as an idle window: steady events keep a long run alive", { timeout: 1000 }, async () => {
   // 总时长（约 120ms）远超空闲窗口（30ms），但事件间隔都小于窗口，不应超时。
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -1009,11 +1009,11 @@ test("runCockapooPiPrompt treats promptTimeoutMs as an idle window: steady event
   assert.equal(result.text, "说完了。");
 });
 
-test("runCockapooPiPrompt pauses the idle clock while a tool is executing (e.g. subagent delegation)", { timeout: 1000 }, async () => {
+test("runIroriPiPrompt pauses the idle clock while a tool is executing (e.g. subagent delegation)", { timeout: 1000 }, async () => {
   // 工具执行（tool_execution_start → end）耗时远超空闲窗口，期间没有任何模型
   // 事件，也不应超时——子代理委派正是这种形态。
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"
@@ -1048,11 +1048,11 @@ test("runCockapooPiPrompt pauses the idle clock while a tool is executing (e.g. 
   assert.equal(result.text, "子代理跑完了。");
 });
 
-test("runCockapooPiPrompt pauses the idle clock while a confirmation waits on the user", { timeout: 1000 }, async () => {
+test("runIroriPiPrompt pauses the idle clock while a confirmation waits on the user", { timeout: 1000 }, async () => {
   // 用户在确认面板上停留远超空闲窗口也不应超时。
   let confirmSeen = null;
-  const result = await runCockapooPiPrompt({
-    cwd: "/tmp/cockapoo-workspace",
+  const result = await runIroriPiPrompt({
+    cwd: "/tmp/irori-workspace",
     modelSettings: {
       baseUrl: "https://api.openai.com/v1",
       modelName: "gpt-5.5"

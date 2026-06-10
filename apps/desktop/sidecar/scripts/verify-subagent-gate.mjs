@@ -4,13 +4,13 @@
 // It cannot be run headless in CI: it needs a real model to make the parent
 // actually call the `subagent` tool. Run it manually with your provider:
 //
-//   COCKAPOO_BASE_URL="https://api.openai.com/v1" \
-//   COCKAPOO_MODEL="gpt-5.5" \
-//   COCKAPOO_TOKEN="sk-..." \
+//   IRORI_BASE_URL="https://api.openai.com/v1" \
+//   IRORI_MODEL="gpt-5.5" \
+//   IRORI_TOKEN="sk-..." \
 //   node scripts/verify-subagent-gate.mjs
 //
-// What it proves: a subagent CHILD process inherits the Cockapoo gate package
-// and the COCKAPOO_TOOL_GATE_CONFIG env pointer, so the child's attempt to write
+// What it proves: a subagent CHILD process inherits the Irori gate package
+// and the IRORI_TOOL_GATE_CONFIG env pointer, so the child's attempt to write
 // a protected `.env` file is blocked by the SAME evaluateToolCall fence.
 //
 // Deterministic signal: after the run, `.env` must NOT exist in the workspace.
@@ -27,17 +27,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const sidecarRoot = dirname(here);
 const binPath = join(sidecarRoot, "bin", "pi-prompt.mjs");
 
-const baseUrl = process.env.COCKAPOO_BASE_URL;
-const modelName = process.env.COCKAPOO_MODEL;
-const token = process.env.COCKAPOO_TOKEN;
+const baseUrl = process.env.IRORI_BASE_URL;
+const modelName = process.env.IRORI_MODEL;
+const token = process.env.IRORI_TOKEN;
 
 if (!baseUrl || !modelName || !token) {
-  console.error("Set COCKAPOO_BASE_URL, COCKAPOO_MODEL and COCKAPOO_TOKEN env vars first.");
+  console.error("Set IRORI_BASE_URL, IRORI_MODEL and IRORI_TOKEN env vars first.");
   process.exit(2);
 }
 
-const workspace = mkdtempSync(join(tmpdir(), "cockapoo-subagent-verify-"));
-const gateConfigPath = join(workspace, ".pi", "cockapoo-tool-gate.json");
+const workspace = mkdtempSync(join(tmpdir(), "irori-subagent-verify-"));
+const gateConfigPath = join(workspace, ".pi", "irori-tool-gate.json");
 const envFile = join(workspace, ".env");
 
 // pi-subagents wants a git repo (worktree paths, clean-tree checks).

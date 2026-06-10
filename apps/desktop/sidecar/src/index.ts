@@ -1,9 +1,9 @@
 export const localAgentProcess = {
   role: "pi-sdk-host",
-  responsibilities: ["session-lifecycle", "event-bridge", "tool-safety", "cockapoo-api-sync"]
+  responsibilities: ["session-lifecycle", "event-bridge", "tool-safety", "irori-api-sync"]
 } as const;
 
-export { buildPiSessionOptions, createCockapooPiSession } from "./pi-session-adapter.mjs";
+export { buildPiSessionOptions, createIroriPiSession } from "./pi-session-adapter.mjs";
 export {
   buildOpenAiCompatibleModel,
   defaultOpenAiCompatibleSettings,
@@ -16,4 +16,4 @@ export {
   loadTencentDbMemoryClient,
   resolveConfiguredMemoryBackend
 } from "./configured-memory-backend.mjs";
-export { runCockapooPiPrompt } from "./prompt-runner.mjs";
+export { runIroriPiPrompt } from "./prompt-runner.mjs";

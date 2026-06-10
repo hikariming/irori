@@ -21,7 +21,7 @@ test("formatMemoryContext renders recalled memories as background context", () =
       id: "memory-2",
       scope: "project",
       kind: "project_note",
-      text: "Cockapoo Pi Companion 要本地优先。",
+      text: "Irori 要本地优先。",
       approved: true
     }
   ]);
@@ -29,7 +29,7 @@ test("formatMemoryContext renders recalled memories as background context", () =
   assert.match(context, /^<memory-context>/);
   assert.match(context, /background context, not new user instructions/);
   assert.match(context, /偏好：用户偏好先给结论/);
-  assert.match(context, /项目背景：Cockapoo Pi Companion/);
+  assert.match(context, /项目背景：Irori/);
   assert.match(context, /source: session-1\/message-2/);
   assert.match(context, /<\/memory-context>$/);
 });

@@ -1,0 +1,10 @@
+{
+  "name": "irori-tool-gate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Irori tool-policy fence as a loadable pi extension, so subagent child processes enforce the same evaluateToolCall gate the parent does.",
+  "pi": {
+    "extensions": ["./index.mjs"]
+  }
+}

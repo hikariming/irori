@@ -1,13 +1,13 @@
 import {
   defaultToolPolicySettings,
   resolveToolPolicy,
-  type CockapooTool,
+  type IroriTool,
   type ToolId,
   type ToolPolicySettings
 } from "../../../../packages/safety/src/index.ts";
 
 export { defaultToolPolicySettings };
-export type { CockapooTool, ToolId, ToolPolicySettings };
+export type { IroriTool, ToolId, ToolPolicySettings };
 
 export type ToolPolicyToggleGroup = "builtinTools" | "customTools" | "confirmTools";
 

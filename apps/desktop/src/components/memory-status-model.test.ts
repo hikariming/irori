@@ -19,7 +19,7 @@ test("buildMemoryDashboardViewModel combines static status and latest recall", (
     status: {
       configuredBackend: "tencentdb",
       fallbackBackend: "chat-history",
-      memoryDir: "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai",
+      memoryDir: "/Users/rqq/Library/Application Support/irori/memory-tdai",
       sqliteVecAvailable: true,
       tencentDbPackageAvailable: true,
       vectorsDbExists: false
@@ -63,7 +63,7 @@ test("buildMemoryDashboardViewModel filters role-scoped memories by selected cha
           id: "project-note",
           scope: "project",
           kind: "project_note",
-          text: "项目是 Cockapoo。"
+          text: "项目是 Irori。"
         },
         {
           id: "shili-note",

@@ -38,7 +38,7 @@ export type CharacterState = {
 
 export type CharacterStates = Record<string, CharacterState>;
 
-export const STORAGE_KEY = "cockapoo-character-state";
+export const STORAGE_KEY = "irori-character-state";
 
 // 间隔超过这个时长再开口，算一次新的「见面」。
 const REENCOUNTER_GAP_MS = 30 * 60 * 1000;

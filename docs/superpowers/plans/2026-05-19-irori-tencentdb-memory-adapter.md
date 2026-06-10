@@ -1,8 +1,8 @@
-# Cockapoo TencentDB Memory Adapter Implementation Plan
+# Irori TencentDB Memory Adapter Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a TencentDB Agent Memory adapter boundary that Cockapoo can use without coupling the desktop app or local agent to a specific SDK shape.
+**Goal:** Add a TencentDB Agent Memory adapter boundary that Irori can use without coupling the desktop app or local agent to a specific SDK shape.
 
 **Architecture:** Keep `packages/memory` as the only place that knows about backend-specific memory clients. The first adapter accepts an injected TencentDB-compatible client, normalizes returned rows into `RecalledMemory[]`, and delegates capture/list/delete calls through the existing `MemoryBackend` contract.
 
@@ -50,7 +50,7 @@ test("tencentdb backend delegates captured conversation turns", async () => {
   const turn = {
     userId: "local-user",
     characterId: "shili",
-    projectId: "cockapoo",
+    projectId: "irori",
     sessionId: "session-1",
     userText: "我喜欢先听结论。",
     assistantText: "记住，后续先给结论。",
@@ -88,7 +88,7 @@ test("tencentdb backend normalizes recalled rows", async () => {
   const recalled = await backend.recallForPrompt({
     userId: "local-user",
     characterId: "shili",
-    projectId: "cockapoo",
+    projectId: "irori",
     sessionId: "session-1",
     query: "记忆适配",
     mode: "companion",
@@ -126,12 +126,12 @@ test("tencentdb backend delegates list and delete when supported", async () => {
     deleteMemory: async (id) => calls.push(["delete", id])
   });
 
-  const listed = await backend.listMemories("project", "cockapoo");
+  const listed = await backend.listMemories("project", "irori");
   await backend.deleteMemory("memory-1");
 
   assert.equal(listed[0].text, "项目使用 Pi SDK。");
   assert.deepEqual(calls, [
-    ["list", "project", "cockapoo"],
+    ["list", "project", "irori"],
     ["delete", "memory-1"]
   ]);
 });
@@ -236,7 +236,7 @@ Expected: PASS for the new adapter test and the existing memory package tests.
 Run:
 
 ```bash
-git add packages/memory/src/tencentdb-memory-backend.ts packages/memory/src/index.ts packages/memory/test/tencentdb-memory-backend.test.mjs docs/superpowers/plans/2026-05-19-cockapoo-tencentdb-memory-adapter.md
+git add packages/memory/src/tencentdb-memory-backend.ts packages/memory/src/index.ts packages/memory/test/tencentdb-memory-backend.test.mjs docs/superpowers/plans/2026-05-19-irori-tencentdb-memory-adapter.md
 git commit -m "feat: add tencentdb memory adapter shell"
 ```
 
@@ -278,21 +278,21 @@ Created `configured-memory-backend.mjs` with:
 ```js
 export function buildMemoryRuntimeConfig({ requestConfig = {}, env = process.env } = {}) {
   return {
-    backend: requestConfig.backend ?? env.COCKAPOO_MEMORY_BACKEND ?? "chat-history",
+    backend: requestConfig.backend ?? env.IRORI_MEMORY_BACKEND ?? "chat-history",
     tencentdb: {
-      moduleName: requestConfig.tencentdb?.moduleName ?? env.COCKAPOO_TENCENTDB_MEMORY_MODULE ?? "@tencentdb-agent-memory/memory-tencentdb",
-      dataDir: requestConfig.tencentdb?.dataDir ?? env.COCKAPOO_TENCENTDB_MEMORY_DATA_DIR,
+      moduleName: requestConfig.tencentdb?.moduleName ?? env.IRORI_TENCENTDB_MEMORY_MODULE ?? "@tencentdb-agent-memory/memory-tencentdb",
+      dataDir: requestConfig.tencentdb?.dataDir ?? env.IRORI_TENCENTDB_MEMORY_DATA_DIR,
       client: requestConfig.tencentdb?.client
     }
   };
 }
 ```
 
-`resolveConfiguredMemoryBackend()` returns `null` for `chat-history`, rejects unknown backend names, and creates a Cockapoo `MemoryBackend` for TencentDB-compatible clients.
+`resolveConfiguredMemoryBackend()` returns `null` for `chat-history`, rejects unknown backend names, and creates a Irori `MemoryBackend` for TencentDB-compatible clients.
 
 - [x] **Step 4: Wire prompt-runner**
 
-`runCockapooPiPrompt()` now resolves memory in this order:
+`runIroriPiPrompt()` now resolves memory in this order:
 
 ```txt
 explicit memoryBackend → configured backend → chatHistoryMemory fallback → no memory
@@ -328,7 +328,7 @@ Added tests proving desktop can send:
   "memoryBackendConfig": {
     "backend": "tencentdb",
     "tencentdb": {
-      "dataDir": "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+      "dataDir": "/Users/rqq/Library/Application Support/irori/memory-tdai"
     }
   }
 }
@@ -355,7 +355,7 @@ allowBuilds:
   '@tencentdb-agent-memory/memory-tencentdb': true
 ```
 
-`pnpm install` then ran the package postinstall. The postinstall OpenClaw patch reported no OpenClaw directory, which is expected for Cockapoo.
+`pnpm install` then ran the package postinstall. The postinstall OpenClaw patch reported no OpenClaw directory, which is expected for Irori.
 
 - [x] **Step 4: Wire desktop memory directory**
 

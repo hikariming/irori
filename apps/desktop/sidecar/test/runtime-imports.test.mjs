@@ -7,7 +7,7 @@ test("sidecar runtime modules load without requiring Node to import TypeScript s
     import("../src/memory-bridge.mjs"),
     import("../src/tool-policy-runtime.mjs"),
     import("../src/tool-gate-config.mjs"),
-    import("../src/extensions/cockapoo-tool-gate.mjs")
+    import("../src/extensions/irori-tool-gate.mjs")
   ]);
 
   assert.equal(typeof modules[0].resolveConfiguredMemoryBackend, "function");

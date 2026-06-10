@@ -10,11 +10,11 @@ import {
 
 // Where the sidecar drops the gate policy so subagent child processes — which
 // run in their own pi process and cannot inherit the parent's in-memory closure
-// gate — can load the SAME fence via the cockapoo-tool-gate extension.
-export const defaultToolGateConfigPath = join(homedir(), ".pi", "cockapoo-tool-gate.json");
+// gate — can load the SAME fence via the irori-tool-gate extension.
+export const defaultToolGateConfigPath = join(homedir(), ".pi", "irori-tool-gate.json");
 
 // Env var a child process reads to find the config the parent just wrote.
-export const toolGateConfigEnvVar = "COCKAPOO_TOOL_GATE_CONFIG";
+export const toolGateConfigEnvVar = "IRORI_TOOL_GATE_CONFIG";
 
 const gateModes = new Set(gateAutonomyModes);
 

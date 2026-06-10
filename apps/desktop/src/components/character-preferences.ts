@@ -5,7 +5,7 @@ export type CharacterPreference = {
 
 export type CharacterPreferences = Record<string, CharacterPreference>;
 
-export const STORAGE_KEY = "cockapoo-character-preferences";
+export const STORAGE_KEY = "irori-character-preferences";
 
 export const defaultCharacterPreference: CharacterPreference = {
   enabled: true,

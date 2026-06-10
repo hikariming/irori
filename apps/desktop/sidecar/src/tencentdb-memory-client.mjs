@@ -14,7 +14,7 @@ function nonEmptyString(value) {
 }
 
 function defaultRootDataDir() {
-  return path.join(os.homedir(), ".memory-tencentdb", "cockapoo");
+  return path.join(os.homedir(), ".memory-tencentdb", "irori");
 }
 
 function sessionKeyFor(characterId, sessionId) {
@@ -23,7 +23,7 @@ function sessionKeyFor(characterId, sessionId) {
 
 /**
  * The gateway's /recall returns only persona/scene context (appendSystemContext),
- * which is useful but ends with a tools-usage guide for tools cockapoo's agent
+ * which is useful but ends with a tools-usage guide for tools irori's agent
  * doesn't expose. Strip that block before injecting.
  */
 function cleanPersonaContext(context) {
@@ -54,7 +54,7 @@ async function postJson(fetchImpl, baseUrl, route, body, timeoutMs) {
 
 /**
  * Adapts the @tencentdb-agent-memory/memory-tencentdb engine (exposed only as
- * an HTTP gateway) to cockapoo's TencentDbMemoryClient contract, with one
+ * an HTTP gateway) to irori's TencentDbMemoryClient contract, with one
  * gateway — and thus one isolated memory store — per character.
  */
 export function createTencentDbMemoryClient(options = {}) {

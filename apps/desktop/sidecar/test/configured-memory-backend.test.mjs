@@ -22,8 +22,8 @@ test("buildMemoryRuntimeConfig reads tencentdb settings from request and env", (
       }
     },
     env: {
-      COCKAPOO_TENCENTDB_MEMORY_MODULE: "custom-memory-module",
-      COCKAPOO_TENCENTDB_MEMORY_DATA_DIR: "/tmp/env-memory"
+      IRORI_TENCENTDB_MEMORY_MODULE: "custom-memory-module",
+      IRORI_TENCENTDB_MEMORY_DATA_DIR: "/tmp/env-memory"
     }
   });
 
@@ -38,7 +38,7 @@ test("buildMemoryRuntimeConfig can enable tencentdb from desktop payload", () =>
       memoryBackendConfig: {
         backend: "tencentdb",
         tencentdb: {
-          dataDir: "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+          dataDir: "/Users/rqq/Library/Application Support/irori/memory-tdai"
         }
       }
     },
@@ -48,7 +48,7 @@ test("buildMemoryRuntimeConfig can enable tencentdb from desktop payload", () =>
   assert.equal(config.backend, "tencentdb");
   assert.equal(
     config.tencentdb.dataDir,
-    "/Users/rqq/Library/Application Support/cockapoo-pi-companion/memory-tdai"
+    "/Users/rqq/Library/Application Support/irori/memory-tdai"
   );
 });
 
@@ -112,7 +112,7 @@ test("resolveConfiguredMemoryBackend loads a tencentdb client factory from a mod
       backend: "tencentdb",
       tencentdb: {
         moduleName: "fake-memory-module",
-        dataDir: "/tmp/cockapoo-memory"
+        dataDir: "/tmp/irori-memory"
       }
     },
     env: {},
@@ -147,7 +147,7 @@ test("resolveConfiguredMemoryBackend loads a tencentdb client factory from a mod
 
   assert.deepEqual(factoryCalls, [
     {
-      dataDir: "/tmp/cockapoo-memory"
+      dataDir: "/tmp/irori-memory"
     }
   ]);
   assert.equal(recalled[0].kind, "session_summary");

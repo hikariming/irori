@@ -1,10 +1,10 @@
 {
-  "name": "@cockapoo-pi-companion/desktop",
+  "name": "@irori/desktop",
   "version": "0.1.0",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
-  "description": "Tauri desktop shell for Cockapoo Pi Companion.",
+  "description": "Tauri desktop shell for Irori.",
   "scripts": {
     "dev": "tauri dev",
     "dev:vite": "vite --host 127.0.0.1 --port 1420",

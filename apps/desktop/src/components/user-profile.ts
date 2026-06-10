@@ -11,7 +11,7 @@ export type UserProfile = {
   selfIntroduction: string; // 对其他角色的展示内容 / 自我介绍
 };
 
-export const STORAGE_KEY = "cockapoo-user-profile";
+export const STORAGE_KEY = "irori-user-profile";
 
 export const emptyUserProfile: UserProfile = {
   name: "",

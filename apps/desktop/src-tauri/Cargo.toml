@@ -1,13 +1,13 @@
 [package]
-name = "cockapoo-pi-companion"
+name = "irori"
 version = "0.1.0"
-description = "Cockapoo Pi Companion desktop shell"
-authors = ["Cockapoo"]
+description = "Irori desktop shell"
+authors = ["Irori"]
 edition = "2021"
 license = "Apache-2.0"
 
 [lib]
-name = "cockapoo_pi_companion_lib"
+name = "irori_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

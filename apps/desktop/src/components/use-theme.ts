@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "cockapoo-theme";
+const STORAGE_KEY = "irori-theme";
 
 function getSystemTheme(): Theme {
   if (typeof window === "undefined") {

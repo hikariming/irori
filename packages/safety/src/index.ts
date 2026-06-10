@@ -8,7 +8,7 @@ export type SafetyPolicy = {
 
 export type BuiltinPiTool = "read" | "grep" | "find" | "ls" | "bash" | "edit" | "write";
 
-export type CockapooTool =
+export type IroriTool =
   | "memory.read"
   | "memory.write"
   | "web.fetch"
@@ -16,20 +16,20 @@ export type CockapooTool =
   | "browser.view"
   | "browser.action";
 
-export type ToolId = BuiltinPiTool | CockapooTool;
+export type ToolId = BuiltinPiTool | IroriTool;
 
 export type ToolToggleMap<TTool extends string> = Partial<Record<TTool, boolean>>;
 
 export type ToolPolicySettings = {
   builtinTools: ToolToggleMap<BuiltinPiTool>;
-  customTools: ToolToggleMap<CockapooTool>;
+  customTools: ToolToggleMap<IroriTool>;
   confirmTools: ToolToggleMap<ToolId>;
   protectedPaths: string[];
 };
 
 export type ResolvedToolPolicy = Omit<SafetyPolicy, "allowedTools" | "alwaysConfirm"> & {
   builtinTools: BuiltinPiTool[];
-  customTools: CockapooTool[];
+  customTools: IroriTool[];
   allowedTools: ToolId[];
   alwaysConfirm: ToolId[];
 };
@@ -58,7 +58,7 @@ function enabledTools<TTool extends string>(toolOrder: TTool[], map: ToolToggleM
 
 export const defaultToolPolicySettings: ToolPolicySettings = {
   builtinTools: toggles<BuiltinPiTool>([...readOnlyBuiltinTools, ...writeBuiltinTools]),
-  customTools: toggles<CockapooTool>([
+  customTools: toggles<IroriTool>([
     "memory.read",
     "memory.write",
     "web.fetch",
@@ -79,7 +79,7 @@ export function resolveToolPolicy({
     [...readOnlyBuiltinTools, ...writeBuiltinTools],
     settings.builtinTools
   );
-  const customTools = enabledTools<CockapooTool>(
+  const customTools = enabledTools<IroriTool>(
     ["memory.read", "memory.write", "web.fetch", "web.search", "browser.view", "browser.action"],
     settings.customTools
   );

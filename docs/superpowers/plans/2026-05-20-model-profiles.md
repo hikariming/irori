@@ -757,7 +757,7 @@ mod model_profile_tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        std::env::temp_dir().join(format!("cockapoo-{name}-{suffix}.json"))
+        std::env::temp_dir().join(format!("irori-{name}-{suffix}.json"))
     }
 
     #[test]

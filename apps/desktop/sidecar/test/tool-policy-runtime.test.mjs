@@ -239,7 +239,7 @@ test("memory_write tool captures an approved memory through the active backend",
     memoryRecallRequest: {
       userId: "local-user",
       characterId: "shili",
-      projectId: "cockapoo",
+      projectId: "irori",
       sessionId: "session-1",
       query: "写入记忆",
       mode: "companion"
@@ -254,7 +254,7 @@ test("memory_write tool captures an approved memory through the active backend",
 
   assert.equal(capturedTurn.userId, "local-user");
   assert.equal(capturedTurn.characterId, "shili");
-  assert.equal(capturedTurn.projectId, "cockapoo");
+  assert.equal(capturedTurn.projectId, "irori");
   assert.equal(capturedTurn.sessionId, "session-1");
   assert.equal(capturedTurn.userText, "用户喜欢先给结论，再补充关键细节。");
   assert.match(capturedTurn.assistantText, /记忆写入工具/);

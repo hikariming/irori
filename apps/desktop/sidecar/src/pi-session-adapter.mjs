@@ -20,7 +20,7 @@ import {
   resolvePiModel
 } from "./model-provider-resolver.mjs";
 import { createToolPolicyGateExtension } from "./tool-policy-gate.mjs";
-import { closureGateActiveFlag } from "./extensions/cockapoo-tool-gate.mjs";
+import { closureGateActiveFlag } from "./extensions/irori-tool-gate.mjs";
 import {
   clearSubagentModelsJson,
   materializeSubagentModelOverrides,
@@ -137,10 +137,10 @@ export function resolvePiSubagentsPackageRoot({ requireFn = require } = {}) {
   return dirname(requireFn.resolve(`${piSubagentsPackageName}/package.json`));
 }
 
-// The Cockapoo gate is a local extension package (not on npm), resolved by path
+// The Irori gate is a local extension package (not on npm), resolved by path
 // relative to this module so subagent children can inherit the same fence.
-export function resolveCockapooToolGatePackageRoot() {
-  return fileURLToPath(new URL("../extensions/cockapoo-tool-gate", import.meta.url));
+export function resolveIroriToolGatePackageRoot() {
+  return fileURLToPath(new URL("../extensions/irori-tool-gate", import.meta.url));
 }
 
 // Both the `pi` CLI (child processes) and pi-subagents' parent-side extension
@@ -152,7 +152,7 @@ export const piAgentDirEnvVar = "PI_CODING_AGENT_DIR";
 // ~/.pi/agent, so the bridge can never overwrite or delete a pi CLI user's
 // own config. Children are pointed at it via piAgentDirEnvVar.
 export function resolveSubagentAgentDir({ env = process.env } = {}) {
-  return env.COCKAPOO_SUBAGENT_AGENT_DIR || join(homedir(), ".cockapoo", "pi-agent");
+  return env.IRORI_SUBAGENT_AGENT_DIR || join(homedir(), ".irori", "pi-agent");
 }
 
 // Materialize the subagent model bridge into the app-owned agent dir and point
@@ -280,7 +280,7 @@ export function buildPiResourceLoaderOptions({
   };
 }
 
-export async function createCockapooPiSession(options) {
+export async function createIroriPiSession(options) {
   const sessionOptions = buildPiSessionOptions(options);
   const agentDir = getAgentDir();
   const extensionFactories = [
@@ -302,7 +302,7 @@ export async function createCockapooPiSession(options) {
 
   // Opt-in: load pi-subagents as a local extension package (same mechanism as
   // pi-web-access) so the companion can delegate to scout/worker/reviewer. When
-  // a fence is configured, also load the Cockapoo gate package so children
+  // a fence is configured, also load the Irori gate package so children
   // inherit the SAME evaluateToolCall fence the parent enforces.
   const additionalPackageRoots = [];
   if (options?.enableSubagents && options?.runtimeToken) {
@@ -325,14 +325,14 @@ export async function createCockapooPiSession(options) {
     const subagentsRoot = resolvePiSubagentsPackageRoot();
     additionalPackageRoots.push(subagentsRoot);
     if (options?.gatePolicy) {
-      additionalPackageRoots.push(resolveCockapooToolGatePackageRoot());
+      additionalPackageRoots.push(resolveIroriToolGatePackageRoot());
     }
 
     configureSubagentBridge({
       modelSettings: options?.modelSettings ?? defaultOpenAiCompatibleSettings,
       runtimeToken: options.runtimeToken,
       subagentsRoot,
-      gateExtensionRoot: options?.gatePolicy ? resolveCockapooToolGatePackageRoot() : undefined
+      gateExtensionRoot: options?.gatePolicy ? resolveIroriToolGatePackageRoot() : undefined
     });
   }
 

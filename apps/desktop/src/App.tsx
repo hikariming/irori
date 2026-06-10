@@ -118,8 +118,8 @@ const LIFE_CATCHUP_GAP_MS = 90 * 60 * 1000;
 // 这些类别（睡觉/休息）就算执行了也不值得补动态。
 const CATCHUP_SKIP_CATEGORIES = new Set(["sleep", "rest"]);
 // 产品名 & 「已完成新手引导」标记键。
-const APP_DISPLAY_NAME = "Cockapoo Pi Companion";
-const ONBOARDING_DONE_KEY = "cockapoo-onboarding-done";
+const APP_DISPLAY_NAME = "Irori";
+const ONBOARDING_DONE_KEY = "irori-onboarding-done";
 // 角色第一次见到用户时，自动「反问」的开场白（脚本，不调模型，紧接着自动把用户档案当作回答发出去）。
 const FIRST_CONTACT_OPENER = "我们好像还是第一次正式认识～在开始之前，能先和我说说你是谁吗？比如我该怎么称呼你、你平时在忙些什么？";
 

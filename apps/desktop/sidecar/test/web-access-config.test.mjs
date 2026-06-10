@@ -34,7 +34,7 @@ test("buildPiWebAccessConfig falls back to auto when Perplexity has no key", () 
 });
 
 test("writePiWebAccessConfig preserves unknown config keys and writes trimmed secrets", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-web-access-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-web-access-"));
   const path = join(dir, "web-search.json");
   await writeFile(path, JSON.stringify({ shortcuts: { curate: "ctrl+k" } }, null, 2));
 
@@ -66,7 +66,7 @@ test("writePiWebAccessConfig preserves unknown config keys and writes trimmed se
 });
 
 test("writePiWebAccessConfig self-heals a corrupt existing config instead of failing forever", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "cockapoo-web-access-bad-"));
+  const dir = await mkdtemp(join(tmpdir(), "irori-web-access-bad-"));
   const path = join(dir, "web-search.json");
   await writeFile(path, "{ not valid json");
 

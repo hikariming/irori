@@ -105,7 +105,7 @@ test("searchLoadedTree keeps matches + ancestors over the loaded tree and auto-e
 });
 
 test("breadcrumbSegments splits both posix and windows paths", () => {
-  assert.deepEqual(breadcrumbSegments("/Users/rqq/cockapoo"), ["Users", "rqq", "cockapoo"]);
+  assert.deepEqual(breadcrumbSegments("/Users/rqq/irori"), ["Users", "rqq", "irori"]);
   assert.deepEqual(breadcrumbSegments("C:\\Users\\rqq"), ["C:", "Users", "rqq"]);
 });
 

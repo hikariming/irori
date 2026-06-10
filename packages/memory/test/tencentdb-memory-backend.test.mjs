@@ -20,7 +20,7 @@ test("tencentdb backend delegates captured conversation turns", async () => {
   const turn = {
     userId: "local-user",
     characterId: "shili",
-    projectId: "cockapoo",
+    projectId: "irori",
     sessionId: "session-1",
     userText: "我喜欢先听结论。",
     assistantText: "记住，后续先给结论。",
@@ -58,7 +58,7 @@ test("tencentdb backend normalizes recalled rows", async () => {
   const recalled = await backend.recallForPrompt({
     userId: "local-user",
     characterId: "shili",
-    projectId: "cockapoo",
+    projectId: "irori",
     sessionId: "session-1",
     query: "记忆适配",
     mode: "companion",
@@ -119,12 +119,12 @@ test("tencentdb backend delegates list and delete when supported", async () => {
     deleteMemory: async (id) => calls.push(["delete", id])
   });
 
-  const listed = await backend.listMemories("project", "cockapoo");
+  const listed = await backend.listMemories("project", "irori");
   await backend.deleteMemory("memory-1");
 
   assert.equal(listed[0].text, "项目使用 Pi SDK。");
   assert.deepEqual(calls, [
-    ["list", "project", "cockapoo"],
+    ["list", "project", "irori"],
     ["delete", "memory-1"]
   ]);
 });

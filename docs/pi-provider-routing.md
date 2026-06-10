@@ -12,7 +12,7 @@ The local agent owns SDK integration:
 2. Use provider id `openai-compatible` and Pi API type `openai-completions`.
 3. Put the saved token into `AuthStorage.setRuntimeApiKey("openai-compatible", token)`.
 4. Build `createAgentSession` options with `buildPiSessionOptions`.
-5. Start the SDK session with `createCockapooPiSession` or run the CLI bridge with `pnpm --dir apps/desktop/sidecar prompt`.
+5. Start the SDK session with `createIroriPiSession` or run the CLI bridge with `pnpm --dir apps/desktop/sidecar prompt`.
 
 Tokens should be handled in the local agent/Tauri layer, not in React component state. The current Tauri command persists a local JSON file in the app data directory and only returns `hasToken` plus a short `tokenHint`. This is enough for the prototype; the next hardening step is moving the token into the macOS Keychain.
 

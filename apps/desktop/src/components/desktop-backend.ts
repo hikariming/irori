@@ -360,7 +360,7 @@ function workspaceNodeFromRecord(record: WorkspaceEntryRecord): WorkspaceNode {
 const previewBase = 1_700_000_000_000;
 const previewWorkspaceTree: Record<string, WorkspaceNode[]> = {
   __roots__: [
-    { id: "/workspace", name: "cockapoo-pi-companion", kind: "folder", rootId: "workspace", hasChildren: true },
+    { id: "/workspace", name: "irori", kind: "folder", rootId: "workspace", hasChildren: true },
     { id: "/home", name: "这台电脑", kind: "folder", rootId: "computer", hasChildren: true }
   ],
   "/workspace": [
@@ -534,7 +534,7 @@ export function createPreviewBackend(): DesktopBackend {
   let scheduledTasks: ScheduledTask[] = [];
   let scheduledSeq = 0;
   let missedPolicy: MissedTaskPolicy = "catchup";
-  const workspacePath = "~/cockapoo-workspace（预览）";
+  const workspacePath = "~/irori-workspace（预览）";
   const sessions: ChatSessionSummary[] = [];
   const messagesBySession = new Map<string, StoredChatMessageRecord[]>();
 

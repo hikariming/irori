@@ -49,7 +49,7 @@ test("composeCharacterSessionPrompt includes character persona, context, and sti
   assert.match(prompt, /背景：示璃出身于家境良好的书香家庭/);
   assert.match(prompt, /父母都是大学教授/);
   assert.match(prompt, /清华大学/);
-  assert.doesNotMatch(prompt, /背景：示璃诞生在 Cockapoo Pi Companion/);
+  assert.doesNotMatch(prompt, /背景：示璃诞生在 Irori/);
   assert.doesNotMatch(prompt, /当前模式/);
   assert.match(prompt, /可以帮助用户推进代码、设计、排查和文档工作/);
   assert.match(prompt, /只在情绪节点偶尔输出一个表情标记/);

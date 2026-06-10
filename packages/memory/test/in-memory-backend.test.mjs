@@ -15,7 +15,7 @@ test("in-memory backend recalls seeded memories by query text", async () => {
       id: "memory-2",
       scope: "project",
       kind: "project_note",
-      text: "Cockapoo 使用 Tauri 和 Pi SDK。"
+      text: "Irori 使用 Tauri 和 Pi SDK。"
     }
   ]);
 

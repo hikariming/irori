@@ -6,7 +6,7 @@ import {
   resolveToolPolicy
 } from "../src/index.ts";
 
-test("default policy enables all planned Pi and Cockapoo tools", () => {
+test("default policy enables all planned Pi and Irori tools", () => {
   const policy = resolveToolPolicy({ settings: defaultToolPolicySettings });
 
   assert.deepEqual(policy.builtinTools, ["read", "grep", "find", "ls", "bash", "edit", "write"]);

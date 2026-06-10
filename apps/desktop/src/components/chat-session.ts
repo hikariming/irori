@@ -85,8 +85,8 @@ export function composeCharacterSessionPrompt({
   userProfile
 }: ComposeCharacterSessionPromptInput) {
   return [
-    "# Cockapoo Pi Companion Chat",
-    "你正在 Cockapoo Pi Companion 本地桌面客户端中扮演角色，与用户进行陪伴式协作。",
+    "# Irori Chat",
+    "你正在 Irori 本地桌面客户端中扮演角色，与用户进行陪伴式协作。",
     "",
     "## 角色卡",
     `名字：${card.name}`,

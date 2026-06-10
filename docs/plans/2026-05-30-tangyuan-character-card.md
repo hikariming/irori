@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Add Tangyuan, a soft protective female companion character, as a complete Cockapoo character card with generated visual assets.
+**Goal:** Add Tangyuan, a soft protective female companion character, as a complete Irori character card with generated visual assets.
 
 **Architecture:** Follow the existing simple character-card package shape used by `characters/lulin.card` and `characters/shenyanzhou.card`. Generate source images, post-process them into avatar, portrait, background, and the nine required sticker assets, then copy the finished package into `apps/desktop/public/characters`.
 
