@@ -1,5 +1,6 @@
 import type { CharacterCard } from "./character-cards.ts";
 import { affinityTier, lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
+import { formatMonthDayLong } from "../i18n/formatters.ts";
 
 // 信物的寄出方：角色送来的，或（角色对用户回应的致意）。用户不再主动写信。
 export type LetterSender = "character" | "user";
@@ -448,7 +449,7 @@ export function formatLetterTime(deliverAt: number, now: number): string {
   if (days < 7) {
     return `${days} 天前`;
   }
-  return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(new Date(deliverAt));
+  return formatMonthDayLong(new Date(deliverAt));
 }
 
 const moods: Mood[] = ["calm", "warm", "playful", "tired", "guarded"];

@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Avatar, ScrollShadow } from "@heroui/react";
 
 import type { FeedAuthor } from "./character-cards";
 import { formatMomentTime, hasMomentLike, type CharacterMoment, type MomentActorRef } from "./character-moments";
+
+type FeedTranslate = (key: string, options?: Record<string, unknown>) => string;
 
 type CompanionMomentsFeedProps = {
   moments: CharacterMoment[];
@@ -15,7 +18,6 @@ type CompanionMomentsFeedProps = {
   onComment?: (momentId: string, text: string) => void;
 };
 
-const unknownAuthor: FeedAuthor = { name: "神秘角色", avatar: "" };
 const currentUserActor: MomentActorRef = { actorType: "user", actorId: "self" };
 
 function AuthorAvatar({ author, className }: { author: FeedAuthor; className: string }) {
@@ -27,11 +29,11 @@ function AuthorAvatar({ author, className }: { author: FeedAuthor; className: st
   );
 }
 
-function actorName(actor: MomentActorRef, authors: Record<string, FeedAuthor>) {
+function actorName(actor: MomentActorRef, authors: Record<string, FeedAuthor>, t: FeedTranslate) {
   if (actor.actorType === "user") {
-    return "你";
+    return t("authors.you");
   }
-  return authors[actor.actorId]?.name ?? unknownAuthor.name;
+  return authors[actor.actorId]?.name ?? t("unknownAuthor");
 }
 
 // 生活圈动态：把所有角色的动态汇成一条共享时间线，像朋友圈/Facebook 那样——大家彼此认识，各自生活。
@@ -44,9 +46,11 @@ export function CompanionMomentsFeed({
   onToggleLike,
   onComment
 }: CompanionMomentsFeedProps) {
+  const { t } = useTranslation("companion");
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const isEmpty = moments.length === 0 && postingAuthors.length === 0;
+  const fallbackAuthor: FeedAuthor = { name: t("unknownAuthor"), avatar: "" };
 
   function submitComment(momentId: string) {
     const text = (commentDrafts[momentId] ?? "").trim();
@@ -59,7 +63,7 @@ export function CompanionMomentsFeed({
   }
 
   return (
-    <section className="moments-layout" aria-label="生活圈动态">
+    <section className="moments-layout" aria-label={t("feed.ariaLabel")}>
       {backgroundSrc ? (
         <img alt="" aria-hidden="true" className="moments-background" src={backgroundSrc} />
       ) : null}
@@ -67,8 +71,8 @@ export function CompanionMomentsFeed({
 
       <header className="moments-header">
         <div className="moments-header-copy">
-          <strong>生活圈</strong>
-          <span>大家随手记下的生活片段</span>
+          <strong>{t("feed.title")}</strong>
+          <span>{t("feed.subtitle")}</span>
         </div>
       </header>
 
@@ -79,7 +83,7 @@ export function CompanionMomentsFeed({
             <div className="moment-body">
               <header>
                 <strong>{author.name}</strong>
-                <time>正在记录…</time>
+                <time>{t("feed.posting")}</time>
               </header>
               <div className="moment-posting-pulse">
                 <span aria-hidden="true" />
@@ -91,9 +95,9 @@ export function CompanionMomentsFeed({
         ))}
 
         {moments.map((moment) => {
-          const author = authors[moment.characterId] ?? unknownAuthor;
+          const author = authors[moment.characterId] ?? fallbackAuthor;
           const liked = hasMomentLike(moment, currentUserActor);
-          const likeNames = moment.likes.map((like) => actorName(like, authors));
+          const likeNames = moment.likes.map((like) => actorName(like, authors, t));
           const commentDraft = commentDrafts[moment.id] ?? "";
           return (
             <article className="moment-card" key={moment.id}>
@@ -111,11 +115,11 @@ export function CompanionMomentsFeed({
                     onClick={() => onToggleLike?.(moment.id, !liked)}
                   >
                     <span className="moment-action-icon" aria-hidden="true">{liked ? "♥" : "♡"}</span>
-                    <span>{liked ? "已赞" : "赞"}{moment.likes.length > 0 ? ` ${moment.likes.length}` : ""}</span>
+                    <span>{liked ? t("feed.liked") : t("feed.like")}{moment.likes.length > 0 ? ` ${moment.likes.length}` : ""}</span>
                   </button>
                   <button type="button" onClick={() => setCommentingId((current) => (current === moment.id ? null : moment.id))}>
                     <span className="moment-action-icon" aria-hidden="true">✎</span>
-                    <span>评论{moment.comments.length > 0 ? ` ${moment.comments.length}` : ""}</span>
+                    <span>{t("feed.comment")}{moment.comments.length > 0 ? ` ${moment.comments.length}` : ""}</span>
                   </button>
                 </div>
                 {moment.likes.length > 0 || moment.comments.length > 0 || commentingId === moment.id ? (
@@ -130,7 +134,7 @@ export function CompanionMomentsFeed({
                       <div className="moment-comments">
                         {moment.comments.map((comment) => (
                           <p key={comment.id}>
-                            <strong>{actorName(comment, authors)}</strong>
+                            <strong>{actorName(comment, authors, t)}</strong>
                             <span>{comment.text}</span>
                           </p>
                         ))}
@@ -142,13 +146,13 @@ export function CompanionMomentsFeed({
                         submitComment(moment.id);
                       }}>
                         <input
-                          placeholder="写评论…"
+                          placeholder={t("feed.commentPlaceholder")}
                           value={commentDraft}
                           maxLength={180}
                           onChange={(event) => setCommentDrafts((current) => ({ ...current, [moment.id]: event.target.value }))}
                         />
                         <button type="submit" disabled={!commentDraft.trim() || !onComment}>
-                          发送
+                          {t("feed.send")}
                         </button>
                       </form>
                     ) : null}
@@ -161,7 +165,7 @@ export function CompanionMomentsFeed({
 
         {isEmpty ? (
           <div className="moments-empty" role="status">
-            大家还没有发过动态。等谁有了心情，会在这里留下生活片段。
+            {t("feed.empty")}
           </div>
         ) : null}
       </ScrollShadow>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { desktopBackend } from "./desktop-backend";
 import { formatUnknownError } from "./error-message";
@@ -13,6 +14,7 @@ import {
 
 // 懒加载文件树的状态机：首屏拉两个根，展开文件夹时按层取子节点并缓存。
 export function useWorkspaceTree(enabled: boolean, scopeKey = "") {
+  const { t } = useTranslation("workspace");
   const [roots, setRoots] = useState<WorkspaceNode[]>([]);
   const [childrenByPath, setChildrenByPath] = useState<Map<string, WorkspaceNode[]>>(() => new Map());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
@@ -55,7 +57,7 @@ export function useWorkspaceTree(enabled: boolean, scopeKey = "") {
       .catch((cause) => {
         if (!cancelled) {
           setRootsLoaded(false);
-          setError(formatUnknownError(cause, "工作区根目录加载失败。"));
+          setError(formatUnknownError(cause, t("errors.rootLoad")));
         }
       });
     return () => {
@@ -76,7 +78,7 @@ export function useWorkspaceTree(enabled: boolean, scopeKey = "") {
       } catch (cause) {
         // 失败也缓存成空，避免反复重试；同时提示一次。
         setChildrenByPath((current) => new Map(current).set(node.id, []));
-        setError(formatUnknownError(cause, `无法读取「${node.name}」。`));
+        setError(formatUnknownError(cause, t("errors.readNode", { name: node.name })));
       } finally {
         setLoadingIds((current) => {
           const next = new Set(current);

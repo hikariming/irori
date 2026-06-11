@@ -1,0 +1,16 @@
+{
+  "language": {
+    "label": "Language",
+    "settingsHint": "The interface updates immediately when you switch."
+  },
+  "gender": {
+    "unspecified": "Prefer not to say",
+    "female": "Female",
+    "male": "Male",
+    "nonbinary": "Non-binary / other"
+  },
+  "nav": {
+    "back": "Back",
+    "backToMain": "Back to main view"
+  }
+}

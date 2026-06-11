@@ -1,0 +1,16 @@
+{
+  "language": {
+    "label": "界面语言",
+    "settingsHint": "切换后整个界面会立即更新。"
+  },
+  "gender": {
+    "unspecified": "不愿透露",
+    "female": "女",
+    "male": "男",
+    "nonbinary": "非二元 / 其他"
+  },
+  "nav": {
+    "back": "返回",
+    "backToMain": "返回主界面"
+  }
+}

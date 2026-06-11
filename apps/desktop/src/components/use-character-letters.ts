@@ -17,6 +17,8 @@ import {
 import type { CharacterState, ParsedImpression } from "./character-state";
 import { parseCharacterReply } from "./chat-session";
 import { desktopBackend } from "./desktop-backend";
+import { getCurrentLanguage } from "../i18n";
+import { appendReplyLanguageDirective } from "../i18n/reply-language";
 
 function createLetterRunId() {
   if (globalThis.crypto?.randomUUID) {
@@ -138,7 +140,10 @@ export function useCharacterLetters() {
           characterId: card.id,
           prompt: keepsakePromptLabel[kind],
           runId: createLetterRunId(),
-          sessionPrompt: composeKeepsakePrompt(kind, card, state, now, recentDialogue, currentActivity)
+          sessionPrompt: appendReplyLanguageDirective(
+            composeKeepsakePrompt(kind, card, state, now, recentDialogue, currentActivity),
+            getCurrentLanguage()
+          )
         });
 
         const { subject, body, meta } = parseKeepsake(kind, response.text ?? "");
@@ -204,11 +209,14 @@ export function useCharacterLetters() {
           characterId: card.id,
           prompt: "（回应 ta 的心意）",
           runId: createLetterRunId(),
-          sessionPrompt: composeReactionReplyPrompt(
-            card,
-            state,
-            { kind: letter.kind, subject: letter.subject, body: letter.body },
-            reaction
+          sessionPrompt: appendReplyLanguageDirective(
+            composeReactionReplyPrompt(
+              card,
+              state,
+              { kind: letter.kind, subject: letter.subject, body: letter.body },
+              reaction
+            ),
+            getCurrentLanguage()
           )
         });
 

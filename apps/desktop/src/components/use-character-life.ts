@@ -10,6 +10,8 @@ import {
 } from "./character-schedule";
 import type { CharacterState } from "./character-state";
 import { desktopBackend } from "./desktop-backend";
+import { getCurrentLanguage } from "../i18n";
+import { appendReplyLanguageDirective } from "../i18n/reply-language";
 
 function createLifeRunId() {
   if (globalThis.crypto?.randomUUID) {
@@ -51,7 +53,7 @@ export function useCharacterLife() {
             characterId: card.id,
             prompt: "（规划今天的作息）",
             runId: createLifeRunId(),
-            sessionPrompt: composeDayScriptPrompt(card, today)
+            sessionPrompt: appendReplyLanguageDirective(composeDayScriptPrompt(card, today), getCurrentLanguage())
           });
           return parseDayScript(response.text ?? "", card.id, today, now);
         } catch {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { BrowserOpenRequest, BrowserPanelState } from "./browser-panel-model";
 import { useWorkspaceTree } from "./use-workspace-tree";
@@ -6,7 +7,6 @@ import {
   breadcrumbSegments,
   fileCategory,
   formatFileSize,
-  rootLabel,
   type FileCategory,
   type WorkspaceNode,
   type WorkspaceRow,
@@ -25,10 +25,10 @@ type WorkspacePanelProps = {
   onToggle: () => void;
 };
 
-const TABS: Array<{ id: WorkspaceTab; label: string; icon: string }> = [
-  { id: "files", label: "文件", icon: "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v8A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z" },
-  { id: "services", label: "服务", icon: "M5 4h14v5H5zM5 15h14v5H5zM8 6.5h.01M8 17.5h.01" },
-  { id: "browser", label: "浏览器", icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c2.5 2.4 2.5 15.6 0 18M12 3c-2.5 2.4-2.5 15.6 0 18" }
+const TABS: Array<{ id: WorkspaceTab; icon: string }> = [
+  { id: "files", icon: "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2h8.5A1.5 1.5 0 0 1 21 8.5v8A1.5 1.5 0 0 1 19.5 18h-15A1.5 1.5 0 0 1 3 16.5z" },
+  { id: "services", icon: "M5 4h14v5H5zM5 15h14v5H5zM8 6.5h.01M8 17.5h.01" },
+  { id: "browser", icon: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c2.5 2.4 2.5 15.6 0 18M12 3c-2.5 2.4-2.5 15.6 0 18" }
 ];
 
 // 每类文件一个语义化色块，纯展示。
@@ -85,6 +85,8 @@ type FileExplorerProps = {
 };
 
 function FileExplorer({ rows, query, onQueryChange, onToggle, selected, onSelect, error, isSearching }: FileExplorerProps) {
+  const { t } = useTranslation("workspace");
+
   function onRowActivate(node: WorkspaceNode) {
     onSelect(node);
     if (node.kind === "folder") {
@@ -101,18 +103,18 @@ function FileExplorer({ rows, query, onQueryChange, onToggle, selected, onSelect
         </svg>
         <input
           type="search"
-          placeholder="搜索已展开的文件…"
+          placeholder={t("searchPlaceholder")}
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          aria-label="搜索文件"
+          aria-label={t("searchAria")}
         />
       </div>
 
       {error ? <p className="ws-error" role="alert">{error}</p> : null}
 
-      <div className="ws-tree" role="tree" aria-label="文件树">
+      <div className="ws-tree" role="tree" aria-label={t("treeAria")}>
         {rows.length === 0 ? (
-          <p className="ws-empty">{isSearching ? `没有匹配「${query}」的已加载文件` : "工作区为空"}</p>
+          <p className="ws-empty">{isSearching ? t("emptyNoMatch", { query }) : t("emptyWorkspace")}</p>
         ) : (
           rows.map(({ node, depth, expanded, loading }) => (
             <button
@@ -136,7 +138,7 @@ function FileExplorer({ rows, query, onQueryChange, onToggle, selected, onSelect
       </div>
 
       {selected ? (
-        <aside className="ws-detail" aria-label="文件详情">
+        <aside className="ws-detail" aria-label={t("detailAria")}>
           <div className="ws-detail-head">
             <NodeGlyph node={selected} expanded={false} />
             <strong>{selected.name}</strong>
@@ -150,38 +152,39 @@ function FileExplorer({ rows, query, onQueryChange, onToggle, selected, onSelect
           </ol>
           <dl className="ws-detail-meta">
             <div>
-              <dt>类型</dt>
-              <dd>{selected.kind === "folder" ? "文件夹" : `${fileCategory(selected)} 文件`}</dd>
+              <dt>{t("fieldType")}</dt>
+              <dd>{selected.kind === "folder" ? t("folder") : t("fileOfType", { category: fileCategory(selected) })}</dd>
             </div>
             {selected.kind === "file" ? (
               <div>
-                <dt>大小</dt>
+                <dt>{t("fieldSize")}</dt>
                 <dd>{formatFileSize(selected.size) || "—"}</dd>
               </div>
             ) : null}
             <div>
-              <dt>来源</dt>
-              <dd>{rootLabel(selected.rootId)}</dd>
+              <dt>{t("fieldSource")}</dt>
+              <dd>{t(`source.${selected.rootId}`)}</dd>
             </div>
           </dl>
           <div className="ws-detail-actions">
-            <button type="button">在聊天中引用</button>
-            <button type="button">用 Pi 打开</button>
+            <button type="button">{t("referenceInChat")}</button>
+            <button type="button">{t("openWithPi")}</button>
           </div>
         </aside>
       ) : (
-        <p className="ws-detail ws-detail--hint">选择一个文件查看详情，或让 Pi 直接操作它。</p>
+        <p className="ws-detail ws-detail--hint">{t("detailHint")}</p>
       )}
     </div>
   );
 }
 
 function PlaceholderTab({ title, hint }: { title: string; hint: string }) {
+  const { t } = useTranslation("workspace");
   return (
     <div className="ws-placeholder" role="status">
       <strong>{title}</strong>
       <p>{hint}</p>
-      <span className="ws-placeholder-tag">原型占位 · 待接入</span>
+      <span className="ws-placeholder-tag">{t("placeholderTag")}</span>
     </div>
   );
 }
@@ -197,6 +200,8 @@ function BrowserTab({
   onLoad: () => void;
   onNavigate: (request: BrowserOpenRequest) => void;
 }) {
+  const { t } = useTranslation("workspace");
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     onNavigate({
@@ -218,20 +223,20 @@ function BrowserTab({
     <div className="ws-browser">
       <form className="ws-browser-bar" onSubmit={submit}>
         <input
-          aria-label="浏览器地址"
+          aria-label={t("browserUrlAria")}
           inputMode="url"
           placeholder="https://example.com"
           type="text"
           value={browser.urlInput}
           onChange={(event) => onInputChange(event.target.value)}
         />
-        <button type="submit" aria-label="打开网页" className="ws-icon-button">
+        <button type="submit" aria-label={t("openPageAria")} className="ws-icon-button">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M5 12h14" />
             <path d="m13 6 6 6-6 6" />
           </svg>
         </button>
-        <button type="button" aria-label="在系统浏览器打开" className="ws-icon-button" disabled={!browser.currentUrl} onClick={openExternal}>
+        <button type="button" aria-label={t("openInSystemBrowserAria")} className="ws-icon-button" disabled={!browser.currentUrl} onClick={openExternal}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
             <path d="M14 3h7v7" />
             <path d="M10 14 21 3" />
@@ -243,11 +248,11 @@ function BrowserTab({
       <div className="ws-browser-meta" aria-live="polite">
         {browser.currentUrl ? (
           <>
-            <span className={`ws-browser-status ${browser.status}`}>{browser.status === "ready" ? "已加载" : browser.status === "error" ? "错误" : "加载中"}</span>
+            <span className={`ws-browser-status ${browser.status}`}>{browser.status === "ready" ? t("status.ready") : browser.status === "error" ? t("status.error") : t("status.loading")}</span>
             <span className="ws-browser-url">{browser.title || browser.currentUrl}</span>
           </>
         ) : (
-          <span className="ws-browser-url">暂无页面</span>
+          <span className="ws-browser-url">{t("noPage")}</span>
         )}
       </div>
 
@@ -257,7 +262,7 @@ function BrowserTab({
         <div className="ws-browser-frame">
           <iframe
             key={browser.currentUrl}
-            title={browser.title || "浏览器预览"}
+            title={browser.title || t("browserPreviewTitle")}
             src={browser.currentUrl}
             sandbox="allow-same-origin allow-scripts allow-popups"
             referrerPolicy="no-referrer-when-downgrade"
@@ -266,8 +271,8 @@ function BrowserTab({
         </div>
       ) : (
         <div className="ws-browser-empty" role="status">
-          <strong>未打开网页</strong>
-          <p>输入地址或让 Pi 打开来源。</p>
+          <strong>{t("noPageOpen")}</strong>
+          <p>{t("browserEmptyHint")}</p>
         </div>
       )}
     </div>
@@ -285,6 +290,7 @@ export function WorkspacePanel({
   onToggle,
   workspacePath = ""
 }: WorkspacePanelProps) {
+  const { t } = useTranslation("workspace");
   const [internalActiveTab, setInternalActiveTab] = useState<WorkspaceTab>("files");
   const activeTab = controlledActiveTab ?? internalActiveTab;
   const [selected, setSelected] = useState<WorkspaceNode | null>(null);
@@ -304,17 +310,17 @@ export function WorkspacePanel({
     }
   }
 
-  const activeLabel = useMemo(() => TABS.find((tab) => tab.id === activeTab)?.label, [activeTab]);
+  const activeLabel = useMemo(() => t(`tabs.${activeTab}`), [activeTab, t]);
 
   return (
-    <aside className={`workspace-panel ${isOpen ? "open" : "collapsed"}`} aria-label="工作区">
-      <nav className="ws-rail" aria-label="工作区切换">
+    <aside className={`workspace-panel ${isOpen ? "open" : "collapsed"}`} aria-label={t("panelAria")}>
+      <nav className="ws-rail" aria-label={t("railAria")}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             className={`ws-rail-button ${isOpen && activeTab === tab.id ? "active" : ""}`}
-            aria-label={tab.label}
+            aria-label={t(`tabs.${tab.id}`)}
             aria-pressed={isOpen && activeTab === tab.id}
             onClick={() => onRailSelect(tab.id)}
           >
@@ -325,7 +331,7 @@ export function WorkspacePanel({
         <button
           type="button"
           className="ws-rail-button ws-rail-toggle"
-          aria-label={isOpen ? "收起工作区" : "展开工作区"}
+          aria-label={isOpen ? t("collapse") : t("expand")}
           onClick={onToggle}
         >
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -338,7 +344,7 @@ export function WorkspacePanel({
         <div className="ws-body">
           <header className="ws-header">
             <h2>{activeLabel}</h2>
-            <small>Pi 工作区 · 本地</small>
+            <small>{t("headerSub")}</small>
           </header>
           {activeTab === "files" ? (
             <FileExplorer
@@ -353,7 +359,7 @@ export function WorkspacePanel({
             />
           ) : null}
           {activeTab === "services" ? (
-            <PlaceholderTab title="后端服务" hint="这里会列出 Pi 启动的本地服务、端口与日志，可一键打开或重启。" />
+            <PlaceholderTab title={t("servicesTitle")} hint={t("servicesHint")} />
           ) : null}
           {activeTab === "browser" ? (
             <BrowserTab

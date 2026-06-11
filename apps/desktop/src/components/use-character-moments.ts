@@ -15,6 +15,8 @@ import {
 import type { CharacterState } from "./character-state";
 import { scheduleItemPhrase } from "./character-schedule";
 import { desktopBackend } from "./desktop-backend";
+import { getCurrentLanguage } from "../i18n";
+import { appendReplyLanguageDirective } from "../i18n/reply-language";
 
 // —— 方向三：彼此认识的角色互相评论/点赞的节流参数 ——
 // 点赞是主反应（轻、自然、不违和），评论是偶尔的点缀，所以评论概率与条数都压得很低。
@@ -89,12 +91,15 @@ export function useCharacterMoments() {
         characterId: card.id,
         prompt: "（写一条此刻的动态）",
         runId: createMomentRunId(),
-        sessionPrompt: composeMomentPrompt(card, state, now, {
-          activity,
-          angle: pickMomentAngle(),
-          recentMoments,
-          dayEvents: collectDayEvents(state)
-        })
+        sessionPrompt: appendReplyLanguageDirective(
+          composeMomentPrompt(card, state, now, {
+            activity,
+            angle: pickMomentAngle(),
+            recentMoments,
+            dayEvents: collectDayEvents(state)
+          }),
+          getCurrentLanguage()
+        )
       });
 
       const text = parseMomentText(response.text ?? "");
@@ -225,7 +230,10 @@ export function useCharacterMoments() {
               characterId: peer.id,
               prompt: "（评论朋友的动态）",
               runId: createMomentRunId(),
-              sessionPrompt: composePeerCommentPrompt(peer, peerState, authorName, moment.text, Date.now())
+              sessionPrompt: appendReplyLanguageDirective(
+                composePeerCommentPrompt(peer, peerState, authorName, moment.text, Date.now()),
+                getCurrentLanguage()
+              )
             })
             .catch(() => null);
           if (!response) {

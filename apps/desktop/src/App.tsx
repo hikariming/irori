@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 import { CompanionChat } from "./components/CompanionChat";
 import { CompanionInput } from "./components/CompanionInput";
@@ -51,6 +52,8 @@ import {
 } from "./components/chat-history-model";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./components/chat-session";
 import { buildCharacterTimeContext } from "./components/character-time-context";
+import { formatClockTime } from "./i18n/formatters";
+import { getCurrentLanguage } from "./i18n";
 import {
   buildInitialModelSettings,
   getActiveModelProfile,
@@ -98,10 +101,7 @@ import {
 } from "./components/user-profile";
 
 function messageTime() {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date());
+  return formatClockTime(new Date());
 }
 
 
@@ -120,10 +120,12 @@ const CATCHUP_SKIP_CATEGORIES = new Set(["sleep", "rest"]);
 // 产品名 & 「已完成新手引导」标记键。
 const APP_DISPLAY_NAME = "Irori";
 const ONBOARDING_DONE_KEY = "irori-onboarding-done";
-// 角色第一次见到用户时，自动「反问」的开场白（脚本，不调模型，紧接着自动把用户档案当作回答发出去）。
-const FIRST_CONTACT_OPENER = "我们好像还是第一次正式认识～在开始之前，能先和我说说你是谁吗？比如我该怎么称呼你、你平时在忙些什么？";
 
 export function App() {
+  // 角色第一次见到用户时自动「反问」的开场白等文案；语言跟随当前界面语言。
+  const { t } = useTranslation("companion");
+  // 记忆调试事件的文案在 settings 命名空间（与设置面板共用）。
+  const { t: tMemory } = useTranslation("settings");
   const { theme, toggleTheme } = useTheme();
   const { preferences: characterPreferences, updatePreference: updateCharacterPreference } = useCharacterPreferences();
   const { profile: userProfile, updateProfile: updateUserProfile } = useUserProfile();
@@ -345,7 +347,7 @@ export function App() {
     introInFlightRef.current.add(card.id);
     markCharacterIntroduced(card.id, buildFirstContactFacts(userProfile));
     try {
-      await sendPrompt(selfIntro, { opener: FIRST_CONTACT_OPENER });
+      await sendPrompt(selfIntro, { opener: t("firstContactOpener") });
     } finally {
       introInFlightRef.current.delete(card.id);
     }
@@ -403,7 +405,7 @@ export function App() {
     setMessages((current) =>
       upsertAssistantStreamMessage(current, {
         id: streamMessageId,
-        author: activePromptCharacterNameRef.current || "本地 agent",
+        author: activePromptCharacterNameRef.current || t("authors.localAgent"),
         text,
         time: activeAssistantStreamTimeRef.current || messageTime()
       })
@@ -574,8 +576,8 @@ export function App() {
               {
                 id: `attach-error-${Date.now()}`,
                 speaker: "system",
-                author: "文件",
-                text: `收下文件失败：${formatUnknownError(error, "无法把文件复制进工作区。")}`,
+                author: t("authors.file"),
+                text: t("fileStageFailed", { detail: formatUnknownError(error, t("fileStageFallback")) }),
                 time: messageTime()
               }
             ]);
@@ -816,8 +818,8 @@ export function App() {
             {
               id: `history-load-error-${Date.now()}`,
               speaker: "system",
-              author: "本地历史",
-              text: formatUnknownError(error, "聊天历史加载失败，本次会话会先作为临时对话显示。"),
+              author: t("authors.localHistory"),
+              text: formatUnknownError(error, t("historyLoadFailedTemp")),
               time: messageTime()
             }
           ]);
@@ -1004,8 +1006,8 @@ export function App() {
         {
           id: `history-switch-error-${Date.now()}`,
           speaker: "system",
-          author: "本地历史",
-          text: formatUnknownError(error, "对话历史加载失败。"),
+          author: t("authors.localHistory"),
+          text: formatUnknownError(error, t("historyLoadFailed")),
           time: messageTime()
         }
       ]);
@@ -1026,10 +1028,10 @@ export function App() {
           {
             id: `model-missing-${Date.now()}`,
             speaker: "system",
-            author: "模型接入",
+            author: t("authors.modelAccess"),
             text: activeModelProfile
-              ? `当前模型「${activeModelProfile.name}」还不可用。请先点左下角设置，填写 Base URL、Token 和模型名。`
-              : "还没有可用模型。请先点左下角设置，添加一个模型配置档案。",
+              ? t("modelUnavailableNamed", { name: activeModelProfile.name })
+              : t("modelNone"),
             time: messageTime()
           }
         ]);
@@ -1046,7 +1048,7 @@ export function App() {
     const promptForAgent =
       prompt ||
       (attachmentsForRun.length > 0
-        ? "（用户没有输入文字，只拖进了上面的文件，请先读懂内容再主动处理，或先确认要做什么。）"
+        ? t("dropOnlyNote")
         : "");
     const agentUserPrompt = attachmentNote ? `${promptForAgent}\n\n${attachmentNote}` : promptForAgent;
     const userTextForRecord = prompt || attachmentSummary;
@@ -1054,7 +1056,7 @@ export function App() {
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       speaker: "user",
-      author: "你",
+      author: t("authors.you"),
       text: displayText,
       time: messageTime()
     };
@@ -1116,7 +1118,8 @@ export function App() {
         timeContext: buildCharacterTimeContext(),
         selfState,
         memories,
-        userProfile: describeUserProfileForPrompt(userProfile) ?? undefined
+        userProfile: describeUserProfileForPrompt(userProfile) ?? undefined,
+        replyLanguage: getCurrentLanguage()
       });
 
       setActiveSessionId(sessionId);
@@ -1139,13 +1142,13 @@ export function App() {
       };
       setLatestMemoryRun(memoryRun);
       setMemoryDebugEvents((current) =>
-        appendMemoryDebugEvent(current, createMemoryDebugEventFromRun({ run: memoryRun }))
+        appendMemoryDebugEvent(current, createMemoryDebugEventFromRun({ run: memoryRun, t: tMemory }))
       );
       if (!response.text.trim()) {
-        throw new Error("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。");
+        throw new Error(t("sessionNoText"));
       }
       const parsedReply = parseCharacterReply(response.text, card.stickers);
-      const replyText = parsedReply.text || `已通过 ${response.modelRoute} 完成这次 Pi session。`;
+      const replyText = parsedReply.text || t("sessionDoneFallback", { route: response.modelRoute });
       const stateAfterTurn = recordCharacterTurn(card.id, { userText: userTextForRecord, replyText, impressions: parsedReply.impressions });
       // 聊够轮数后在后台偷偷写信（延迟 1~24h 送达）；失败静默，不影响这次聊天。
       trackChatTurnForLetter(card, stateAfterTurn, userTextForRecord, replyText);
@@ -1175,8 +1178,8 @@ export function App() {
       const systemMessage: ChatMessage = {
         id: `pi-error-${Date.now()}`,
         speaker: "system",
-        author: "本地 agent",
-        text: formatUnknownError(error, "Pi session prompt 发送失败。"),
+        author: t("authors.localAgent"),
+        text: formatUnknownError(error, t("sessionSendFailed")),
         time: messageTime()
       };
 
@@ -1322,7 +1325,7 @@ export function App() {
         sessions={groupedSessions}
         theme={theme}
       />
-      <section className={`conversation-stage ${isDragActive && canAcceptDrop ? "is-drop-active" : ""}`} aria-label="陪伴对话">
+      <section className={`conversation-stage ${isDragActive && canAcceptDrop ? "is-drop-active" : ""}`} aria-label={t("stageAria")}>
         {isDragActive && canAcceptDrop ? (
           <div className="stage-dropzone" aria-hidden="true">
             <div className="stage-dropzone__card">
@@ -1331,13 +1334,13 @@ export function App() {
                 <path d="M7 9l5-5 5 5" />
                 <path d="M5 16v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2" />
               </svg>
-              <p>松手把文件交给 ta</p>
-              <span>会复制进工作区，然后一起聊</span>
+              <p>{t("dropTitle")}</p>
+              <span>{t("dropHint")}</span>
             </div>
           </div>
         ) : null}
         {activeCharacter && isLifeView ? (
-          <div className="stage-view-toggle" role="tablist" aria-label="生活圈：动态与信物匣">
+          <div className="stage-view-toggle" role="tablist" aria-label={t("lifeToggleAria")}>
             <button
               type="button"
               role="tab"
@@ -1345,7 +1348,7 @@ export function App() {
               className={viewMode === "feed" ? "is-active" : ""}
               onClick={() => setViewMode("feed")}
             >
-              动态
+              {t("tabMoments")}
             </button>
             <button
               type="button"
@@ -1354,7 +1357,7 @@ export function App() {
               className={viewMode === "letters" ? "is-active" : ""}
               onClick={() => setViewMode("letters")}
             >
-              信物
+              {t("tabKeepsakes")}
             </button>
           </div>
         ) : null}
@@ -1384,7 +1387,7 @@ export function App() {
               onRead={markRead}
               onOpenGift={(letter) => {
                 // 拆开一件小礼物给一点点好感（走与对话同一条 recordCharacterTurn 路径）。
-                recordCharacterTurn(letter.characterId, { userText: "（收下了 ta 的礼物）", replyText: "" });
+                recordCharacterTurn(letter.characterId, { userText: t("giftReceived"), replyText: "" });
               }}
               onReact={(letter, reaction) => {
                 const card = findCharacterCard(cards, letter.characterId);
@@ -1415,11 +1418,11 @@ export function App() {
           )
         ) : (
           <div className="conversation-loading" role="status">
-            正在加载角色卡…
+            {t("loadingCards")}
           </div>
         )}
         {pendingConfirm ? (
-          <div className="tool-confirm" role="alertdialog" aria-label="工具操作确认">
+          <div className="tool-confirm" role="alertdialog" aria-label={t("toolConfirmAria")}>
             {activeCharacter?.assets.portrait ? (
               <figure
                 className="tool-confirm__portrait"
@@ -1430,8 +1433,8 @@ export function App() {
             ) : null}
             <div className="tool-confirm__body">
               <p className="tool-confirm__title">
-                {activeCharacter?.character.name ?? "角色"} 想执行 {pendingConfirm.tool.name}
-                {pendingConfirm.tool.target ? `：${pendingConfirm.tool.target}` : ""}
+                {t("toolConfirmPrompt", { name: activeCharacter?.character.name ?? t("authors.character"), tool: pendingConfirm.tool.name })}
+                {pendingConfirm.tool.target ? `: ${pendingConfirm.tool.target}` : ""}
               </p>
               {pendingConfirm.tool.reason ? (
                 <p className="tool-confirm__reason">{pendingConfirm.tool.reason}</p>
@@ -1439,10 +1442,10 @@ export function App() {
             </div>
             <div className="tool-confirm__actions">
               <button type="button" className="tool-confirm__reject" onClick={() => respondToConfirm(false)}>
-                取消
+                {t("cancel")}
               </button>
               <button type="button" className="tool-confirm__approve" onClick={() => respondToConfirm(true)}>
-                允许
+                {t("allow")}
               </button>
             </div>
           </div>

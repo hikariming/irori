@@ -1,0 +1,81 @@
+{
+  "ariaTitle": "{{app}} 新手引导",
+  "stepAria": "第 {{index}} 步：{{title}}",
+  "steps": {
+    "welcome": "欢迎",
+    "identity": "我是谁",
+    "model": "模型供应商",
+    "done": "完成"
+  },
+  "welcome": {
+    "imageAlt": "三位角色在桌前欢迎你一起开始",
+    "eyebrow": "欢迎使用",
+    "lead": "一个住在你本地的角色陪伴 app。先花一分钟，把基础设置好，就能开始啦。",
+    "features": {
+      "companion": {
+        "title": "角色陪伴",
+        "desc": "角色各有人设与做事风格，可操作电脑，编写代码，完成工作。"
+      },
+      "life": {
+        "title": "虚拟生活",
+        "desc": "角色有自己的一天作息：此刻在做什么、心情与精力都会变化。"
+      },
+      "circle": {
+        "title": "工作流协作",
+        "desc": "角色能理解任务背景，拆解需求、跟进进度、整理结论，像专业搭档一样推进工作。"
+      },
+      "memory": {
+        "title": "自由角色卡",
+        "desc": "角色卡可自由更换和创作：用你喜欢的角色、人物或原创设定，打造专属陪伴。"
+      }
+    }
+  },
+  "identity": {
+    "eyebrow": "第二步",
+    "title": "介绍一下你自己",
+    "lead": "这些会让角色知道在和谁聊天、该怎么称呼你。都可以之后在「我」里修改。",
+    "nameLabel": "名字 / 称呼",
+    "nameAria": "我的名字或称呼",
+    "namePlaceholder": "希望角色怎么称呼你",
+    "genderLabel": "性别",
+    "cityLabel": "居住的城市",
+    "cityAria": "我居住的城市",
+    "cityPlaceholder": "比如：上海",
+    "introLabel": "自我介绍（选填，会展示给所有角色）",
+    "introAria": "我的自我介绍",
+    "introPlaceholder": "想让角色们知道的关于你的事：身份、在做的项目、性格…"
+  },
+  "model": {
+    "eyebrow": "第三步",
+    "title": "连接模型供应商",
+    "lead": "填入任意 OpenAI 兼容接口（Base URL、模型名、Token），角色就能开口说话了。",
+    "nameLabel": "配置名称",
+    "nameAria": "模型配置名称",
+    "namePlaceholder": "给这套配置起个名字",
+    "baseUrlLabel": "Base URL",
+    "baseUrlAria": "OpenAI 兼容接口 Base URL",
+    "modelNameLabel": "模型名",
+    "modelNameAria": "模型名",
+    "modelNamePlaceholder": "比如 gpt-4o-mini",
+    "tokenLabel": "Token",
+    "tokenAria": "接口 Token",
+    "tokenPlaceholderSaved": "已保存，留空则不修改",
+    "tokenPlaceholderNew": "sk-…",
+    "saving": "保存中…",
+    "save": "保存并启用",
+    "saved": "已保存，可以进入下一步。",
+    "error": "保存失败，请检查后重试。"
+  },
+  "done": {
+    "title": "都设置好啦",
+    "titleNamed": "都设置好啦，{{name}}",
+    "leadConfigured": "角色们已经准备好了，去打个招呼吧。Enjoy ✨",
+    "leadUnconfigured": "你还没配置模型，角色暂时无法回复——可以稍后在「设置」里补上。Enjoy ✨"
+  },
+  "footer": {
+    "back": "上一步",
+    "skip": "跳过引导",
+    "next": "下一步",
+    "start": "开始使用"
+  }
+}

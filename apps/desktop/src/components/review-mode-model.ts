@@ -9,38 +9,18 @@ export type ReviewMode = "default" | "auto" | "all";
 
 export const DEFAULT_REVIEW_MODE: ReviewMode = "default";
 
+// 文案（label/short/description）已抽到 i18n 的 companion:reviewMode.<id>.*，
+// 这里只保留稳定的 id 与风险标记，文本在组件里按 id 用 t() 渲染。
 export type ReviewModeOption = {
   id: ReviewMode;
-  label: string;
-  // 选择器收起时显示的短名。
-  short: string;
-  description: string;
   // 风险提示：all 模式标红用。
   risky: boolean;
 };
 
 export const reviewModeOptions: ReviewModeOption[] = [
-  {
-    id: "default",
-    label: "手动审核",
-    short: "手动审核",
-    description: "危险操作（改文件、跑命令等）会暂停，等你点允许或取消。",
-    risky: false
-  },
-  {
-    id: "auto",
-    label: "大模型审查",
-    short: "大模型审查",
-    description: "由大模型自动审查每次危险操作并放行或拒绝，不打扰你。",
-    risky: false
-  },
-  {
-    id: "all",
-    label: "全部通过",
-    short: "全部通过",
-    description: "跳过一切审核，所有操作直接执行。有风险，请谨慎使用。",
-    risky: true
-  }
+  { id: "default", risky: false },
+  { id: "auto", risky: false },
+  { id: "all", risky: true }
 ];
 
 const REVIEW_MODE_IDS = new Set<ReviewMode>(reviewModeOptions.map((option) => option.id));

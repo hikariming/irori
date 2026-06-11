@@ -7,12 +7,11 @@ import {
   sanitizeAdvancedSettings
 } from "./advanced-settings-model.ts";
 
+// 文案已抽到 i18n（settings:tabs.<id>.*），这里只校验 id 与顺序。
 test("buildSettingsTabs puts model access first", () => {
   const tabs = buildSettingsTabs();
 
   assert.equal(tabs[0]?.id, "model-provider");
-  assert.equal(tabs[0]?.label, "模型接入");
-  assert.match(tabs[0]?.description ?? "", /多模型配置/);
 });
 
 test("buildSettingsTabs includes web access before safety permissions", () => {
@@ -22,8 +21,6 @@ test("buildSettingsTabs includes web access before safety permissions", () => {
 
   assert.ok(webAccessIndex > 0);
   assert.ok(safetyIndex > webAccessIndex);
-  assert.equal(tabs[webAccessIndex]?.label, "联网");
-  assert.match(tabs[webAccessIndex]?.description ?? "", /Exa|Perplexity|Gemini/);
 });
 
 test("buildSettingsTabs ends with the advanced capability tab", () => {
@@ -31,8 +28,7 @@ test("buildSettingsTabs ends with the advanced capability tab", () => {
   const advanced = tabs.find((tab) => tab.id === "advanced");
 
   assert.ok(advanced);
-  assert.equal(advanced?.label, "高级");
-  assert.match(advanced?.description ?? "", /子代理|Agent/);
+  assert.equal(tabs[tabs.length - 1]?.id, "advanced");
 });
 
 test("sanitizeAdvancedSettings defaults subagents off and coerces non-boolean input", () => {

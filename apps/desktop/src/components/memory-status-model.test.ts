@@ -5,17 +5,24 @@ import {
   appendMemoryDebugEvent,
   buildMemoryDashboardViewModel,
   createMemoryDebugEventFromRun,
-  formatMemoryBackendSource
+  memoryBackendSourceKey
 } from "./memory-status-model.ts";
 
-test("formatMemoryBackendSource explains runtime memory source", () => {
-  assert.equal(formatMemoryBackendSource("tencentdb"), "TencentDB 记忆");
-  assert.equal(formatMemoryBackendSource("chat-history"), "聊天历史 fallback");
-  assert.equal(formatMemoryBackendSource("none"), "未注入记忆");
+// 文案已抽到 i18n（settings:memory.*）。测试用一个把 key+参数原样回显的桩翻译器，
+// 直接断言产出的 key，与具体语言文案解耦。
+const t = (key: string, options?: Record<string, unknown>) =>
+  options ? `${key}|${JSON.stringify(options)}` : key;
+
+test("memoryBackendSourceKey normalizes the runtime memory source", () => {
+  assert.equal(memoryBackendSourceKey("tencentdb"), "tencentdb");
+  assert.equal(memoryBackendSourceKey("chat-history"), "chatHistory");
+  assert.equal(memoryBackendSourceKey("none"), "none");
+  assert.equal(memoryBackendSourceKey(undefined), "unknown");
 });
 
 test("buildMemoryDashboardViewModel combines static status and latest recall", () => {
   const viewModel = buildMemoryDashboardViewModel({
+    t,
     status: {
       configuredBackend: "tencentdb",
       fallbackBackend: "chat-history",
@@ -38,16 +45,17 @@ test("buildMemoryDashboardViewModel combines static status and latest recall", (
     }
   });
 
-  assert.equal(viewModel.backendLabel, "TencentDB 记忆");
-  assert.equal(viewModel.latestSourceLabel, "聊天历史 fallback");
+  assert.equal(viewModel.backendLabel, "memory.backend.tencentdb");
+  assert.equal(viewModel.latestSourceLabel, "memory.source.chatHistory");
   assert.equal(viewModel.recalledCount, 1);
-  assert.equal(viewModel.storageRows[0].label, "记忆目录");
+  assert.equal(viewModel.storageRows[0].label, "memory.storage.memoryDir");
   assert.match(viewModel.storageRows[0].value, /memory-tdai/);
-  assert.equal(viewModel.memories[0].kindLabel, "会话摘要");
+  assert.equal(viewModel.memories[0].kindLabel, "memory.kind.session_summary");
 });
 
 test("buildMemoryDashboardViewModel filters role-scoped memories by selected character", () => {
   const viewModel = buildMemoryDashboardViewModel({
+    t,
     selectedCharacterId: "shili",
     status: null,
     latestRun: {
@@ -110,6 +118,7 @@ test("buildMemoryDashboardViewModel filters role-scoped memories by selected cha
 
 test("createMemoryDebugEventFromRun summarizes latest memory behavior", () => {
   const event = createMemoryDebugEventFromRun({
+    t,
     now: new Date("2026-05-19T22:41:00.000+08:00"),
     run: {
       memoryBackendSource: "chat-history",
@@ -125,8 +134,9 @@ test("createMemoryDebugEventFromRun summarizes latest memory behavior", () => {
   });
 
   assert.equal(event.kind, "fallback");
-  assert.equal(event.sourceLabel, "聊天历史 fallback");
-  assert.equal(event.summary, "召回 1 条，使用聊天历史 fallback。");
+  assert.equal(event.sourceLabel, "memory.source.chatHistory");
+  assert.match(event.summary, /^memory\.debug\.recalled\|/);
+  assert.match(event.summary, /"count":1/);
   assert.match(event.timeLabel, /22:41/);
 });
 
@@ -134,15 +144,15 @@ test("appendMemoryDebugEvent keeps newest ten events first", () => {
   const events = Array.from({ length: 10 }, (_, index) => ({
     id: `old-${index}`,
     kind: "recall" as const,
-    sourceLabel: "TencentDB 记忆",
-    summary: `旧事件 ${index}`,
+    sourceLabel: "memory.source.tencentdb",
+    summary: `old-event-${index}`,
     timeLabel: `22:${index.toString().padStart(2, "0")}`
   }));
   const next = appendMemoryDebugEvent(events, {
     id: "new",
     kind: "capture",
-    sourceLabel: "TencentDB 记忆",
-    summary: "新事件",
+    sourceLabel: "memory.source.tencentdb",
+    summary: "new-event",
     timeLabel: "22:41"
   });
 

@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
+import { formatClockTime } from "../i18n/formatters";
+
 import type { PiPromptProgressEvent, PiToolConfirmRequest } from "./assistant-progress-model.ts";
 import {
   buildInitialModelSettings,
@@ -394,11 +396,7 @@ function isTauriRuntime() {
 }
 
 function messageTimeFromDate(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(date);
+  return formatClockTime(date);
 }
 
 function previewId(prefix: string) {
