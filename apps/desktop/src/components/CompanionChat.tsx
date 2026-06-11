@@ -1,5 +1,6 @@
 import { Avatar, Button, ScrollShadow } from "@heroui/react";
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   assistantProgressPrimaryText,
@@ -69,6 +70,7 @@ export function CompanionChat({
   onCharacterClose,
   sessionKey
 }: CompanionChatProps) {
+  const { t } = useTranslation("companion");
   const statusLabel = assistantProgressStatusLabel(assistantProgress?.phase ?? "queued");
   const primaryProgressText = assistantProgressPrimaryText(assistantProgress);
   const reasoningDisplayText = assistantReasoningDisplayText(assistantProgress);
@@ -114,7 +116,7 @@ export function CompanionChat({
   }, [sessionKey, streamSignature, isSending, primaryProgressText, reasoningDisplayText]);
 
   return (
-    <section className="chat-layout" aria-label={`${preview.character.name}陪伴对话`}>
+    <section className="chat-layout" aria-label={t("chat.companionAria", { name: preview.character.name })}>
       <img
         alt=""
         aria-hidden="true"
@@ -124,19 +126,19 @@ export function CompanionChat({
       <div className="chat-background-wash" />
 
       {isCharacterOpen ? (
-        <aside className="character-inspector" aria-label="角色详情">
+        <aside className="character-inspector" aria-label={t("chat.inspectorAria")}>
           <Button
-            aria-label="关闭角色详情"
+            aria-label={t("chat.closeInspector")}
             className="inspector-close"
             onPress={onCharacterClose}
             type="button"
           >
             ×
           </Button>
-          <img alt={`${preview.character.name} 立绘`} src={preview.assets.portrait} />
+          <img alt={t("chat.portraitAlt", { name: preview.character.name })} src={preview.assets.portrait} />
           <div className="inspector-copy">
           <h1>{preview.character.name}</h1>
-          <div className="inspector-stickers" aria-label="角色表情">
+          <div className="inspector-stickers" aria-label={t("chat.stickersAria")}>
             {preview.stickers.map((sticker) => (
               <img alt={sticker.label} key={sticker.id} src={sticker.src} />
             ))}
@@ -152,7 +154,7 @@ export function CompanionChat({
         orientation="vertical"
         ref={streamRef}
       >
-        <div className="chat-date-pill">今天</div>
+        <div className="chat-date-pill">{t("chat.today")}</div>
         {messages.map((message) => (
           <MessageBubble
             avatar={preview.assets.avatar}
@@ -176,7 +178,7 @@ export function CompanionChat({
                 <p>{primaryProgressText}</p>
               </div>
               {reasoningDisplayText ? (
-                <section className="chat-progress-section" aria-label="模型思考状态">
+                <section className="chat-progress-section" aria-label={t("chat.progressAria")}>
                   <span>{reasoningDisplayText}</span>
                 </section>
               ) : null}

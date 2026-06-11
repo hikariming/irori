@@ -1,0 +1,81 @@
+{
+  "ariaTitle": "{{app}} の初期設定",
+  "stepAria": "ステップ {{index}}：{{title}}",
+  "steps": {
+    "welcome": "ようこそ",
+    "identity": "あなたについて",
+    "model": "モデルプロバイダー",
+    "done": "完了"
+  },
+  "welcome": {
+    "imageAlt": "机を囲んで迎えてくれる3人のキャラクター",
+    "eyebrow": "ようこそ",
+    "lead": "あなたの端末の中で暮らすキャラクター・コンパニオンアプリです。1分ほどで初期設定をすませて、さっそく始めましょう。",
+    "features": {
+      "companion": {
+        "title": "キャラクターと過ごす",
+        "desc": "キャラクターはそれぞれ個性と仕事のしかたを持ち、パソコンを操作し、コードを書き、作業をこなします。"
+      },
+      "life": {
+        "title": "バーチャルな日常",
+        "desc": "キャラクターには1日の生活リズムがあります。いま何をしているか、気分や元気さも移り変わります。"
+      },
+      "circle": {
+        "title": "ライフサークルと贈りもの",
+        "desc": "キャラクターは近況を投稿し、ポストカードを送ったり、付箋を残したり、小さな贈りものをくれたり。関係は少しずつ育っていきます。"
+      },
+      "memory": {
+        "title": "ローカルの記憶",
+        "desc": "あなたの好みや大切なことを覚えていて、話すほどにあなたを理解していきます。"
+      }
+    }
+  },
+  "identity": {
+    "eyebrow": "ステップ2",
+    "title": "あなたのことを教えてください",
+    "lead": "キャラクターが誰と話しているか、どう呼べばいいかを知るための情報です。あとから「あなた」でいつでも変更できます。",
+    "nameLabel": "名前 / 呼びかた",
+    "nameAria": "わたしの名前または呼びかた",
+    "namePlaceholder": "キャラクターに何と呼んでほしいですか",
+    "genderLabel": "性別",
+    "cityLabel": "お住まいの都市",
+    "cityAria": "わたしが住んでいる都市",
+    "cityPlaceholder": "例：東京",
+    "introLabel": "自己紹介（任意・すべてのキャラクターに表示されます）",
+    "introAria": "わたしの自己紹介",
+    "introPlaceholder": "キャラクターに知っておいてほしいこと：あなたの立場、取り組んでいること、性格など…"
+  },
+  "model": {
+    "eyebrow": "ステップ3",
+    "title": "モデルプロバイダーに接続",
+    "lead": "OpenAI 互換のエンドポイント（Base URL・モデル名・トークン）を入力すると、キャラクターが話せるようになります。",
+    "nameLabel": "設定名",
+    "nameAria": "モデル設定名",
+    "namePlaceholder": "この設定に名前をつけてください",
+    "baseUrlLabel": "Base URL",
+    "baseUrlAria": "OpenAI 互換エンドポイントの Base URL",
+    "modelNameLabel": "モデル名",
+    "modelNameAria": "モデル名",
+    "modelNamePlaceholder": "例：gpt-4o-mini",
+    "tokenLabel": "トークン",
+    "tokenAria": "API トークン",
+    "tokenPlaceholderSaved": "保存済み・空欄のままなら変更しません",
+    "tokenPlaceholderNew": "sk-…",
+    "saving": "保存中…",
+    "save": "保存して有効化",
+    "saved": "保存しました。次のステップに進めます。",
+    "error": "保存に失敗しました。内容を確認して、もう一度お試しください。"
+  },
+  "done": {
+    "title": "準備ができました",
+    "titleNamed": "準備ができました、{{name}}さん",
+    "leadConfigured": "キャラクターの準備ができました。あいさつしに行きましょう。Enjoy ✨",
+    "leadUnconfigured": "まだモデルが設定されていないため、キャラクターは返信できません。あとで「設定」から追加できます。Enjoy ✨"
+  },
+  "footer": {
+    "back": "戻る",
+    "skip": "スキップ",
+    "next": "次へ",
+    "start": "はじめる"
+  }
+}

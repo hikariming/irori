@@ -1,8 +1,11 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Avatar, Button, ScrollShadow } from "@heroui/react";
 
 import type { FeedAuthor } from "./character-cards";
+
+type LettersTranslate = (key: string, options?: Record<string, unknown>) => string;
 import {
   formatKeepsakeEta,
   formatLetterTime,
@@ -25,16 +28,7 @@ type CompanionLettersProps = {
   onReact: (letter: CharacterLetter, reaction: KeepsakeReaction) => void;
 };
 
-const unknownAuthor: FeedAuthor = { name: "神秘角色", avatar: "" };
-
 const KIND_ICON: Record<KeepsakeKind, string> = { postcard: "📮", note: "🟨", gift: "🎁" };
-const KIND_LABEL: Record<KeepsakeKind, string> = { postcard: "明信片", note: "便利贴", gift: "小礼物" };
-// 在途卡片里「谁寄了什么」的措辞——内容封着，只露发件人与类型。
-const KIND_TRANSIT_VERB: Record<KeepsakeKind, string> = {
-  postcard: "给你寄了张明信片",
-  note: "给你留了张便利贴",
-  gift: "给你寄了件小礼物"
-};
 const REACTION_EMOJIS = ["❤️", "🥰", "😊", "🤗", "✨"];
 
 function AuthorAvatar({ author, className }: { author: FeedAuthor; className: string }) {
@@ -47,12 +41,12 @@ function AuthorAvatar({ author, className }: { author: FeedAuthor; className: st
 }
 
 // 折叠态摘要里显示的一行标题，按 kind 取不同字段（礼物拆开前先卖个关子）。
-function summaryTitle(letter: CharacterLetter, isOpen: boolean): string {
+function summaryTitle(letter: CharacterLetter, isOpen: boolean, t: LettersTranslate): string {
   if (letter.kind === "postcard") {
-    return letter.meta?.place ? `来自${letter.meta.place}` : letter.subject;
+    return letter.meta?.place ? t("letters.fromPlace", { place: letter.meta.place }) : letter.subject;
   }
   if (letter.kind === "gift") {
-    return isOpen ? letter.meta?.item || letter.subject : "一份还没拆开的小礼物";
+    return isOpen ? letter.meta?.item || letter.subject : t("letters.giftUnopened");
   }
   // note：没有正式主题，用正文开头做预览。
   const preview = letter.body.replace(/\s+/g, " ").trim();
@@ -99,9 +93,11 @@ export function CompanionLetters({
   onOpenGift,
   onReact
 }: CompanionLettersProps) {
+  const { t } = useTranslation("companion");
   const [openId, setOpenId] = useState<string | null>(null);
   const [reactText, setReactText] = useState("");
   const effectiveNow = Math.max(now, Date.now());
+  const fallbackAuthor: FeedAuthor = { name: t("unknownAuthor"), avatar: "" };
 
   const delivered = letters.filter((letter) => isDelivered(letter, effectiveNow));
   // 还在路上的：按最快到达排前面，做成「物流在途」卡片，内容封着、只露类型与 ETA。
@@ -133,13 +129,13 @@ export function CompanionLetters({
 
   const headerHint =
     reactingNames.length > 0
-      ? `${reactingNames.join("、")}正在回应你…`
+      ? t("letters.hintReacting", { names: reactingNames.join("、") })
       : writingNames.length > 0
-        ? `${writingNames.join("、")}正在给你准备什么…`
-        : "聊着聊着，ta 会悄悄给你寄点什么";
+        ? t("letters.hintWriting", { names: writingNames.join("、") })
+        : t("letters.hintIdle");
 
   return (
-    <section className="letters-layout" aria-label="信物匣">
+    <section className="letters-layout" aria-label={t("letters.ariaLabel")}>
       {backgroundSrc ? (
         <img alt="" aria-hidden="true" className="letters-background" src={backgroundSrc} />
       ) : null}
@@ -147,16 +143,16 @@ export function CompanionLetters({
 
       <header className="letters-header">
         <div className="letters-header-copy">
-          <strong>信物匣</strong>
+          <strong>{t("letters.title")}</strong>
           <span>{headerHint}</span>
         </div>
       </header>
 
       <ScrollShadow className="letters-stream" hideScrollBar orientation="vertical">
         {inTransit.length > 0 ? (
-          <div className="keepsake-transit-group" aria-label="在途的信物">
+          <div className="keepsake-transit-group" aria-label={t("letters.inTransitAria")}>
             {inTransit.map((letter) => {
-              const author = authors[letter.characterId] ?? unknownAuthor;
+              const author = authors[letter.characterId] ?? fallbackAuthor;
               return (
                 <div className={`keepsake-transit kind-${letter.kind}`} key={letter.id}>
                   <AuthorAvatar author={author} className="letter-author-avatar" />
@@ -164,8 +160,7 @@ export function CompanionLetters({
                     {KIND_ICON[letter.kind]}
                   </span>
                   <span className="keepsake-transit-text">
-                    {author.name}
-                    {KIND_TRANSIT_VERB[letter.kind]}
+                    {t(`letters.transitVerb.${letter.kind}`, { name: author.name })}
                   </span>
                   <span className="keepsake-transit-eta">{formatKeepsakeEta(letter.deliverAt, effectiveNow)}</span>
                 </div>
@@ -175,7 +170,7 @@ export function CompanionLetters({
         ) : null}
 
         {delivered.map((letter) => {
-          const author = authors[letter.characterId] ?? unknownAuthor;
+          const author = authors[letter.characterId] ?? fallbackAuthor;
           const isOpen = openId === letter.id;
           const isUnread = letter.readAt === null;
           const reacted = letter.reaction;
@@ -191,15 +186,15 @@ export function CompanionLetters({
                 onClick={() => openKeepsake(letter)}
                 aria-expanded={isOpen}
               >
-                {isUnread ? <span className="letter-unread-dot" aria-label="未读" /> : null}
+                {isUnread ? <span className="letter-unread-dot" aria-label={t("letters.unread")} /> : null}
                 <AuthorAvatar author={author} className="letter-author-avatar" />
                 <span className="keepsake-kind-icon" aria-hidden="true">
                   {KIND_ICON[letter.kind]}
                 </span>
                 <span className="letter-sender-tag">
-                  {author.name}的{KIND_LABEL[letter.kind]}
+                  {t("letters.senderTag", { name: author.name, kind: t(`letters.kind.${letter.kind}`) })}
                 </span>
-                <span className="letter-subject">{summaryTitle(letter, isOpen)}</span>
+                <span className="letter-subject">{summaryTitle(letter, isOpen, t)}</span>
                 <time className="letter-time">{formatLetterTime(letter.deliverAt, effectiveNow)}</time>
               </button>
 
@@ -208,8 +203,8 @@ export function CompanionLetters({
                   <KeepsakeBody letter={letter} authorName={author.name} />
 
                   {reacted ? (
-                    <div className="keepsake-reaction-done" aria-label="你的回应">
-                      <span>你回应了：</span>
+                    <div className="keepsake-reaction-done" aria-label={t("letters.reactionDoneAria")}>
+                      <span>{t("letters.youReacted")}</span>
                       {reacted.emoji ? <span className="keepsake-reaction-emoji">{reacted.emoji}</span> : null}
                       {reacted.text ? <span className="keepsake-reaction-text">{reacted.text}</span> : null}
                     </div>
@@ -223,7 +218,7 @@ export function CompanionLetters({
                             className="keepsake-reaction-pick"
                             onClick={() => sendReaction(letter, emoji)}
                             disabled={isReacting}
-                            aria-label={`用 ${emoji} 回应`}
+                            aria-label={t("letters.reactWith", { emoji })}
                           >
                             {emoji}
                           </button>
@@ -232,7 +227,7 @@ export function CompanionLetters({
                       <div className="keepsake-reaction-input">
                         <input
                           className="keepsake-reaction-field"
-                          placeholder="回 ta 一句…（可留空，只点表情）"
+                          placeholder={t("letters.reactPlaceholder")}
                           value={reactText}
                           maxLength={120}
                           onChange={(event) => setReactText(event.target.value)}
@@ -248,7 +243,7 @@ export function CompanionLetters({
                           onPress={() => sendReaction(letter)}
                           isDisabled={isReacting || reactText.trim().length === 0}
                         >
-                          回应
+                          {t("letters.react")}
                         </Button>
                       </div>
                     </div>
@@ -261,7 +256,7 @@ export function CompanionLetters({
 
         {isEmpty ? (
           <div className="letters-empty" role="status">
-            信物匣还空着。多和大家聊聊，过些时候 ta 会悄悄给你寄点什么。
+            {t("letters.empty")}
           </div>
         ) : null}
       </ScrollShadow>

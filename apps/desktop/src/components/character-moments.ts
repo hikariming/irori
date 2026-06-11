@@ -1,5 +1,6 @@
 import type { CharacterCard } from "./character-cards.ts";
 import { lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
+import { formatMonthDayLong } from "../i18n/formatters.ts";
 
 // 角色自己发的一条「朋友圈/动态」。结构化、可序列化、无向量（保持 FTS-only 理念）。
 export type MomentActorType = "user" | "character";
@@ -249,7 +250,7 @@ export function formatMomentTime(createdAt: number, now: number): string {
   if (days < 7) {
     return `${days} 天前`;
   }
-  return new Intl.DateTimeFormat("zh-CN", { month: "long", day: "numeric" }).format(new Date(createdAt));
+  return formatMonthDayLong(new Date(createdAt));
 }
 
 const actorTypes: MomentActorType[] = ["user", "character"];

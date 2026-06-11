@@ -1,0 +1,19 @@
+{
+  "panelAria": "My profile",
+  "eyebrow": "You",
+  "title": "My profile",
+  "hint": "This information lets characters know who you are during chats: how to address you, your preferences and habits. Changes are saved automatically.",
+  "nameLabel": "Name / what to call you",
+  "nameAria": "My name or what to call me",
+  "namePlaceholder": "How should characters address you?",
+  "genderLabel": "Gender",
+  "cityLabel": "City you live in",
+  "cityAria": "The city I live in",
+  "cityPlaceholder": "e.g. Shanghai",
+  "prefsLabel": "Preferences & habits",
+  "prefsAria": "My preferences and habits",
+  "prefsPlaceholder": "e.g. likes concise, direct answers; codes late at night; dislikes being rushed…",
+  "introLabel": "About you (shown to all characters)",
+  "introAria": "My self-introduction",
+  "introPlaceholder": "Things you'd like characters to know: who you are, what you're working on, your personality…"
+}

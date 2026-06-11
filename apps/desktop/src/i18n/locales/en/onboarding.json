@@ -1,0 +1,81 @@
+{
+  "ariaTitle": "{{app}} onboarding",
+  "stepAria": "Step {{index}}: {{title}}",
+  "steps": {
+    "welcome": "Welcome",
+    "identity": "About you",
+    "model": "Model provider",
+    "done": "Done"
+  },
+  "welcome": {
+    "imageAlt": "Three characters at a desk welcoming you to begin",
+    "eyebrow": "Welcome to",
+    "lead": "A character companion app that lives on your own device. Take a minute to set things up, and you're ready to go.",
+    "features": {
+      "companion": {
+        "title": "Character companions",
+        "desc": "Each character has their own personality and working style — they can use your computer, write code, and get things done."
+      },
+      "life": {
+        "title": "A virtual life",
+        "desc": "Characters keep their own daily rhythm: what they're doing right now, their mood and energy all shift over time."
+      },
+      "circle": {
+        "title": "Life circle & keepsakes",
+        "desc": "Characters post updates, and quietly send you postcards, leave sticky notes, and give little gifts — your bond grows over time."
+      },
+      "memory": {
+        "title": "Local memory",
+        "desc": "They remember your preferences and what matters to you, getting to know you the more you chat."
+      }
+    }
+  },
+  "identity": {
+    "eyebrow": "Step 2",
+    "title": "Tell us about yourself",
+    "lead": "This lets characters know who they're talking to and how to address you. You can change it all later under \"You\".",
+    "nameLabel": "Name / what to call you",
+    "nameAria": "My name or what to call me",
+    "namePlaceholder": "How should characters address you?",
+    "genderLabel": "Gender",
+    "cityLabel": "City you live in",
+    "cityAria": "The city I live in",
+    "cityPlaceholder": "e.g. Shanghai",
+    "introLabel": "About you (optional, shown to all characters)",
+    "introAria": "My self-introduction",
+    "introPlaceholder": "Things you'd like characters to know: who you are, what you're working on, your personality…"
+  },
+  "model": {
+    "eyebrow": "Step 3",
+    "title": "Connect a model provider",
+    "lead": "Enter any OpenAI-compatible endpoint (Base URL, model name, token) and your characters can start talking.",
+    "nameLabel": "Configuration name",
+    "nameAria": "Model configuration name",
+    "namePlaceholder": "Give this configuration a name",
+    "baseUrlLabel": "Base URL",
+    "baseUrlAria": "OpenAI-compatible Base URL",
+    "modelNameLabel": "Model name",
+    "modelNameAria": "Model name",
+    "modelNamePlaceholder": "e.g. gpt-4o-mini",
+    "tokenLabel": "Token",
+    "tokenAria": "API token",
+    "tokenPlaceholderSaved": "Saved — leave blank to keep it",
+    "tokenPlaceholderNew": "sk-…",
+    "saving": "Saving…",
+    "save": "Save and enable",
+    "saved": "Saved — you can continue to the next step.",
+    "error": "Couldn't save. Please check and try again."
+  },
+  "done": {
+    "title": "You're all set",
+    "titleNamed": "You're all set, {{name}}",
+    "leadConfigured": "Your characters are ready — go say hello. Enjoy ✨",
+    "leadUnconfigured": "You haven't set up a model yet, so characters can't reply for now — you can add one later in Settings. Enjoy ✨"
+  },
+  "footer": {
+    "back": "Back",
+    "skip": "Skip intro",
+    "next": "Next",
+    "start": "Get started"
+  }
+}

@@ -1,3 +1,5 @@
+import { formatClockTime } from "../i18n/formatters.ts";
+
 export type MemoryBackendSource = "explicit" | "tencentdb" | "chat-history" | "none";
 
 export type MemoryStatus = {
@@ -44,39 +46,31 @@ export type MemoryDebugEvent = {
   timeLabel: string;
 };
 
-export const memoryKindLabels: Record<RecalledMemorySnapshot["kind"], string> = {
-  profile_fact: "用户事实",
-  preference: "偏好",
-  relationship_note: "关系互动",
-  project_note: "项目背景",
-  session_summary: "会话摘要"
-};
+// 文案已抽到 i18n 的 settings:memory.*；这里只产出稳定的 key，文本由组件/调用方用 t() 渲染。
+// MemoryTranslate 是 react-i18next TFunction 的最小子集，避免把 model 文件耦合到 i18next 类型。
+export type MemoryTranslate = (key: string, options?: Record<string, unknown>) => string;
 
-export function formatMemoryBackendSource(source?: MemoryBackendSource) {
+export function memoryBackendSourceKey(source?: MemoryBackendSource): string {
   switch (source) {
     case "explicit":
-      return "调试注入后端";
+      return "explicit";
     case "tencentdb":
-      return "TencentDB 记忆";
+      return "tencentdb";
     case "chat-history":
-      return "聊天历史 fallback";
+      return "chatHistory";
     case "none":
-      return "未注入记忆";
+      return "none";
     default:
-      return "还没有运行记录";
+      return "unknown";
   }
 }
 
-export function formatConfiguredMemoryBackend(backend: MemoryStatus["configuredBackend"]) {
-  return backend === "tencentdb" ? "TencentDB 记忆" : "聊天历史";
+export function memoryConfiguredBackendKey(backend: MemoryStatus["configuredBackend"]): string {
+  return backend === "tencentdb" ? "tencentdb" : "chatHistory";
 }
 
 function formatDebugTime(date: Date) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false
-  }).format(date);
+  return formatClockTime(date);
 }
 
 function debugKindForSource(source?: MemoryBackendSource): MemoryDebugEventKind {
@@ -93,18 +87,20 @@ function debugKindForSource(source?: MemoryBackendSource): MemoryDebugEventKind 
 
 export function createMemoryDebugEventFromRun({
   now = new Date(),
-  run
+  run,
+  t
 }: {
   now?: Date;
   run: MemoryRunSnapshot;
+  t: MemoryTranslate;
 }): MemoryDebugEvent {
-  const sourceLabel = formatMemoryBackendSource(run.memoryBackendSource);
+  const sourceLabel = t(`memory.source.${memoryBackendSourceKey(run.memoryBackendSource)}`);
   const recalledCount = run.recalledMemories?.length ?? 0;
   const kind = debugKindForSource(run.memoryBackendSource);
   const summary =
     kind === "skipped"
-      ? "本轮没有注入记忆。"
-      : `召回 ${recalledCount} 条，使用${sourceLabel}。`;
+      ? t("memory.debug.noInject")
+      : t("memory.debug.recalled", { count: recalledCount, source: sourceLabel });
 
   return {
     id: `${now.toISOString()}-${run.memoryBackendSource ?? "unknown"}-${recalledCount}`,
@@ -143,13 +139,13 @@ function isVisibleForCharacter(memory: RecalledMemorySnapshot, characterId: stri
   return false;
 }
 
-function ownerLabel(memory: RecalledMemorySnapshot) {
+function ownerLabel(memory: RecalledMemorySnapshot, t: MemoryTranslate) {
   if (memory.scope === "user") {
-    return "共享";
+    return t("memory.owner.shared");
   }
 
   if (memory.scope === "project") {
-    return "项目";
+    return t("memory.owner.project");
   }
 
   if (memory.characterId) {
@@ -163,35 +159,39 @@ export function buildMemoryDashboardViewModel({
   status,
   latestRun,
   debugEvents = [],
-  selectedCharacterId = "shili"
+  selectedCharacterId = "shili",
+  t
 }: {
   status: MemoryStatus | null;
   latestRun?: MemoryRunSnapshot | null;
   debugEvents?: MemoryDebugEvent[];
   selectedCharacterId?: string;
+  t: MemoryTranslate;
 }) {
   const allMemories = latestRun?.recalledMemories ?? [];
   const memories = allMemories.filter((memory) => isVisibleForCharacter(memory, selectedCharacterId));
 
   return {
-    backendLabel: status ? formatConfiguredMemoryBackend(status.configuredBackend) : "加载中",
-    latestSourceLabel: formatMemoryBackendSource(latestRun?.memoryBackendSource),
+    backendLabel: status
+      ? t(`memory.backend.${memoryConfiguredBackendKey(status.configuredBackend)}`)
+      : t("memory.backend.loading"),
+    latestSourceLabel: t(`memory.source.${memoryBackendSourceKey(latestRun?.memoryBackendSource)}`),
     recalledCount: memories.length,
     totalRecalledCount: allMemories.length,
     selectedCharacterId,
     selectedCharacterLabel: memoryCharacterLabels[selectedCharacterId] ?? selectedCharacterId,
     storageRows: status
       ? [
-          { label: "记忆目录", value: status.memoryDir },
-          { label: "TencentDB 包", value: status.tencentDbPackageAvailable ? "已安装" : "未找到" },
-          { label: "sqlite-vec", value: status.sqliteVecAvailable ? "可用" : "未确认" },
-          { label: "vectors.db", value: status.vectorsDbExists ? "已创建" : "尚未创建" }
+          { label: t("memory.storage.memoryDir"), value: status.memoryDir },
+          { label: t("memory.storage.tencentDb"), value: t(status.tencentDbPackageAvailable ? "memory.status.installed" : "memory.status.notFound") },
+          { label: t("memory.storage.sqliteVec"), value: t(status.sqliteVecAvailable ? "memory.status.available" : "memory.status.unconfirmed") },
+          { label: t("memory.storage.vectorsDb"), value: t(status.vectorsDbExists ? "memory.status.created" : "memory.status.notCreated") }
         ]
       : [],
     memories: memories.map((memory) => ({
       ...memory,
-      kindLabel: memoryKindLabels[memory.kind],
-      ownerLabel: ownerLabel(memory),
+      kindLabel: t(`memory.kind.${memory.kind}`),
+      ownerLabel: ownerLabel(memory, t),
       sourceLabel: memory.sourceRef ?? memory.scope
     })),
     debugEvents

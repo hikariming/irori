@@ -1,0 +1,16 @@
+{
+  "language": {
+    "label": "表示言語",
+    "settingsHint": "切り替えるとすぐに画面に反映されます。"
+  },
+  "gender": {
+    "unspecified": "回答しない",
+    "female": "女性",
+    "male": "男性",
+    "nonbinary": "ノンバイナリー / その他"
+  },
+  "nav": {
+    "back": "戻る",
+    "backToMain": "メイン画面に戻る"
+  }
+}

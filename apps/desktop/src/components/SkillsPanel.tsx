@@ -1,5 +1,6 @@
 import { Avatar, Button } from "@heroui/react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { CharacterCard } from "./character-cards";
 import { desktopBackend, type SkillRecord } from "./desktop-backend";
@@ -30,16 +31,18 @@ const emptyDraft: Draft = {
 };
 
 // 与 Rust 端 is_valid_skill_name 对齐：1-64 字、全小写 a-z0-9-、不能首尾/连续连字符。
-function skillNameError(name: string): string | null {
-  if (!name) return "请填写技能标识。";
-  if (name.length > 64) return "技能标识不能超过 64 个字符。";
-  if (name.startsWith("-") || name.endsWith("-")) return "技能标识不能以连字符开头或结尾。";
-  if (name.includes("--")) return "技能标识不能包含连续连字符。";
-  if (!/^[a-z0-9-]+$/.test(name)) return "技能标识只能用小写字母、数字和连字符。";
+// 返回 skills:validation.* 的 key，文案在组件里用 t() 渲染。
+function skillNameErrorKey(name: string): string | null {
+  if (!name) return "required";
+  if (name.length > 64) return "tooLong";
+  if (name.startsWith("-") || name.endsWith("-")) return "dashEnds";
+  if (name.includes("--")) return "doubleDash";
+  if (!/^[a-z0-9-]+$/.test(name)) return "charset";
   return null;
 }
 
 export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
+  const { t } = useTranslation(["skills", "common"]);
   const [skills, setSkills] = useState<SkillRecord[]>([]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -62,7 +65,7 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
         setSelectedName((current) => current ?? loaded[0]?.name ?? null);
       })
       .catch((cause) => {
-        if (!cancelled) setError(formatUnknownError(cause, "加载技能失败"));
+        if (!cancelled) setError(formatUnknownError(cause, t("errors.load")));
       });
     return () => {
       cancelled = true;
@@ -103,11 +106,11 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
   // 条件式 return 之前调用，否则面板关闭时 Hook 数量会变（Rules of Hooks）。
   const nameError = useMemo(() => {
     if (!isCreating) return null;
-    const formatError = skillNameError(draft.name);
-    if (formatError) return formatError;
-    if (skills.some((skill) => skill.name === draft.name)) return "已存在同名技能。";
+    const formatKey = skillNameErrorKey(draft.name);
+    if (formatKey) return t(`validation.${formatKey}`);
+    if (skills.some((skill) => skill.name === draft.name)) return t("validation.duplicate");
     return null;
-  }, [isCreating, draft.name, skills]);
+  }, [isCreating, draft.name, skills, t]);
 
   if (!isOpen) return null;
 
@@ -163,7 +166,7 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
       setIsCreating(false);
       setSelectedName(saved.name);
     } catch (cause) {
-      setError(formatUnknownError(cause, "保存技能失败"));
+      setError(formatUnknownError(cause, t("errors.save")));
     } finally {
       setIsBusy(false);
     }
@@ -180,7 +183,7 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
       setSelectedName(next[0]?.name ?? null);
       setIsCreating(false);
     } catch (cause) {
-      setError(formatUnknownError(cause, "删除技能失败"));
+      setError(formatUnknownError(cause, t("errors.delete")));
     } finally {
       setIsBusy(false);
     }
@@ -198,7 +201,7 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
     try {
       await desktopBackend.setCharacterSkill(characterId, selectedSkill.name, enabled);
     } catch (cause) {
-      setError(formatUnknownError(cause, "更新角色技能失败"));
+      setError(formatUnknownError(cause, t("errors.assign")));
       setAssignedIds((current) => {
         const next = new Set(current);
         if (enabled) next.delete(characterId);
@@ -211,21 +214,21 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
   const showEditor = isCreating || Boolean(selectedSkill);
 
   return (
-    <aside className="system-settings-panel" aria-label="技能管理">
+    <aside className="system-settings-panel" aria-label={t("panelAria")}>
       <div className="settings-page-inner">
         <div className="settings-panel-header">
-          <Button aria-label="返回主界面" className="settings-back" onPress={onClose} type="button">
+          <Button aria-label={t("common:nav.backToMain")} className="settings-back" onPress={onClose} type="button">
             <span className="settings-back-arrow" aria-hidden="true">←</span>
-            返回
+            {t("common:nav.back")}
           </Button>
           <div className="settings-header-titles">
-            <span>技能管理</span>
-            <h2>技能库与角色配置</h2>
+            <span>{t("eyebrow")}</span>
+            <h2>{t("title")}</h2>
           </div>
         </div>
 
         <div className="character-card-layout">
-          <aside className="character-card-list" role="tablist" aria-label="技能列表">
+          <aside className="character-card-list" role="tablist" aria-label={t("listAria")}>
             {skills.map((skill) => (
               <button
                 key={skill.name}
@@ -237,15 +240,15 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
               >
                 <span className="character-card-list-copy">
                   <strong>{skill.name}</strong>
-                  <small>{skill.description || "（未填写描述）"}</small>
+                  <small>{skill.description || t("noDescription")}</small>
                 </span>
               </button>
             ))}
             {skills.length === 0 ? (
-              <p className="skills-empty">还没有技能，点下面新建一个。</p>
+              <p className="skills-empty">{t("emptyList")}</p>
             ) : null}
             <Button className="skills-new-button" onPress={startCreate} type="button">
-              ＋ 新建技能
+              {t("newSkill")}
             </Button>
           </aside>
 
@@ -256,7 +259,7 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
               <div className="skills-editor">
                 {isCreating ? (
                   <div className="skills-templates">
-                    <span className="skills-templates-label">从模板开始</span>
+                    <span className="skills-templates-label">{t("fromTemplate")}</span>
                     <div className="skills-templates-chips">
                       {skillTemplates.map((template) => (
                         <button
@@ -273,39 +276,37 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
                 ) : null}
 
                 <label className="skills-field">
-                  <span>技能标识</span>
+                  <span>{t("nameLabel")}</span>
                   <input
                     type="text"
                     value={draft.name}
                     readOnly={!isCreating}
-                    placeholder="例如 tarot-reading"
+                    placeholder={t("namePlaceholder")}
                     onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value.trim() }))}
                   />
                   <small>
-                    {isCreating
-                      ? "小写字母 / 数字 / 连字符，创建后作为目录名，不可改。"
-                      : "标识创建后固定不变。"}
+                    {isCreating ? t("nameHintCreating") : t("nameHintFixed")}
                   </small>
                   {nameError ? <em className="skills-field-error">{nameError}</em> : null}
                 </label>
 
                 <label className="skills-field">
-                  <span>描述（模型据此判断何时使用）</span>
+                  <span>{t("descLabel")}</span>
                   <input
                     type="text"
                     value={draft.description}
                     maxLength={1024}
-                    placeholder="当用户想算塔罗 / 求指引时使用…"
+                    placeholder={t("descPlaceholder")}
                     onChange={(event) => setDraft((d) => ({ ...d, description: event.target.value }))}
                   />
                 </label>
 
                 <label className="skills-field">
-                  <span>技能内容（SKILL.md 正文：方法论 / 步骤）</span>
+                  <span>{t("bodyLabel")}</span>
                   <textarea
                     rows={10}
                     value={draft.body}
-                    placeholder="# 塔罗解读&#10;抽牌、牌阵、解读口吻…"
+                    placeholder={t("bodyPlaceholder")}
                     onChange={(event) => setDraft((d) => ({ ...d, body: event.target.value }))}
                   />
                 </label>
@@ -319,15 +320,15 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
                     }
                   />
                   <span>
-                    <strong>仅手动触发</strong>
-                    <small>勾选后不写入系统提示，只能用 /skill:{draft.name || "name"} 显式调用。</small>
+                    <strong>{t("manualOnly")}</strong>
+                    <small>{t("manualOnlyHint", { name: draft.name || "name" })}</small>
                   </span>
                 </label>
 
-                <section className="skills-tools" aria-label="技能可用的工具">
+                <section className="skills-tools" aria-label={t("toolsAria")}>
                   <div className="skills-tools-head">
-                    <strong>需要的工具</strong>
-                    <small>勾选后，会这个技能的角色对话时会按需放开这些能力（仍走工具审核）。</small>
+                    <strong>{t("toolsNeeded")}</strong>
+                    <small>{t("toolsHint")}</small>
                   </div>
                   <div className="skills-tools-grid">
                     {skillToolOptions.map((tool) => (
@@ -338,8 +339,8 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
                           onChange={(event) => toggleTool(tool.id, event.target.checked)}
                         />
                         <span>
-                          <strong>{tool.label}</strong>
-                          <small>{tool.hint}</small>
+                          <strong>{t(`tool.${tool.id}.label`)}</strong>
+                          <small>{t(`tool.${tool.id}.hint`)}</small>
                         </span>
                       </label>
                     ))}
@@ -353,11 +354,11 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
                     onPress={save}
                     type="button"
                   >
-                    {isCreating ? "创建技能" : "保存修改"}
+                    {isCreating ? t("create") : t("saveChanges")}
                   </Button>
                   {!isCreating && selectedSkill ? (
                     <Button className="skills-delete-button" isDisabled={isBusy} onPress={remove} type="button">
-                      删除
+                      {t("delete")}
                     </Button>
                   ) : null}
                 </div>
@@ -365,10 +366,10 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
                 {!isCreating && selectedSkill ? (
                   <section className="skills-assign">
                     <header>
-                      <h4>哪些角色会这个技能</h4>
-                      <p>勾选后，该角色对话时会带上这个技能（其它角色看不到）。</p>
+                      <h4>{t("assignTitle")}</h4>
+                      <p>{t("assignHint")}</p>
                     </header>
-                    {cards.length === 0 ? <p className="skills-empty">还没有角色。</p> : null}
+                    {cards.length === 0 ? <p className="skills-empty">{t("noCharacters")}</p> : null}
                     {cards.map((card) => (
                       <label className="skills-assign-row" key={card.id}>
                         <Avatar className="skills-assign-avatar">
@@ -390,13 +391,10 @@ export function SkillsPanel({ isOpen, cards, onClose }: SkillsPanelProps) {
               </div>
             ) : (
               <div className="skills-intro">
-                <h3>什么是技能</h3>
-                <p>
-                  技能是一段「方法论」，描述角色在特定场景该怎么做（比如算塔罗、解梦、写诗）。
-                  你可以把同一个技能分配给多个角色，没分配到的角色就不会、也不会看到它。
-                </p>
+                <h3>{t("introTitle")}</h3>
+                <p>{t("introBody")}</p>
                 <Button className="skills-save-button" onPress={startCreate} type="button">
-                  ＋ 新建第一个技能
+                  {t("createFirst")}
                 </Button>
               </div>
             )}

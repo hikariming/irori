@@ -1,7 +1,8 @@
 import { Button, TextArea } from "@heroui/react";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
-import { attachmentKindLabel, formatAttachmentSize } from "./attachment-model";
+import { formatAttachmentSize } from "./attachment-model";
 import type { StagedAttachment } from "./desktop-backend";
 import { canSendMessage, defaultComposerState } from "./input-model";
 import {
@@ -50,28 +51,30 @@ function AttachmentChips({
   isStaging: boolean;
   onRemove?: (id: string) => void;
 }) {
+  const { t } = useTranslation("companion");
+
   if (attachments.length === 0 && !isStaging) {
     return null;
   }
 
   return (
-    <div className="composer-attachments" aria-label="已附文件">
+    <div className="composer-attachments" aria-label={t("input.attachmentsAria")}>
       {attachments.map((attachment) => (
-        <span className="composer-attachment" key={attachment.id} title={`${attachmentKindLabel(attachment.kind)} · ${formatAttachmentSize(attachment.size)}`}>
+        <span className="composer-attachment" key={attachment.id} title={`${t(`input.attachmentKind.${attachment.kind}`)} · ${formatAttachmentSize(attachment.size)}`}>
           <AttachmentIcon kind={attachment.kind} />
           <span className="composer-attachment__name">{attachment.name}</span>
           <span className="composer-attachment__size">{formatAttachmentSize(attachment.size)}</span>
           <button
             type="button"
             className="composer-attachment__remove"
-            aria-label={`移除 ${attachment.name}`}
+            aria-label={t("input.removeAttachment", { name: attachment.name })}
             onClick={() => onRemove?.(attachment.id)}
           >
             ×
           </button>
         </span>
       ))}
-      {isStaging ? <span className="composer-attachment is-staging">正在收下文件…</span> : null}
+      {isStaging ? <span className="composer-attachment is-staging">{t("input.staging")}</span> : null}
     </div>
   );
 }
@@ -92,6 +95,7 @@ function ReviewModeSelector({
   reviewMode: ReviewMode;
   onReviewModeChange?: (mode: ReviewMode) => void;
 }) {
+  const { t } = useTranslation("companion");
   const [open, setOpen] = useState(false);
   const current = reviewModeOption(reviewMode);
 
@@ -102,11 +106,11 @@ function ReviewModeSelector({
         className={`composer-mode-trigger ${current.risky ? "risky" : ""}`}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="工具审核模式"
+        title={t("input.toolReviewTitle")}
         onClick={() => setOpen((value) => !value)}
       >
         <ReviewModeIcon risky={current.risky} />
-        <span>{current.short}</span>
+        <span>{t(`reviewMode.${current.id}.short`)}</span>
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M6 9l6 6 6-6" />
         </svg>
@@ -114,7 +118,7 @@ function ReviewModeSelector({
       {open ? (
         <>
           <button className="composer-mode-backdrop" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
-          <ul className="composer-mode-menu" role="listbox" aria-label="工具审核模式">
+          <ul className="composer-mode-menu" role="listbox" aria-label={t("input.reviewMenuAria")}>
             {reviewModeOptions.map((option) => (
               <li key={option.id}>
                 <button
@@ -128,10 +132,10 @@ function ReviewModeSelector({
                   }}
                 >
                   <strong>
-                    {option.label}
-                    {option.risky ? <em>有风险</em> : null}
+                    {t(`reviewMode.${option.id}.label`)}
+                    {option.risky ? <em>{t("input.risky")}</em> : null}
                   </strong>
-                  <small>{option.description}</small>
+                  <small>{t(`reviewMode.${option.id}.description`)}</small>
                 </button>
               </li>
             ))}
@@ -152,6 +156,7 @@ export function CompanionInput({
   onReviewModeChange,
   onSend
 }: CompanionInputProps) {
+  const { t } = useTranslation("companion");
   const [draft, setDraft] = useState(defaultComposerState.draft);
   // 有附件时即使没打字也能发：让角色直接处理拖进来的文件。
   const hasAttachments = attachments.length > 0;
@@ -168,27 +173,27 @@ export function CompanionInput({
   }
 
   return (
-    <section className="companion-input-shell" aria-label="消息输入">
+    <section className="companion-input-shell" aria-label={t("input.shellAria")}>
       <div className="composer-card">
         <AttachmentChips attachments={attachments} isStaging={isStagingFiles} onRemove={onRemoveAttachment} />
         <TextArea
-          aria-label="输入给角色的消息"
+          aria-label={t("input.messageAria")}
           className="composer-textarea"
           disabled={disabled}
           maxLength={1200}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={
             disabled
-              ? "先在系统设置里配置模型供应商..."
+              ? t("input.placeholderDisabled")
               : hasAttachments
-                ? "想让 ta 怎么处理这些文件？（留空直接发也行）"
-                : "跟示璃说点什么，或者把文件拖进来让 ta 陪你看..."
+                ? t("input.placeholderAttachments")
+                : t("input.placeholderDefault")
           }
           value={draft}
         />
 
         <div className="composer-footer">
-          <div className="composer-tools" aria-label="输入工具">
+          <div className="composer-tools" aria-label={t("input.toolsAria")}>
             <ReviewModeSelector reviewMode={reviewMode} onReviewModeChange={onReviewModeChange} />
           </div>
 
@@ -200,7 +205,7 @@ export function CompanionInput({
               onPress={sendMessage}
               type="button"
             >
-              {isSending ? "发送中" : "发送"}
+              {isSending ? t("input.sending") : t("input.send")}
             </Button>
           </div>
         </div>

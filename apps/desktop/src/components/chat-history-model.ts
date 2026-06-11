@@ -1,5 +1,6 @@
 import type { ChatMessage } from "./chat-model.ts";
 import type { SessionGroup } from "./sidebar-model.ts";
+import { formatClockTime, formatMonthDayNumeric } from "../i18n/formatters.ts";
 
 export type ChatSessionSummary = {
   id: string;
@@ -92,21 +93,14 @@ function sessionBucket(updatedAt: Date, now: Date) {
 
 function formatSessionTime(updatedAt: Date, bucket: string) {
   if (bucket === "今天") {
-    return new Intl.DateTimeFormat("zh-CN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false
-    }).format(updatedAt);
+    return formatClockTime(updatedAt);
   }
 
   if (bucket === "昨天") {
     return "昨天";
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "numeric",
-    day: "numeric"
-  }).format(updatedAt);
+  return formatMonthDayNumeric(updatedAt);
 }
 
 export function groupChatSessions(

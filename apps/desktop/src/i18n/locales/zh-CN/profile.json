@@ -1,0 +1,19 @@
+{
+  "panelAria": "我的档案",
+  "eyebrow": "我",
+  "title": "我的档案",
+  "hint": "这些信息会在聊天时让角色知道「你是谁」：该怎么称呼你、你的偏好与习惯。改动会自动保存。",
+  "nameLabel": "名字 / 称呼",
+  "nameAria": "我的名字或称呼",
+  "namePlaceholder": "希望角色怎么称呼你",
+  "genderLabel": "性别",
+  "cityLabel": "居住的城市",
+  "cityAria": "我居住的城市",
+  "cityPlaceholder": "比如：上海",
+  "prefsLabel": "偏好与习惯",
+  "prefsAria": "我的偏好与习惯",
+  "prefsPlaceholder": "比如：喜欢简洁直接的回答、习惯深夜写代码、不喜欢被催…",
+  "introLabel": "自我介绍（对所有角色展示）",
+  "introAria": "我的自我介绍",
+  "introPlaceholder": "想让角色们知道的关于你的事：身份、在做的项目、性格…"
+}

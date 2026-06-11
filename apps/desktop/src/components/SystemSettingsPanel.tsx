@@ -1,7 +1,9 @@
 import { Button, Chip, Tabs } from "@heroui/react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { CharacterCardSettings } from "./CharacterCardSettings";
+import { LanguageSelect } from "./LanguageSelect";
 import { desktopBackend } from "./desktop-backend";
 import { defaultAdvancedSettings, type AdvancedSettings } from "./advanced-settings-model";
 import { formatUnknownError } from "./error-message";
@@ -61,9 +63,10 @@ type SystemSettingsPanelProps = {
 };
 
 export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+  const { t: tCommon } = useTranslation("common");
+  const { t } = useTranslation("settings");
   const tabs = buildSettingsTabs();
   const modelProviderTab = tabs[0];
-  const memoryTab = tabs.find((tab) => tab.id === "memory");
   const webAccessTab = tabs.find((tab) => tab.id === "web-access");
   const safetyTab = tabs.find((tab) => tab.id === "safety");
   const advancedTab = tabs.find((tab) => tab.id === "advanced");
@@ -167,7 +170,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         }
 
         setMemoryStatus(null);
-        setMemoryStatusError(formatUnknownError(error, "记忆状态加载失败。"));
+        setMemoryStatusError(formatUnknownError(error, t("errors.memoryLoad")));
       });
 
     desktopBackend.getToolPolicySettings()
@@ -186,7 +189,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         }
 
         setToolPolicySettings(defaultToolPolicySettings);
-        setToolPolicyError(formatUnknownError(error, "权限设置加载失败。"));
+        setToolPolicyError(formatUnknownError(error, t("errors.toolPolicyLoad")));
       });
 
     desktopBackend.getWebAccessSettings()
@@ -206,7 +209,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         }
 
         setWebAccessSettings(buildDefaultWebAccessSettings());
-        setWebAccessError(formatUnknownError(error, "联网设置加载失败。"));
+        setWebAccessError(formatUnknownError(error, t("errors.webAccessLoad")));
       });
 
     desktopBackend.loadAdvancedSettings()
@@ -225,7 +228,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         }
 
         setAdvancedSettings(defaultAdvancedSettings);
-        setAdvancedError(formatUnknownError(error, "高级设置加载失败。"));
+        setAdvancedError(formatUnknownError(error, t("errors.advancedLoad")));
       });
   }, [activeCharacterId, isOpen, onModelSettingsChange]);
 
@@ -242,7 +245,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     debugEvents: memoryDebugEvents,
     status: memoryStatus,
     latestRun: latestMemoryRun,
-    selectedCharacterId: selectedMemoryCharacterId
+    selectedCharacterId: selectedMemoryCharacterId,
+    t
   });
   // 选中角色「真正长期记住的事」（来自角色状态里的印象），区别于上一轮临时召回的快照。
   const storedMemories = listStoredMemories(getCharacterState(characterStates, selectedMemoryCharacterId));
@@ -441,12 +445,12 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       });
       if (modelOperationIdRef.current === testOperationId) {
         setTestState("passed");
-        setTestMessage(`模型测试通过：${result.text}`);
+        setTestMessage(t("model.testPassed", { text: result.text }));
       }
     } catch (error) {
       if (modelOperationIdRef.current === testOperationId) {
         setTestState("error");
-        setTestMessage(formatUnknownError(error, "模型测试失败。"));
+        setTestMessage(formatUnknownError(error, t("model.testFailed")));
       }
     }
   }
@@ -466,7 +470,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       setToolPolicyError("");
     } catch (error) {
       setToolPolicySaveState("error");
-      setToolPolicyError(formatUnknownError(error, "权限设置保存失败。"));
+      setToolPolicyError(formatUnknownError(error, t("errors.toolPolicySave")));
     }
   }
 
@@ -484,7 +488,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       setAdvancedError("");
     } catch (error) {
       setAdvancedSaveState("error");
-      setAdvancedError(formatUnknownError(error, "高级设置保存失败。"));
+      setAdvancedError(formatUnknownError(error, t("errors.advancedSave")));
     }
   }
 
@@ -509,7 +513,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       setToolPolicyError("");
     } catch (error) {
       setToolPolicySaveState("error");
-      setToolPolicyError(formatUnknownError(error, "权限设置保存失败。"));
+      setToolPolicyError(formatUnknownError(error, t("errors.toolPolicySave")));
     }
   }
 
@@ -544,7 +548,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       setWebAccessError("");
     } catch (error) {
       setWebAccessSaveState("error");
-      setWebAccessError(formatUnknownError(error, "联网设置保存失败。"));
+      setWebAccessError(formatUnknownError(error, t("errors.webAccessSave")));
     }
   }
 
@@ -562,8 +566,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <label className="tool-policy-toggle" key={`${group}-${tool.id}`}>
               <input checked={isToolEnabled(group, tool.id)} onChange={() => toggleToolPolicy(group, tool.id)} type="checkbox" />
               <span>
-                <strong>{tool.label}</strong>
-                <small>{tool.description}</small>
+                <strong>{t(`tools.${tool.id}.label`)}</strong>
+                <small>{t(`tools.${tool.id}.desc`)}</small>
               </span>
             </label>
           ))}
@@ -595,13 +599,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
         )}
         <span className="model-source-item-copy">
           <strong>{profile.name}</strong>
-          <small>{profile.modelName || "未填写模型名"}</small>
+          <small>{profile.modelName || t("model.noModelName")}</small>
           <span className={`token-status ${tokenReady ? "has-token" : ""}`}>
-            {tokenReady ? `Token ${profile.tokenHint ?? "已保存"}` : "需要 Token"}
+            {tokenReady ? t("model.tokenWith", { hint: profile.tokenHint ?? t("model.tokenSaved") }) : t("model.needToken")}
           </span>
         </span>
         {modelSettings.activeModelId === profile.id ? (
-          <Chip className="provider-status model-source-current" size="sm" variant="soft">当前</Chip>
+          <Chip className="provider-status model-source-current" size="sm" variant="soft">{t("model.currentBadge")}</Chip>
         ) : null}
       </button>
     );
@@ -655,24 +659,29 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   }
 
   return (
-    <aside className="system-settings-panel" aria-label="系统设置">
+    <aside className="system-settings-panel" aria-label={t("panelAria")}>
       <div className="settings-page-inner">
       <div className="settings-panel-header">
-        <Button aria-label="返回主界面" className="settings-back" isDisabled={isModelActionBusy} onPress={onClose} type="button">
+        <Button aria-label={tCommon("nav.backToMain")} className="settings-back" isDisabled={isModelActionBusy} onPress={onClose} type="button">
           <span className="settings-back-arrow" aria-hidden="true">←</span>
-          返回
+          {tCommon("nav.back")}
         </Button>
         <div className="settings-header-titles">
-          <span>系统设置</span>
-          <h2>角色与本地模型</h2>
+          <span>{t("eyebrow")}</span>
+          <h2>{t("title")}</h2>
         </div>
       </div>
+
+      <section className="settings-language-row">
+        <LanguageSelect variant="dropdown" />
+        <p className="settings-language-hint">{tCommon("language.settingsHint")}</p>
+      </section>
 
       <Tabs className="settings-tabs" defaultSelectedKey={modelProviderTab.id}>
         <Tabs.List className="settings-tab-list">
           {tabs.map((tab) => (
             <Tabs.Tab className="settings-tab" id={tab.id} key={tab.id}>
-              {tab.label}
+              {t(`tabs.${tab.id}.label`)}
             </Tabs.Tab>
           ))}
         </Tabs.List>
@@ -681,11 +690,11 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
           <section>
             <header className="settings-section-header">
               <div>
-                <h3>{modelProviderTab.label}</h3>
-                <p>{modelProviderTab.description}</p>
+                <h3>{t("tabs.model-provider.label")}</h3>
+                <p>{t("tabs.model-provider.desc")}</p>
               </div>
               <Chip className="provider-status" size="sm" variant="soft">
-                {activeProfile ? `当前：${activeProfile.name}` : "未选择模型"}
+                {activeProfile ? t("model.statusCurrent", { name: activeProfile.name }) : t("model.noModelSelected")}
               </Chip>
             </header>
 
@@ -704,7 +713,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     </div>
                     {selectedPreset.modelSuggestions.length > 0 ? (
                       <div className="preset-model-suggestions">
-                        <span>选择模型</span>
+                        <span>{t("model.selectModel")}</span>
                         <div className="preset-model-chips">
                           {selectedPreset.modelSuggestions.map((model) => (
                             <button
@@ -725,7 +734,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
 
                 <div className="openai-compatible-form">
                   <div className="form-section-header">
-                    <h4>配置详情</h4>
+                    <h4>{t("model.configDetail")}</h4>
                     {detectedPreset ? (
                       <Chip className="provider-status" size="sm" variant="soft">
                         {detectedPreset.name}
@@ -734,19 +743,19 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   </div>
 
                   <label className="settings-input">
-                    <span>配置名称</span>
+                    <span>{t("model.configName")}</span>
                     <input
-                      aria-label="模型配置名称"
+                      aria-label={t("model.configNameAria")}
                       disabled={isModelActionBusy}
                       onChange={(event) => updateDraftProfile({ name: event.target.value })}
-                      placeholder="例如：OpenAI GPT-4o / 智谱 GLM-4"
+                      placeholder={t("model.configNamePlaceholder")}
                       value={draftProfile.name}
                     />
                   </label>
                   <label className="settings-input">
                     <span>Base URL</span>
                     <input
-                      aria-label="OpenAI 兼容接口 Base URL"
+                      aria-label={t("model.baseUrlAria")}
                       disabled={isModelActionBusy}
                       onChange={(event) => updateDraftProfile({ baseUrl: event.target.value })}
                       placeholder="https://api.openai.com/v1"
@@ -757,22 +766,22 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     <span>API Key / Token</span>
                     <div className="token-input-row">
                       <input
-                        aria-label="OpenAI 兼容接口 Token"
+                        aria-label={t("model.tokenAria")}
                         disabled={isModelActionBusy}
                         onChange={(event) => updateToken(event.target.value)}
-                        placeholder={draftProfile.hasToken ? "留空则继续使用已保存 Token" : (detectedPreset?.tokenPlaceholder ?? "sk-...")}
+                        placeholder={draftProfile.hasToken ? t("model.tokenKeepPlaceholder") : (detectedPreset?.tokenPlaceholder ?? "sk-...")}
                         type="password"
                         value={token}
                       />
                       {draftProfile.hasToken ? (
-                        <span className="token-saved-badge">已保存</span>
+                        <span className="token-saved-badge">{t("model.tokenSaved")}</span>
                       ) : null}
                     </div>
                   </label>
                   <label className="settings-input">
-                    <span>模型名</span>
+                    <span>{t("model.modelNameLabel")}</span>
                     <input
-                      aria-label="OpenAI 兼容接口模型名"
+                      aria-label={t("model.modelNameAria")}
                       disabled={isModelActionBusy}
                       onChange={(event) => updateDraftProfile({ modelName: event.target.value })}
                       placeholder="gpt-4o / glm-4-plus / qwen-max"
@@ -791,7 +800,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                       onPress={testModelConnection}
                       type="button"
                     >
-                      {testState === "testing" ? "测试中…" : "测试连接"}
+                      {testState === "testing" ? t("model.testing") : t("model.testConnection")}
                     </Button>
                     <Button
                       className="settings-secondary-action"
@@ -799,7 +808,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                       onPress={() => saveModelSettings({ makeActive: true })}
                       type="button"
                     >
-                      设为当前
+                      {t("model.setCurrent")}
                     </Button>
                     <Button
                       className="settings-primary-action"
@@ -807,7 +816,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                       onPress={() => saveModelSettings({ makeActive: shouldMakeSavedProfileActive(modelSettings, draftProfile) })}
                       type="button"
                     >
-                      {saveState === "saving" ? "保存中…" : "保存配置"}
+                      {saveState === "saving" ? t("model.saving") : t("model.saveConfig")}
                     </Button>
                   </div>
                   <div className="provider-actions secondary">
@@ -817,38 +826,38 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                       onPress={deleteSelectedProfile}
                       type="button"
                     >
-                      {isUnsavedProfileDraft ? "放弃新增" : "删除配置"}
+                      {isUnsavedProfileDraft ? t("model.discardNew") : t("model.deleteConfig")}
                     </Button>
                   </div>
 
-                  {saveState === "saved" ? <p className="settings-save-note">已保存，下一次发送会使用当前模型配置。</p> : null}
-                  {saveState === "error" ? <p className="settings-save-note error">保存失败，请稍后再试。</p> : null}
+                  {saveState === "saved" ? <p className="settings-save-note">{t("model.savedNote")}</p> : null}
+                  {saveState === "error" ? <p className="settings-save-note error">{t("model.saveFailed")}</p> : null}
                   {testState === "passed" ? <p className="settings-save-note">{testMessage}</p> : null}
                   {testState === "error" ? <p className="settings-save-note error">{testMessage}</p> : null}
                   {hasUnsavedModelDraft && !isModelActionBusy ? (
                     <p className="settings-save-note">
-                      {isUnsavedProfileDraft ? "请先保存这个新模型，或放弃新增后再切换。" : "请先保存配置后再切换或新增模型。"}
+                      {isUnsavedProfileDraft ? t("model.unsavedNew") : t("model.unsaved")}
                     </p>
                   ) : null}
                   {didNormalizeBaseUrl ? (
                     <p className="settings-save-note">
-                      已识别到 Base URL 里带了模型名或 /chat/completions，保存/测试时会自动改为 {normalizedDraft.baseUrl}。
+                      {t("model.baseUrlNormalized", { url: normalizedDraft.baseUrl })}
                     </p>
                   ) : null}
                 </div>
               </div>
 
-              <aside className="model-source-sidebar" aria-label="模型来源与配置">
+              <aside className="model-source-sidebar" aria-label={t("model.sidebarAria")}>
                 <div className="model-source-section">
                   <div className="model-source-section-title">
-                    <h4>可用配置</h4>
+                    <h4>{t("model.availableConfigs")}</h4>
                     <span>{tokenReadyProfiles.length}</span>
                   </div>
                   <div className="model-source-list">
                     {tokenReadyProfiles.length > 0 ? (
                       tokenReadyProfiles.map((profile) => renderProfileSourceButton(profile, true))
                     ) : (
-                      <p className="model-source-empty">还没有保存 Token 的配置。</p>
+                      <p className="model-source-empty">{t("model.noSavedToken")}</p>
                     )}
                   </div>
                 </div>
@@ -856,7 +865,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                 {tokenPendingProfiles.length > 0 ? (
                   <div className="model-source-section compact">
                     <div className="model-source-section-title">
-                      <h4>待补全配置</h4>
+                      <h4>{t("model.pendingConfigs")}</h4>
                       <span>{tokenPendingProfiles.length}</span>
                     </div>
                     <div className="model-source-list">
@@ -867,7 +876,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
 
                 <div className="model-source-section">
                   <div className="model-source-section-title">
-                    <h4>官方 API</h4>
+                    <h4>{t("model.officialApi")}</h4>
                   </div>
                   <div className="model-source-list">
                     {officialPresetProviders.map(renderPresetSourceButton)}
@@ -901,8 +910,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
           <section>
             <header className="settings-section-header">
               <div>
-                <h3>{memoryTab?.label ?? "记忆"}</h3>
-                <p>{memoryTab?.description}</p>
+                <h3>{t("tabs.memory.label")}</h3>
+                <p>{t("tabs.memory.desc")}</p>
               </div>
               <Chip className="provider-status" size="sm" variant="soft">
                 {memoryView.latestSourceLabel}
@@ -912,22 +921,22 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <div className="memory-dashboard">
               <div className="memory-summary-grid">
                 <div className="memory-summary-item">
-                  <span>配置后端</span>
+                  <span>{t("memory.backendField")}</span>
                   <strong>{memoryView.backendLabel}</strong>
                 </div>
                 <div className="memory-summary-item">
-                  <span>本轮来源</span>
+                  <span>{t("memory.thisRoundField")}</span>
                   <strong>{memoryView.latestSourceLabel}</strong>
                 </div>
               <div className="memory-summary-item">
-                  <span>{memoryView.selectedCharacterLabel}可见</span>
+                  <span>{t("memory.visibleSuffix", { label: memoryView.selectedCharacterLabel })}</span>
                   <strong>{memoryView.recalledCount}/{memoryView.totalRecalledCount}</strong>
                 </div>
               </div>
 
               {memoryStatusError ? <p className="settings-save-note error">{memoryStatusError}</p> : null}
 
-              <div className="memory-character-switcher" aria-label="按角色查看记忆">
+              <div className="memory-character-switcher" aria-label={t("memory.switcherAria")}>
                 {cards.map((character) => (
                   <button
                     className={`memory-character-button ${character.id === selectedMemoryCharacterId ? "selected" : ""}`}
@@ -951,7 +960,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
               </dl>
 
               <div className="memory-recall-list">
-                <h4>{memoryView.selectedCharacterLabel}长期记得的事 {storedMemories.length > 0 ? `· ${storedMemories.length}` : ""}</h4>
+                <h4>{t("memory.longTermTitle", { label: memoryView.selectedCharacterLabel })} {storedMemories.length > 0 ? `· ${storedMemories.length}` : ""}</h4>
                 {storedMemories.length > 0 ? (
                   storedMemories.map((memory) => (
                     <article className="memory-recall-item" key={memory.id}>
@@ -962,12 +971,12 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     </article>
                   ))
                 ) : (
-                  <p className="memory-empty-state">{memoryView.selectedCharacterLabel}还没记住关于你的事，多聊几句、或第一次见面打个招呼就有了。</p>
+                  <p className="memory-empty-state">{t("memory.longTermEmpty", { label: memoryView.selectedCharacterLabel })}</p>
                 )}
               </div>
 
               <div className="memory-recall-list">
-                <h4>上一轮对话召回的记忆 {memoryView.totalRecalledCount > 0 ? `· ${memoryView.recalledCount}/${memoryView.totalRecalledCount}` : ""}</h4>
+                <h4>{t("memory.recalledTitle")} {memoryView.totalRecalledCount > 0 ? `· ${memoryView.recalledCount}/${memoryView.totalRecalledCount}` : ""}</h4>
                 {memoryView.memories.length > 0 ? (
                   memoryView.memories.map((memory) => (
                     <article className="memory-recall-item" key={memory.id}>
@@ -979,12 +988,12 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     </article>
                   ))
                 ) : (
-                  <p className="memory-empty-state">这一轮还没有召回记录（发生在你发消息、模型检索记忆时）。</p>
+                  <p className="memory-empty-state">{t("memory.recalledEmpty")}</p>
                 )}
               </div>
 
               <div className="memory-debug-log">
-                <h4>调试日志</h4>
+                <h4>{t("memory.debugTitle")}</h4>
                 {memoryView.debugEvents.length > 0 ? (
                   <ol>
                     {memoryView.debugEvents.map((event) => (
@@ -996,7 +1005,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     ))}
                   </ol>
                 ) : (
-                  <p className="memory-empty-state">还没有记忆事件。</p>
+                  <p className="memory-empty-state">{t("memory.debugEmpty")}</p>
                 )}
               </div>
             </div>
@@ -1008,8 +1017,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <section>
               <header className="settings-section-header">
                 <div>
-                  <h3>{webAccessTab.label}</h3>
-                  <p>{webAccessTab.description}</p>
+                  <h3>{t("tabs.web-access.label")}</h3>
+                  <p>{t("tabs.web-access.desc")}</p>
                 </div>
                 <div className="settings-header-actions">
                   <Chip className="provider-status" size="sm" variant="soft">
@@ -1021,31 +1030,31 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     onPress={saveWebAccessSettings}
                     type="button"
                   >
-                    {webAccessSaveState === "saving" ? "保存中" : "保存联网"}
+                    {webAccessSaveState === "saving" ? t("web.saving") : t("web.save")}
                   </Button>
                 </div>
               </header>
 
               <div className="web-access-dashboard">
-                <div className="web-provider-grid" aria-label="搜索 provider">
-                  {renderWebAccessProviderButton("auto", "Auto", "按可用性自动选择。")}
-                  {renderWebAccessProviderButton("exa", "Exa", "优先 Exa API / MCP。")}
-                  {renderWebAccessProviderButton("perplexity", "Perplexity", "使用 Sonar 搜索。")}
-                  {renderWebAccessProviderButton("gemini", "Gemini", "API 或浏览器登录。")}
+                <div className="web-provider-grid" aria-label={t("web.providerGridAria")}>
+                  {renderWebAccessProviderButton("auto", "Auto", t("web.providerDesc.auto"))}
+                  {renderWebAccessProviderButton("exa", "Exa", t("web.providerDesc.exa"))}
+                  {renderWebAccessProviderButton("perplexity", "Perplexity", t("web.providerDesc.perplexity"))}
+                  {renderWebAccessProviderButton("gemini", "Gemini", t("web.providerDesc.gemini"))}
                 </div>
 
                 <div className="web-access-main">
                   <div className="web-access-form">
                     <div className="form-section-header">
-                      <h4>运行方式</h4>
+                      <h4>{t("web.runMode")}</h4>
                       <Chip className="provider-status" size="sm" variant="soft">
-                        {webAccessView.workflowLabel}
+                        {t(`web.workflow.${webAccessSettings.workflow === "summary-review" ? "summaryReview" : "none"}`)}
                       </Chip>
                     </div>
 
-                    <div className="settings-segmented" aria-label="搜索 workflow">
-                      {renderWebWorkflowButton("none", "直接返回")}
-                      {renderWebWorkflowButton("summary-review", "浏览器审阅")}
+                    <div className="settings-segmented" aria-label={t("web.workflowAria")}>
+                      {renderWebWorkflowButton("none", t("web.workflow.none"))}
+                      {renderWebWorkflowButton("summary-review", t("web.workflow.summaryReview"))}
                     </div>
 
                     <label className="tool-policy-toggle web-access-switch">
@@ -1055,8 +1064,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                         type="checkbox"
                       />
                       <span>
-                        <strong>无 key 自动回退</strong>
-                        <small>{webAccessView.willFallbackWithoutKey ? "当前会以 Auto 运行。" : "显式 provider 可在缺 key 时回到 Auto。"}</small>
+                        <strong>{t("web.noKeyFallback")}</strong>
+                        <small>{webAccessView.willFallbackWithoutKey ? t("web.willFallback") : t("web.canFallback")}</small>
                       </span>
                     </label>
 
@@ -1067,14 +1076,14 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                         type="checkbox"
                       />
                       <span>
-                        <strong>允许 Gemini 浏览器登录</strong>
-                        <small>开启后可读取本机 Chromium 登录状态。</small>
+                        <strong>{t("web.allowGeminiBrowser")}</strong>
+                        <small>{t("web.allowGeminiBrowserDesc")}</small>
                       </span>
                     </label>
 
                     {webAccessError ? <p className="settings-save-note error">{webAccessError}</p> : null}
-                    {webAccessSaveState === "saved" ? <p className="settings-save-note">联网设置已保存。</p> : null}
-                    {webAccessSaveState === "error" ? <p className="settings-save-note error">联网设置保存失败。</p> : null}
+                    {webAccessSaveState === "saved" ? <p className="settings-save-note">{t("web.savedNote")}</p> : null}
+                    {webAccessSaveState === "error" ? <p className="settings-save-note error">{t("web.saveFailed")}</p> : null}
                   </div>
 
                   <div className="web-key-form">
@@ -1092,13 +1101,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                           <input
                             aria-label={`${row.label} API Key`}
                             onChange={(event) => updateWebAccessKey(row.id, event.target.value)}
-                            placeholder={row.hasKey ? `已保存 ${row.status}，留空则不修改` : row.placeholder}
+                            placeholder={row.hasKey ? t("web.keyKeepPlaceholder", { status: row.status }) : row.placeholder}
                             type="password"
                             value={webAccessKeys[row.id]}
                           />
-                          {row.hasKey ? <span className="token-saved-badge">已保存</span> : null}
+                          {row.hasKey ? <span className="token-saved-badge">{t("web.keySaved")}</span> : null}
                         </div>
-                        <small>{row.description}</small>
+                        <small>{t(`web.keyDesc.${row.id}`)}</small>
                       </label>
                     ))}
                   </div>
@@ -1113,8 +1122,8 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <section>
               <header className="settings-section-header">
                 <div>
-                  <h3>{safetyTab.label}</h3>
-                  <p>{safetyTab.description}</p>
+                  <h3>{t("tabs.safety.label")}</h3>
+                  <p>{t("tabs.safety.desc")}</p>
                 </div>
                 <Button
                   className="settings-primary-action"
@@ -1122,34 +1131,34 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   onPress={saveToolPolicySettings}
                   type="button"
                 >
-                  {toolPolicySaveState === "saving" ? "保存中" : "保存权限"}
+                  {toolPolicySaveState === "saving" ? t("safety.saving") : t("safety.save")}
                 </Button>
               </header>
 
               <div className="tool-policy-dashboard">
                 <div className="tool-policy-protected">
-                  <span>保护路径</span>
+                  <span>{t("safety.protectedPaths")}</span>
                   <code>{toolPolicyView.protectedPathsPreview}</code>
                 </div>
 
                 {toolPolicyError ? <p className="settings-save-note error">{toolPolicyError}</p> : null}
-                {toolPolicySaveState === "saved" ? <p className="settings-save-note">权限设置已保存。</p> : null}
-                {toolPolicySaveState === "error" ? <p className="settings-save-note error">权限设置保存失败。</p> : null}
+                {toolPolicySaveState === "saved" ? <p className="settings-save-note">{t("safety.savedNote")}</p> : null}
+                {toolPolicySaveState === "error" ? <p className="settings-save-note error">{t("safety.saveFailed")}</p> : null}
 
                 <article className="tool-policy-mode-card">
                   <header>
                     <div>
-                      <h4>全局工具权限</h4>
-                      <p>默认让工具都可用，写入、Shell 和浏览器操作保留确认。</p>
+                      <h4>{t("safety.globalTitle")}</h4>
+                      <p>{t("safety.globalDesc")}</p>
                     </div>
                     <Chip className="provider-status" size="sm" variant="soft">
-                      {toolPolicyView.enabledTools.length} 项启用
+                      {t("safety.enabledCount", { count: toolPolicyView.enabledTools.length })}
                     </Chip>
                   </header>
 
-                  {renderToolGroup("builtinTools", "Pi 内置工具", toolPolicyView.toolOrder.filter((tool) => !tool.id.includes(".")))}
-                  {renderToolGroup("customTools", "Irori 工具", toolPolicyView.toolOrder.filter((tool) => tool.id.includes(".")))}
-                  {renderToolGroup("confirmTools", "需要确认", toolPolicyView.toolOrder)}
+                  {renderToolGroup("builtinTools", t("safety.groupBuiltin"), toolPolicyView.toolOrder.filter((tool) => !tool.id.includes(".")))}
+                  {renderToolGroup("customTools", t("safety.groupCustom"), toolPolicyView.toolOrder.filter((tool) => tool.id.includes(".")))}
+                  {renderToolGroup("confirmTools", t("safety.groupConfirm"), toolPolicyView.toolOrder)}
                 </article>
               </div>
             </section>
@@ -1161,19 +1170,19 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <section>
               <header className="settings-section-header">
                 <div>
-                  <h3>{advancedTab.label}</h3>
-                  <p>{advancedTab.description}</p>
+                  <h3>{t("tabs.advanced.label")}</h3>
+                  <p>{t("tabs.advanced.desc")}</p>
                 </div>
               </header>
 
               <article className="tool-policy-mode-card">
                 <header>
                   <div>
-                    <h4>子代理委派</h4>
-                    <p>允许角色把任务拆给 scout / worker / reviewer 等子代理，增强编程与多步任务能力。</p>
+                    <h4>{t("advanced.subagentTitle")}</h4>
+                    <p>{t("advanced.subagentDesc")}</p>
                   </div>
                   <Chip className="provider-status" size="sm" variant="soft">
-                    {advancedSettings.enableSubagents ? "已开启" : "已关闭"}
+                    {advancedSettings.enableSubagents ? t("advanced.on") : t("advanced.off")}
                   </Chip>
                 </header>
 
@@ -1184,18 +1193,18 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                     type="checkbox"
                   />
                   <span>
-                    <strong>启用子代理委派</strong>
-                    <small>子代理在独立进程运行，其每次工具调用都受与主会话相同的安全围栏约束。需要可写文件 / Shell 权限才能发挥作用。</small>
+                    <strong>{t("advanced.enableSubagents")}</strong>
+                    <small>{t("advanced.enableSubagentsDesc")}</small>
                   </span>
                 </label>
 
                 <p className="settings-save-note">
-                  开启后会使用持久化会话并允许委派；子代理的危险操作仍会被拦截。仅对原生支持的模型 provider（如 DeepSeek）生效。
+                  {t("advanced.subagentHint")}
                 </p>
                 {advancedSettings.enableSubagents && !subagentCanWork ? (
                   <div className="settings-inline-fix">
                     <p className="settings-save-note error">
-                      子代理目前无法干活：「权限」里的写文件 / Shell 都被关了，它只能读、不能改。
+                      {t("advanced.subagentBlocked")}
                     </p>
                     <Button
                       className="settings-secondary-action"
@@ -1203,13 +1212,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                       onPress={enableSubagentWriteTools}
                       type="button"
                     >
-                      {toolPolicySaveState === "saving" ? "开启中…" : "一键开启写入与 Shell"}
+                      {toolPolicySaveState === "saving" ? t("advanced.enabling") : t("advanced.enableWriteShell")}
                     </Button>
                   </div>
                 ) : null}
                 {advancedError ? <p className="settings-save-note error">{advancedError}</p> : null}
-                {advancedSaveState === "saved" ? <p className="settings-save-note">高级设置已保存。</p> : null}
-                {advancedSaveState === "error" ? <p className="settings-save-note error">高级设置保存失败。</p> : null}
+                {advancedSaveState === "saved" ? <p className="settings-save-note">{t("advanced.savedNote")}</p> : null}
+                {advancedSaveState === "error" ? <p className="settings-save-note error">{t("advanced.saveFailed")}</p> : null}
               </article>
             </section>
           </Tabs.Panel>

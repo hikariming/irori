@@ -1,0 +1,81 @@
+{
+  "ariaTitle": "{{app}} 시작하기",
+  "stepAria": "{{index}}단계: {{title}}",
+  "steps": {
+    "welcome": "환영",
+    "identity": "내 소개",
+    "model": "모델 제공자",
+    "done": "완료"
+  },
+  "welcome": {
+    "imageAlt": "책상에서 당신을 맞이하는 세 캐릭터",
+    "eyebrow": "환영합니다",
+    "lead": "당신의 기기 안에서 함께 지내는 캐릭터 컴패니언 앱이에요. 1분만 들여 기본 설정을 마치면 바로 시작할 수 있어요.",
+    "features": {
+      "companion": {
+        "title": "캐릭터와 함께",
+        "desc": "캐릭터마다 고유한 성격과 일하는 방식이 있어요. 컴퓨터를 다루고, 코드를 쓰고, 일을 끝내줍니다."
+      },
+      "life": {
+        "title": "가상의 일상",
+        "desc": "캐릭터에게는 하루의 생활 리듬이 있어요. 지금 무엇을 하는지, 기분과 활력도 시간에 따라 달라집니다."
+      },
+      "circle": {
+        "title": "라이프 서클과 선물",
+        "desc": "캐릭터는 소식을 올리고, 엽서를 보내거나 메모를 남기고 작은 선물을 건네기도 해요. 관계가 조금씩 자라납니다."
+      },
+      "memory": {
+        "title": "로컬 메모리",
+        "desc": "당신의 취향과 중요한 일을 기억하고, 대화할수록 당신을 더 잘 알게 됩니다."
+      }
+    }
+  },
+  "identity": {
+    "eyebrow": "2단계",
+    "title": "당신을 소개해 주세요",
+    "lead": "캐릭터가 누구와 이야기하는지, 어떻게 부르면 좋을지 알 수 있게 해줘요. 나중에 '나'에서 언제든 바꿀 수 있어요.",
+    "nameLabel": "이름 / 호칭",
+    "nameAria": "내 이름 또는 호칭",
+    "namePlaceholder": "캐릭터가 당신을 어떻게 부르면 좋을까요",
+    "genderLabel": "성별",
+    "cityLabel": "거주 도시",
+    "cityAria": "내가 사는 도시",
+    "cityPlaceholder": "예: 서울",
+    "introLabel": "자기소개 (선택, 모든 캐릭터에게 표시됩니다)",
+    "introAria": "내 자기소개",
+    "introPlaceholder": "캐릭터가 알았으면 하는 것: 당신의 역할, 진행 중인 일, 성격 등…"
+  },
+  "model": {
+    "eyebrow": "3단계",
+    "title": "모델 제공자 연결",
+    "lead": "OpenAI 호환 엔드포인트(Base URL, 모델 이름, 토큰)를 입력하면 캐릭터가 말할 수 있게 돼요.",
+    "nameLabel": "설정 이름",
+    "nameAria": "모델 설정 이름",
+    "namePlaceholder": "이 설정의 이름을 지어 주세요",
+    "baseUrlLabel": "Base URL",
+    "baseUrlAria": "OpenAI 호환 엔드포인트 Base URL",
+    "modelNameLabel": "모델 이름",
+    "modelNameAria": "모델 이름",
+    "modelNamePlaceholder": "예: gpt-4o-mini",
+    "tokenLabel": "토큰",
+    "tokenAria": "API 토큰",
+    "tokenPlaceholderSaved": "저장됨 · 비워 두면 변경하지 않아요",
+    "tokenPlaceholderNew": "sk-…",
+    "saving": "저장 중…",
+    "save": "저장하고 사용",
+    "saved": "저장했어요. 다음 단계로 넘어갈 수 있어요.",
+    "error": "저장하지 못했어요. 확인 후 다시 시도해 주세요."
+  },
+  "done": {
+    "title": "모두 준비됐어요",
+    "titleNamed": "모두 준비됐어요, {{name}}님",
+    "leadConfigured": "캐릭터가 준비됐어요. 인사하러 가볼까요. Enjoy ✨",
+    "leadUnconfigured": "아직 모델을 설정하지 않아 캐릭터가 답할 수 없어요. 나중에 '설정'에서 추가할 수 있어요. Enjoy ✨"
+  },
+  "footer": {
+    "back": "이전",
+    "skip": "건너뛰기",
+    "next": "다음",
+    "start": "시작하기"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "language": {
+    "label": "표시 언어",
+    "settingsHint": "전환하면 화면에 바로 반영됩니다."
+  },
+  "gender": {
+    "unspecified": "밝히지 않음",
+    "female": "여성",
+    "male": "남성",
+    "nonbinary": "논바이너리 / 기타"
+  },
+  "nav": {
+    "back": "뒤로",
+    "backToMain": "메인 화면으로"
+  }
+}

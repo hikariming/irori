@@ -1,0 +1,19 @@
+{
+  "panelAria": "내 프로필",
+  "eyebrow": "나",
+  "title": "내 프로필",
+  "hint": "이 정보는 대화 중에 캐릭터가 '당신이 누구인지' 알 수 있게 해줘요: 어떻게 부를지, 취향과 습관 등이요. 변경 사항은 자동으로 저장됩니다.",
+  "nameLabel": "이름 / 호칭",
+  "nameAria": "내 이름 또는 호칭",
+  "namePlaceholder": "캐릭터가 당신을 어떻게 부르면 좋을까요",
+  "genderLabel": "성별",
+  "cityLabel": "거주 도시",
+  "cityAria": "내가 사는 도시",
+  "cityPlaceholder": "예: 서울",
+  "prefsLabel": "취향과 습관",
+  "prefsAria": "내 취향과 습관",
+  "prefsPlaceholder": "예: 간결하고 직접적인 답변을 좋아함, 늦은 밤에 코딩함, 재촉받는 걸 싫어함…",
+  "introLabel": "자기소개 (모든 캐릭터에게 표시)",
+  "introAria": "내 자기소개",
+  "introPlaceholder": "캐릭터가 알았으면 하는 것: 당신의 역할, 진행 중인 일, 성격 등…"
+}
