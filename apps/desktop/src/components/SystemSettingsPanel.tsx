@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { CharacterCardSettings } from "./CharacterCardSettings";
 import { LanguageSelect } from "./LanguageSelect";
+import { PresetProviderSections, PresetQuickSetup } from "./ModelPresetPicker";
 import { desktopBackend } from "./desktop-backend";
 import { defaultAdvancedSettings, type AdvancedSettings } from "./advanced-settings-model";
 import { formatUnknownError } from "./error-message";
@@ -20,7 +21,6 @@ import {
   detectPresetProvider,
   formatOpenAiCompatibleRequestPreview,
   getActiveModelProfile,
-  getPresetProvidersByGroup,
   getTokenReadyModelProfiles,
   normalizeOpenAiCompatibleSettings,
   shouldMakeSavedProfileActive,
@@ -273,9 +273,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   const tokenReadyProfiles = getTokenReadyModelProfiles(modelSettings);
   const tokenReadyProfileIds = new Set(tokenReadyProfiles.map((profile) => profile.id));
   const tokenPendingProfiles = modelSettings.profiles.filter((profile) => !tokenReadyProfileIds.has(profile.id));
-  const officialPresetProviders = getPresetProvidersByGroup("official");
-  const codingPlanProviders = getPresetProvidersByGroup("coding-plan");
-
   async function saveModelSettings(options: { makeActive?: boolean } = {}) {
     if (isModelActionBusy) {
       return;
@@ -611,26 +608,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     );
   }
 
-  function renderPresetSourceButton(preset: PresetProvider) {
-    return (
-      <button
-        className={`model-source-item preset ${preset.group === "coding-plan" ? "coding-plan" : ""} ${selectedPreset?.id === preset.id ? "selected" : ""}`}
-        disabled={!canChangeModelProfile}
-        key={preset.id}
-        onClick={() => selectPreset(preset)}
-        type="button"
-      >
-        <span className="model-profile-icon" style={{ background: preset.accentColor }}>
-          {preset.iconLabel}
-        </span>
-        <span className="model-source-item-copy">
-          <strong>{preset.name}</strong>
-          <small>{preset.description}</small>
-        </span>
-      </button>
-    );
-  }
-
   function renderWebAccessProviderButton(provider: WebAccessProvider, label: string, description: string) {
     return (
       <button
@@ -701,35 +678,13 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             <div className="model-access-layout">
               <div className="model-config-detail">
                 {selectedPreset ? (
-                  <div className="preset-quick-setup">
-                    <div className="preset-quick-setup-header">
-                      <span className="preset-provider-icon small" style={{ background: selectedPreset.accentColor }}>
-                        {selectedPreset.iconLabel}
-                      </span>
-                      <div>
-                        <strong>{selectedPreset.name}</strong>
-                        <p>{selectedPreset.description}</p>
-                      </div>
-                    </div>
-                    {selectedPreset.modelSuggestions.length > 0 ? (
-                      <div className="preset-model-suggestions">
-                        <span>{t("model.selectModel")}</span>
-                        <div className="preset-model-chips">
-                          {selectedPreset.modelSuggestions.map((model) => (
-                            <button
-                              className={`preset-model-chip ${selectedModelSuggestion === model.value ? "selected" : ""}`}
-                              disabled={isModelActionBusy}
-                              key={model.value}
-                              onClick={() => selectPresetModel(model.value)}
-                              type="button"
-                            >
-                              {model.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+                  <PresetQuickSetup
+                    disabled={isModelActionBusy}
+                    modelLabel={t("model.selectModel")}
+                    onModelSelect={selectPresetModel}
+                    preset={selectedPreset}
+                    selectedModelValue={selectedModelSuggestion}
+                  />
                 ) : null}
 
                 <div className="openai-compatible-form">
@@ -874,23 +829,12 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   </div>
                 ) : null}
 
-                <div className="model-source-section">
-                  <div className="model-source-section-title">
-                    <h4>{t("model.officialApi")}</h4>
-                  </div>
-                  <div className="model-source-list">
-                    {officialPresetProviders.map(renderPresetSourceButton)}
-                  </div>
-                </div>
-
-                <div className="model-source-section">
-                  <div className="model-source-section-title">
-                    <h4>Coding Plan</h4>
-                  </div>
-                  <div className="model-source-list">
-                    {codingPlanProviders.map(renderPresetSourceButton)}
-                  </div>
-                </div>
+                <PresetProviderSections
+                  disabled={!canChangeModelProfile}
+                  officialTitle={t("model.officialApi")}
+                  onSelect={selectPreset}
+                  selectedPresetId={selectedPreset?.id}
+                />
               </aside>
             </div>
           </section>

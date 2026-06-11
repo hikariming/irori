@@ -21,12 +21,12 @@
         "desc": "Characters keep their own daily rhythm: what they're doing right now, their mood and energy all shift over time."
       },
       "circle": {
-        "title": "Life circle & keepsakes",
-        "desc": "Characters post updates, and quietly send you postcards, leave sticky notes, and give little gifts — your bond grows over time."
+        "title": "Workflow collaboration",
+        "desc": "Characters understand task context, break down requirements, track progress, and summarize outcomes like capable work partners."
       },
       "memory": {
-        "title": "Local memory",
-        "desc": "They remember your preferences and what matters to you, getting to know you the more you chat."
+        "title": "Custom character cards",
+        "desc": "Swap or create cards freely: use a favorite character, a real persona, or your own original companion."
       }
     }
   },

@@ -4,11 +4,15 @@ import { useTranslation } from "react-i18next";
 
 import { desktopBackend } from "./desktop-backend";
 import { LanguageSelect } from "./LanguageSelect";
+import { PresetProviderSections, PresetQuickSetup } from "./ModelPresetPicker";
 import {
+  buildProfileFromPreset,
+  detectPresetProvider,
   getActiveModelProfile,
   isModelConfigured,
   normalizeOpenAiCompatibleSettings,
-  type ModelSettingsState
+  type ModelSettingsState,
+  type PresetProvider
 } from "./model-settings-controller";
 import { genderOptions, type UserProfile } from "./user-profile";
 
@@ -38,16 +42,23 @@ export function OnboardingFlow({
   onFinish,
   onSkip
 }: OnboardingFlowProps) {
-  const { t } = useTranslation(["onboarding", "common"]);
+  const { t } = useTranslation(["onboarding", "common", "settings"]);
   const [step, setStep] = useState(0);
 
   const activeProfile = getActiveModelProfile(modelSettings);
+  const initialPreset = detectPresetProvider(activeProfile) ?? null;
   const [modelDraft, setModelDraft] = useState({
     name: activeProfile.name,
     baseUrl: activeProfile.baseUrl,
     modelName: activeProfile.modelName,
     token: ""
   });
+  const [selectedPreset, setSelectedPreset] = useState<PresetProvider | null>(initialPreset);
+  const [selectedModelSuggestion, setSelectedModelSuggestion] = useState(
+    initialPreset?.modelSuggestions.some((model) => model.value === activeProfile.modelName)
+      ? activeProfile.modelName
+      : ""
+  );
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const modelConfigured = isModelConfigured(modelSettings);
@@ -55,6 +66,28 @@ export function OnboardingFlow({
   function patchModel(patch: Partial<typeof modelDraft>) {
     setModelDraft((current) => ({ ...current, ...patch }));
     setSaveState("idle");
+  }
+
+  function applyPresetSelection(preset: PresetProvider, modelValue = preset.modelSuggestions[0]?.value ?? "") {
+    const profile = buildProfileFromPreset(preset, modelValue, activeProfile.id);
+
+    setSelectedPreset(preset);
+    setSelectedModelSuggestion(modelValue);
+    setModelDraft((current) => ({
+      ...current,
+      name: profile.name,
+      baseUrl: profile.baseUrl,
+      modelName: profile.modelName
+    }));
+    setSaveState("idle");
+  }
+
+  function selectPresetModel(modelValue: string) {
+    if (!selectedPreset) {
+      return;
+    }
+
+    applyPresetSelection(selectedPreset, modelValue);
   }
 
   async function saveModel() {
@@ -198,6 +231,24 @@ export function OnboardingFlow({
                 </figure>
               </div>
 
+              <div className="onboarding-preset-picker">
+                {selectedPreset ? (
+                  <PresetQuickSetup
+                    disabled={saveState === "saving"}
+                    modelLabel={t("settings:model.selectModel")}
+                    onModelSelect={selectPresetModel}
+                    preset={selectedPreset}
+                    selectedModelValue={selectedModelSuggestion}
+                  />
+                ) : null}
+                <PresetProviderSections
+                  disabled={saveState === "saving"}
+                  officialTitle={t("settings:model.officialApi")}
+                  onSelect={applyPresetSelection}
+                  selectedPresetId={selectedPreset?.id}
+                />
+              </div>
+
               <label className="settings-input">
                 <span>{t("model.nameLabel")}</span>
                 <input
@@ -230,7 +281,7 @@ export function OnboardingFlow({
                 <input
                   aria-label={t("model.tokenAria")}
                   type="password"
-                  placeholder={activeProfile.hasToken ? t("model.tokenPlaceholderSaved") : t("model.tokenPlaceholderNew")}
+                  placeholder={activeProfile.hasToken ? t("model.tokenPlaceholderSaved") : (selectedPreset?.tokenPlaceholder ?? t("model.tokenPlaceholderNew"))}
                   value={modelDraft.token}
                   onChange={(event) => patchModel({ token: event.target.value })}
                 />
