@@ -858,7 +858,7 @@ fn mark_task_runs_read(app: AppHandle, task_id: Option<String>) -> Result<(), St
 fn get_memory_status(app: AppHandle) -> Result<MemoryStatus, String> {
     Ok(memory_status_from_paths(
         &memory_backend_dir(&app)?,
-        &sidecar_dir(),
+        &sidecar_dir(&app),
     ))
 }
 
@@ -1109,7 +1109,7 @@ fn run_sidecar_prompt(
         .clone()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| "请先在模型接入里保存或填写 Token。".to_string())?;
-    let agent_dir = sidecar_dir();
+    let sidecar_runtime = sidecar_runtime(&app)?;
     let chat_history_memory = build_chat_history_memory_payload(&app, request.as_ref())?;
     let tool_policy_settings =
         read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
@@ -1186,18 +1186,19 @@ fn run_sidecar_prompt(
         payload["streamEvents"] = serde_json::Value::Bool(true);
         payload["runId"] = serde_json::Value::String(run_id);
         let character_id = request.as_ref().map(|request| request.character_id.clone());
-        return execute_sidecar_prompt_streaming(app, agent_dir, payload, character_id);
+        return execute_sidecar_prompt_streaming(app, sidecar_runtime, payload, character_id);
     }
 
-    execute_sidecar_prompt(agent_dir, payload)
+    execute_sidecar_prompt(sidecar_runtime, payload)
 }
 
 fn execute_sidecar_prompt(
-    agent_dir: PathBuf,
+    runtime: SidecarRuntime,
     payload: serde_json::Value,
 ) -> Result<PiPromptResponse, String> {
-    let mut command = Command::new("pnpm");
-    for arg in sidecar_prompt_command_args(&agent_dir) {
+    let mut command = Command::new(&runtime.node_path);
+    command.current_dir(&runtime.sidecar_dir);
+    for arg in sidecar_prompt_command_args(&runtime.sidecar_dir) {
         command.arg(arg);
     }
 
@@ -1325,12 +1326,13 @@ fn read_sidecar_stream(
 
 fn execute_sidecar_prompt_streaming(
     app: AppHandle,
-    agent_dir: PathBuf,
+    runtime: SidecarRuntime,
     payload: serde_json::Value,
     character_id: Option<String>,
 ) -> Result<PiPromptResponse, String> {
-    let mut command = Command::new("pnpm");
-    for arg in sidecar_prompt_command_args(&agent_dir) {
+    let mut command = Command::new(&runtime.node_path);
+    command.current_dir(&runtime.sidecar_dir);
+    for arg in sidecar_prompt_command_args(&runtime.sidecar_dir) {
         command.arg(arg);
     }
 
@@ -1424,12 +1426,11 @@ fn execute_sidecar_prompt_streaming(
 }
 
 fn sidecar_prompt_command_args(agent_dir: &Path) -> Vec<String> {
-    vec![
-        "--silent".to_string(),
-        "--dir".to_string(),
-        agent_dir.to_string_lossy().to_string(),
-        "prompt".to_string(),
-    ]
+    vec![agent_dir
+        .join("bin")
+        .join("pi-prompt.mjs")
+        .to_string_lossy()
+        .to_string()]
 }
 
 fn build_sidecar_prompt_payload(
@@ -1742,10 +1743,64 @@ fn memory_status_from_paths(memory_dir: &Path, agent_dir: &Path) -> MemoryStatus
     }
 }
 
-// The Pi sidecar lives alongside the Tauri crate at apps/desktop/sidecar; the
-// backend spawns it on demand (see run_sidecar_prompt). CARGO_MANIFEST_DIR
-// is apps/desktop/src-tauri, so its parent is apps/desktop.
-fn sidecar_dir() -> PathBuf {
+#[derive(Debug, Clone)]
+struct SidecarRuntime {
+    node_path: PathBuf,
+    sidecar_dir: PathBuf,
+}
+
+fn sidecar_runtime(app: &AppHandle) -> Result<SidecarRuntime, String> {
+    let sidecar_dir = sidecar_dir(app);
+    let entrypoint = sidecar_dir.join("bin").join("pi-prompt.mjs");
+    if !entrypoint.exists() {
+        return Err(format!(
+            "sidecar runtime 缺少入口文件：{}",
+            entrypoint.display()
+        ));
+    }
+
+    Ok(SidecarRuntime {
+        node_path: node_command_path(app),
+        sidecar_dir,
+    })
+}
+
+fn node_command_path(app: &AppHandle) -> PathBuf {
+    if let Some(path) = bundled_node_path(app) {
+        return path;
+    }
+
+    PathBuf::from("node")
+}
+
+fn bundled_node_path(app: &AppHandle) -> Option<PathBuf> {
+    let file_name = if cfg!(windows) { "node.exe" } else { "node" };
+    let path = app
+        .path()
+        .resource_dir()
+        .ok()?
+        .join("node")
+        .join(file_name);
+
+    path.exists().then_some(path)
+}
+
+fn sidecar_dir(app: &AppHandle) -> PathBuf {
+    if let Some(path) = bundled_sidecar_dir(app) {
+        return path;
+    }
+
+    source_sidecar_dir()
+}
+
+fn bundled_sidecar_dir(app: &AppHandle) -> Option<PathBuf> {
+    let path = app.path().resource_dir().ok()?.join("sidecar");
+    path.join("bin").join("pi-prompt.mjs").exists().then_some(path)
+}
+
+// In development the Pi sidecar lives alongside the Tauri crate at
+// apps/desktop/sidecar. Installed apps use the bundled resource copy instead.
+fn source_sidecar_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .map(Path::to_path_buf)
@@ -5085,15 +5140,12 @@ mod tests {
     }
 
     #[test]
-    fn sidecar_prompt_command_suppresses_pnpm_script_output() {
+    fn sidecar_prompt_command_uses_node_entrypoint() {
         let args = sidecar_prompt_command_args(
             PathBuf::from("/tmp/irori-sidecar").as_path(),
         );
 
-        assert_eq!(args[0], "--silent");
-        assert_eq!(args[1], "--dir");
-        assert_eq!(args[2], "/tmp/irori-sidecar");
-        assert_eq!(args[3], "prompt");
+        assert_eq!(args, vec!["/tmp/irori-sidecar/bin/pi-prompt.mjs"]);
     }
 
     #[test]
