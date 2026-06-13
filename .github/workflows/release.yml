@@ -24,12 +24,15 @@ jobs:
           - name: Windows
             platform: windows-latest
             args: ""
+            rustTargets: ""
           - name: macOS Apple Silicon
             platform: macos-latest
             args: "--target aarch64-apple-darwin"
+            rustTargets: "aarch64-apple-darwin"
           - name: macOS Intel
-            platform: macos-latest
+            platform: macos-13
             args: "--target x86_64-apple-darwin"
+            rustTargets: "x86_64-apple-darwin"
 
     steps:
       - name: Checkout
@@ -49,7 +52,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.rustTargets }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -58,6 +61,20 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Prepare bundled sidecar runtime
+        shell: bash
+        run: |
+          rm -rf apps/desktop/src-tauri/resources
+          mkdir -p apps/desktop/src-tauri/resources/node
+          cp -R apps/desktop/sidecar apps/desktop/src-tauri/resources/sidecar
+          NODE_BIN="$(command -v node)"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp "$NODE_BIN" apps/desktop/src-tauri/resources/node/node.exe
+          else
+            cp "$NODE_BIN" apps/desktop/src-tauri/resources/node/node
+            chmod +x apps/desktop/src-tauri/resources/node/node
+          fi
 
       - name: Import Apple Developer ID certificate
         if: runner.os == 'macOS'
