@@ -1,6 +1,6 @@
 [package]
 name = "irori"
-version = "0.1.6"
+version = "0.1.7"
 description = "Irori desktop shell"
 authors = ["Irori"]
 edition = "2021"
