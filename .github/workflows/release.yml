@@ -63,7 +63,11 @@ jobs:
         run: |
           rm -rf apps/desktop/src-tauri/resources
           mkdir -p apps/desktop/src-tauri/resources/node
-          cp -RL apps/desktop/sidecar apps/desktop/src-tauri/resources/sidecar
+          # Assemble a self-contained sidecar: vendors the sibling
+          # packages/{memory,safety} runtimes it imports via ../../../../ and
+          # installs flat (copy-safe) prod deps. A plain `cp -RL` of the sidecar
+          # leaves those workspace imports dangling in the bundle.
+          node apps/desktop/scripts/prepare-sidecar.mjs
           NODE_BIN="$(command -v node)"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             cp "$NODE_BIN" apps/desktop/src-tauri/resources/node/node.exe
@@ -74,13 +78,17 @@ jobs:
 
       - name: Verify bundled sidecar runtime
         shell: bash
+        working-directory: apps/desktop/src-tauri/resources/sidecar
         run: |
-          test -f apps/desktop/src-tauri/resources/sidecar/bin/pi-prompt.mjs
+          test -f bin/pi-prompt.mjs
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            test -f apps/desktop/src-tauri/resources/node/node.exe
+            test -f ../node/node.exe
           else
-            test -f apps/desktop/src-tauri/resources/node/node
+            test -f ../node/node
           fi
+          # Fail here, not at users' runtime, if the bundle can't resolve its
+          # full module graph (e.g. a workspace import was left dangling).
+          node --input-type=module -e "await import('./src/prompt-runner.mjs'); await import('./extensions/irori-tool-gate/index.mjs'); console.log('sidecar module graph OK')"
 
       - name: Test desktop backend
         working-directory: apps/desktop/src-tauri

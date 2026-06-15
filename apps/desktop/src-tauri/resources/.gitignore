@@ -1,0 +1,7 @@
+# Generated at build time by apps/desktop/scripts/prepare-sidecar.mjs.
+# Keep the placeholder dirs (.gitkeep) so the bundle resource path always
+# exists, but never commit the assembled sidecar or the bundled node runtime.
+sidecar/*
+node/*
+!sidecar/.gitkeep
+!node/.gitkeep

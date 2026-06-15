@@ -1,6 +1,6 @@
 {
   "name": "@irori/desktop",
-  "version": "0.1.8",
+  "version": "0.1.11",
   "private": true,
   "license": "Apache-2.0",
   "type": "module",
@@ -11,6 +11,7 @@
     "dev:vite": "vite --host 127.0.0.1 --port 1420",
     "build": "tauri build",
     "build:vite": "tsc --noEmit && vite build",
+    "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 1421",
     "typecheck": "tsc --noEmit"
   },
