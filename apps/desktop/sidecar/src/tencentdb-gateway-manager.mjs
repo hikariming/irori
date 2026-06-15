@@ -184,10 +184,25 @@ export function createGatewayManager(options = {}) {
     const port = await allocatePortImpl(host);
     const baseUrl = `http://${host}:${port}`;
     const pkgDir = findPackageDir(requireFn, packageName);
-    const tsxBin = path.join(pkgDir, "node_modules", ".bin", "tsx");
     const entry = path.join(pkgDir, "src", "gateway", "server.ts");
-    const command = fs.existsSync(tsxBin) ? tsxBin : "npx";
-    const args = command === "npx" ? ["tsx", entry] : [entry];
+
+    // Run the TypeScript gateway with the SAME Node runtime that is executing
+    // this process and tsx as a loader. In a packaged desktop app there is no
+    // `node`/`npx`/`tsx` on PATH (a GUI app inherits a minimal PATH), and the
+    // `.bin/tsx` shim's `#!/usr/bin/env node` shebang would itself fail to find
+    // node — so the old `npx tsx` / `.bin/tsx` paths crashed with spawn ENOENT.
+    // process.execPath is the bundled runtime (absolute) and `--import tsx`
+    // is resolved by Node itself, so neither depends on PATH. tsx is a prod
+    // dependency of the memory package, hence always present in the bundle.
+    try {
+      requireFn.resolve("tsx");
+    } catch {
+      throw new Error(
+        `The "tsx" runtime (a dependency of ${packageName}) is missing from the bundle; cannot start the memory gateway.`
+      );
+    }
+    const command = process.execPath;
+    const args = ["--import", "tsx", entry];
 
     const logsDir = path.join(dataDir, "logs");
     fs.mkdirSync(logsDir, { recursive: true });
@@ -201,12 +216,28 @@ export function createGatewayManager(options = {}) {
       detached: true,
       stdio: ["ignore", out, err]
     });
+
+    // A spawn failure surfaces as an asynchronous 'error' event on the child. An
+    // EventEmitter 'error' with no listener is rethrown by Node as an uncaught
+    // exception that bypasses the caller's try/catch and crashes the whole prompt
+    // process. Always attach a listener so a broken gateway degrades to "no
+    // memory" instead of taking the chat down with it.
+    let spawnError = null;
+    child.on("error", (error) => {
+      spawnError = error;
+      logger.error?.(`[tdai-manager] Gateway spawn failed for ${characterId}: ${error.message}`);
+    });
     child.unref?.();
 
     writeRuntimeFile(dataDir, { port, host, pid: child.pid, startedAt: new Date().toISOString() });
 
     const ready = await waitForHealth(baseUrl);
     if (!ready) {
+      if (spawnError) {
+        throw new Error(
+          `TDAI gateway for "${characterId}" failed to start: ${spawnError.message}`
+        );
+      }
       throw new Error(`TDAI gateway for "${characterId}" did not become healthy within ${healthTimeoutMs}ms.`);
     }
 
