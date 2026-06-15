@@ -1,6 +1,6 @@
 {
   "name": "irori",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "private": true,
   "license": "Apache-2.0",
   "description": "Local-first desktop companion client built around the Pi coding-agent SDK.",
@@ -10,6 +10,9 @@
     "desktop:dev": "pnpm --dir apps/desktop dev",
     "desktop:vite": "pnpm --dir apps/desktop dev:vite",
     "desktop:build": "pnpm --dir apps/desktop build",
+    "site:dev": "pnpm --dir apps/site dev",
+    "site:build": "pnpm --dir apps/site build",
+    "site:preview": "pnpm --dir apps/site preview",
     "preview": "python3 -m http.server 4173 -d ..",
     "test": "node --test packages/character-card/test/*.test.mjs",
     "test:character": "node --test packages/character-card/test/*.test.mjs"

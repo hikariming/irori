@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The bundled Node runtime runs under the hardened runtime, but V8's JIT
+       needs these exceptions or it traps at startup (pthread_jit_write_protect_np
+       → SIGTRAP) the moment it executes JavaScript. Without them the sidecar
+       crashes silently (exit 133) on every prompt. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <!-- Node loads third-party native addons (.node) and dlopen'd libraries
+       (koffi, sqlite-vec) at runtime; library validation would otherwise block
+       them under the hardened runtime. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

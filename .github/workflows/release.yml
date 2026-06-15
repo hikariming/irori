@@ -125,16 +125,39 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           RESOURCES_DIR="apps/desktop/src-tauri/resources"
           SIGN_IDENTITY="Developer ID Application: Beiming Liu (MJFP85U8HQ)"
+          NODE_ENTITLEMENTS="apps/desktop/src-tauri/node-entitlements.plist"
+          NODE_RUNTIME="$RESOURCES_DIR/node/node"
 
           # tauri-action signs the outer .app but does NOT deep-sign native binaries
           # buried in Resources. The self-contained sidecar bundles many of them
           # (node runtime, esbuild, and .node/.dylib modules such as clipboard,
           # jieba, koffi, sqlite-vec), each of which must carry the hardened runtime
           # or notarization rejects the whole archive. Sign every Mach-O file here.
+          #
+          # The Node runtime additionally needs JIT/library entitlements: under the
+          # hardened runtime V8 traps at startup (SIGTRAP, exit 133) without
+          # com.apple.security.cs.allow-jit, so the sidecar would crash silently on
+          # every prompt. It is the only file that gets the entitlements plist.
           signed=0
+          signed_node=0
           while IFS= read -r -d '' f; do
-            if file "$f" | grep -q "Mach-O"; then
-              echo "Signing $f"
+            if ! file "$f" | grep -q "Mach-O"; then
+              continue
+            fi
+            echo "Signing $f"
+            if [[ "$f" -ef "$NODE_RUNTIME" ]]; then
+              codesign --force \
+                --options runtime \
+                --timestamp \
+                --entitlements "$NODE_ENTITLEMENTS" \
+                --keychain "$KEYCHAIN_PATH" \
+                --sign "$SIGN_IDENTITY" \
+                "$f"
+              codesign --verify --strict --verbose=4 "$f"
+              codesign -d --entitlements - "$f" | grep -q "allow-jit" \
+                || { echo "::error::node runtime missing JIT entitlement after signing" >&2; exit 1; }
+              signed_node=1
+            else
               codesign --force \
                 --options runtime \
                 --timestamp \
@@ -142,13 +165,17 @@ jobs:
                 --sign "$SIGN_IDENTITY" \
                 "$f"
               codesign --verify --strict --verbose=4 "$f"
-              signed=$((signed + 1))
             fi
+            signed=$((signed + 1))
           done < <(find "$RESOURCES_DIR" -type f \( -perm -u+x -o -name '*.node' -o -name '*.dylib' \) -print0)
 
           echo "Signed $signed native binaries"
           if [[ "$signed" -eq 0 ]]; then
             echo "::error::No native binaries were signed; expected at least the node runtime" >&2
+            exit 1
+          fi
+          if [[ "$signed_node" -eq 0 ]]; then
+            echo "::error::node runtime was not found/signed at $NODE_RUNTIME" >&2
             exit 1
           fi
 
@@ -175,3 +202,13 @@ jobs:
           APP_BUNDLE="apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Irori.app"
           codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE"
           spctl --assess --type execute --verbose=4 "$APP_BUNDLE"
+
+          # The bundled Node must keep its JIT entitlement in the final bundle, or
+          # the sidecar crashes at runtime (SIGTRAP). Fail the build if tauri's
+          # signing pass stripped it. Also smoke-test that Node can run JS.
+          BUNDLED_NODE="$APP_BUNDLE/Contents/Resources/resources/node/node"
+          codesign -d --entitlements - "$BUNDLED_NODE" | grep -q "allow-jit" \
+            || { echo "::error::bundled node lost its JIT entitlement in the packaged app" >&2; exit 1; }
+          "$BUNDLED_NODE" -e "process.exit(2 + 2 === 4 ? 0 : 1)" \
+            || { echo "::error::bundled node cannot execute JavaScript (JIT crash)" >&2; exit 1; }
+          echo "Bundled node JIT entitlement present and JS execution OK"
