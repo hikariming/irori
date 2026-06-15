@@ -788,8 +788,13 @@ fn create_scheduled_task(
     app: AppHandle,
     request: SaveScheduledTaskRequest,
 ) -> Result<ScheduledTask, String> {
-    upsert_scheduled_task_at_path(&chat_history_path(&app)?, request, "user", &current_timestamp())
-        .map_err(|error| error.to_string())
+    upsert_scheduled_task_at_path(
+        &chat_history_path(&app)?,
+        request,
+        "user",
+        &current_timestamp(),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -797,8 +802,13 @@ fn update_scheduled_task(
     app: AppHandle,
     request: SaveScheduledTaskRequest,
 ) -> Result<ScheduledTask, String> {
-    upsert_scheduled_task_at_path(&chat_history_path(&app)?, request, "user", &current_timestamp())
-        .map_err(|error| error.to_string())
+    upsert_scheduled_task_at_path(
+        &chat_history_path(&app)?,
+        request,
+        "user",
+        &current_timestamp(),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -901,7 +911,8 @@ fn set_missed_task_policy(app: AppHandle, policy: String) -> Result<String, Stri
 
 #[tauri::command]
 fn get_advanced_settings(app: AppHandle) -> Result<AdvancedSettings, String> {
-    read_advanced_settings_from_path(&advanced_settings_path(&app)?).map_err(|error| error.to_string())
+    read_advanced_settings_from_path(&advanced_settings_path(&app)?)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1049,7 +1060,10 @@ fn unique_attachment_path(dir: &Path, file_name: &str) -> PathBuf {
 /// descriptor per file. Sources that aren't readable regular files are skipped
 /// rather than failing the whole drop.
 #[tauri::command]
-fn stage_dropped_files(app: AppHandle, paths: Vec<String>) -> Result<Vec<StagedAttachment>, String> {
+fn stage_dropped_files(
+    app: AppHandle,
+    paths: Vec<String>,
+) -> Result<Vec<StagedAttachment>, String> {
     let workspace = workspace_root_dir(&app)?;
     let attachments_dir = workspace.join("attachments");
     fs::create_dir_all(&attachments_dir)
@@ -1114,9 +1128,8 @@ fn run_sidecar_prompt(
     let tool_policy_settings =
         read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
             .map_err(|error| error.to_string())?;
-    let web_access_settings =
-        read_stored_web_access_settings(&web_access_settings_path(&app)?)
-            .map_err(|error| error.to_string())?;
+    let web_access_settings = read_stored_web_access_settings(&web_access_settings_path(&app)?)
+        .map_err(|error| error.to_string())?;
     let resolved = StoredModelProfile {
         token: Some(token),
         ..stored
@@ -1141,7 +1154,8 @@ fn run_sidecar_prompt(
         // 再没有就回落到最安全的「用户手动」。
         let review_mode = match request.review_mode.clone() {
             Some(mode) => sanitize_review_mode(Some(&mode)),
-            None => read_review_mode_from_path(&review_mode_path(&app)?).unwrap_or_else(|_| "default".to_string()),
+            None => read_review_mode_from_path(&review_mode_path(&app)?)
+                .unwrap_or_else(|_| "default".to_string()),
         };
         payload["reviewMode"] = serde_json::Value::String(review_mode);
 
@@ -1309,7 +1323,8 @@ fn read_sidecar_stream(
                 // 角色取消已有任务：只删属于当前角色的，删成功才广播刷新。
                 if let Some(character_id) = character_id {
                     if let Some(task_id) = message.get("taskId").and_then(|value| value.as_str()) {
-                        if cancel_agent_scheduled_task(app, character_id, task_id).unwrap_or(false) {
+                        if cancel_agent_scheduled_task(app, character_id, task_id).unwrap_or(false)
+                        {
                             let _ = app.emit("scheduled_task_changed", ());
                         }
                     }
@@ -1415,8 +1430,7 @@ fn execute_sidecar_prompt_streaming(
         });
     }
 
-    let response = final_response
-        .ok_or_else(|| "sidecar prompt 没有返回最终响应。".to_string())?;
+    let response = final_response.ok_or_else(|| "sidecar prompt 没有返回最终响应。".to_string())?;
 
     if response.text.trim().is_empty() {
         return Err("模型连接成功但没有返回文本，请检查模型是否支持聊天补全。".to_string());
@@ -1604,11 +1618,13 @@ fn read_workspace_dir(dir: &Path, root_id: &str) -> Result<Vec<WorkspaceEntry>, 
         }
     }
 
-    entries.sort_by(|left, right| match (left.kind.as_str(), right.kind.as_str()) {
-        ("folder", "file") => std::cmp::Ordering::Less,
-        ("file", "folder") => std::cmp::Ordering::Greater,
-        _ => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
-    });
+    entries.sort_by(
+        |left, right| match (left.kind.as_str(), right.kind.as_str()) {
+            ("folder", "file") => std::cmp::Ordering::Less,
+            ("file", "folder") => std::cmp::Ordering::Greater,
+            _ => left.name.to_lowercase().cmp(&right.name.to_lowercase()),
+        },
+    );
 
     Ok(entries)
 }
@@ -1777,12 +1793,20 @@ fn bundled_node_path(app: &AppHandle) -> Option<PathBuf> {
     let file_name = if cfg!(windows) { "node.exe" } else { "node" };
     let resource_dir = app.path().resource_dir().ok()?;
 
+    resolve_bundled_node_path(&resource_dir, file_name)
+}
+
+fn resolve_bundled_node_path(resource_dir: &Path, file_name: &str) -> Option<PathBuf> {
+    bundled_node_candidates(resource_dir, file_name)
+        .into_iter()
+        .find(|path| path.exists())
+}
+
+fn bundled_node_candidates(resource_dir: &Path, file_name: &str) -> [PathBuf; 2] {
     [
         resource_dir.join("node").join(file_name),
         resource_dir.join("resources").join("node").join(file_name),
     ]
-    .into_iter()
-    .find(|path| path.exists())
 }
 
 fn sidecar_dir(app: &AppHandle) -> PathBuf {
@@ -1796,9 +1820,20 @@ fn sidecar_dir(app: &AppHandle) -> PathBuf {
 fn bundled_sidecar_dir(app: &AppHandle) -> Option<PathBuf> {
     let resource_dir = app.path().resource_dir().ok()?;
 
-    [resource_dir.join("sidecar"), resource_dir.join("resources").join("sidecar")]
+    resolve_bundled_sidecar_dir(&resource_dir)
+}
+
+fn resolve_bundled_sidecar_dir(resource_dir: &Path) -> Option<PathBuf> {
+    bundled_sidecar_candidates(resource_dir)
         .into_iter()
         .find(|path| path.join("bin").join("pi-prompt.mjs").exists())
+}
+
+fn bundled_sidecar_candidates(resource_dir: &Path) -> [PathBuf; 2] {
+    [
+        resource_dir.join("sidecar"),
+        resource_dir.join("resources").join("sidecar"),
+    ]
 }
 
 // In development the Pi sidecar lives alongside the Tauri crate at
@@ -2145,9 +2180,7 @@ fn key_status(key: &Option<String>) -> (bool, Option<String>) {
     (value.is_some(), value.map(token_hint))
 }
 
-fn snapshot_from_stored_web_access(
-    stored: &StoredWebAccessSettings,
-) -> WebAccessSettingsSnapshot {
+fn snapshot_from_stored_web_access(stored: &StoredWebAccessSettings) -> WebAccessSettingsSnapshot {
     let (exa_has_key, exa_key_hint) = key_status(&stored.exa_api_key);
     let (perplexity_has_key, perplexity_key_hint) = key_status(&stored.perplexity_api_key);
     let (gemini_has_key, gemini_key_hint) = key_status(&stored.gemini_api_key);
@@ -2280,16 +2313,16 @@ fn read_review_mode_from_path(path: &Path) -> Result<String, Box<dyn std::error:
     ))
 }
 
-fn save_review_mode_to_path(
-    path: &Path,
-    mode: &str,
-) -> Result<String, Box<dyn std::error::Error>> {
+fn save_review_mode_to_path(path: &Path, mode: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mode = sanitize_review_mode(Some(mode));
 
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(path, serde_json::to_string_pretty(&serde_json::json!({ "mode": mode }))?)?;
+    fs::write(
+        path,
+        serde_json::to_string_pretty(&serde_json::json!({ "mode": mode }))?,
+    )?;
 
     Ok(mode)
 }
@@ -2665,7 +2698,8 @@ fn list_character_moments_from_path(
              ORDER BY created_at DESC
              LIMIT ?2",
         )?;
-        let rows = statement.query_map(params![character_id, limit], row_to_character_moment_record)?;
+        let rows =
+            statement.query_map(params![character_id, limit], row_to_character_moment_record)?;
         for row in rows {
             moments.push(hydrate_character_moment_record(&connection, row?)?);
         }
@@ -2883,7 +2917,8 @@ fn list_character_letters_from_path(
              ORDER BY deliver_at DESC
              LIMIT ?2",
         )?;
-        let rows = statement.query_map(params![character_id, limit], row_to_character_letter_record)?;
+        let rows =
+            statement.query_map(params![character_id, limit], row_to_character_letter_record)?;
         for row in rows {
             letters.push(row?);
         }
@@ -3032,10 +3067,7 @@ fn parse_skill_md(content: &str, _fallback_name: &str) -> (String, String, bool,
                     "disable-model-invocation" => disable = raw.trim() == "true",
                     // pi 规范：allowed-tools 是空格分隔的工具名列表。
                     "allowed-tools" => {
-                        allowed_tools = raw
-                            .split_whitespace()
-                            .map(str::to_string)
-                            .collect();
+                        allowed_tools = raw.split_whitespace().map(str::to_string).collect();
                     }
                     _ => {}
                 }
@@ -3050,7 +3082,12 @@ fn parse_skill_md(content: &str, _fallback_name: &str) -> (String, String, bool,
         normalized.clone()
     };
 
-    (description, body.trim_end().to_string(), disable, allowed_tools)
+    (
+        description,
+        body.trim_end().to_string(),
+        disable,
+        allowed_tools,
+    )
 }
 
 fn render_skill_md(
@@ -3707,8 +3744,7 @@ fn upsert_scheduled_task_at_path(
         }
     };
 
-    get_scheduled_task_from_path(path, &id)?
-        .ok_or_else(|| "保存后的定时任务无法读取。".into())
+    get_scheduled_task_from_path(path, &id)?.ok_or_else(|| "保存后的定时任务无法读取。".into())
 }
 
 /// 角色在聊天里通过 schedule_create 工具发回的任务：归属当前角色、source=agent。
@@ -3772,12 +3808,12 @@ fn cancel_agent_scheduled_task(
     }
 }
 
-fn delete_scheduled_task_at_path(
-    path: &Path,
-    id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn delete_scheduled_task_at_path(path: &Path, id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let connection = open_chat_history(path)?;
-    connection.execute("DELETE FROM scheduled_task_run WHERE task_id = ?1", params![id])?;
+    connection.execute(
+        "DELETE FROM scheduled_task_run WHERE task_id = ?1",
+        params![id],
+    )?;
     connection.execute("DELETE FROM scheduled_task WHERE id = ?1", params![id])?;
     Ok(())
 }
@@ -3803,9 +3839,7 @@ fn set_scheduled_task_enabled_at_path(
     get_scheduled_task_from_path(path, id)?.ok_or_else(|| "更新后的定时任务无法读取。".into())
 }
 
-fn row_to_scheduled_task_run(
-    row: &rusqlite::Row<'_>,
-) -> Result<ScheduledTaskRun, rusqlite::Error> {
+fn row_to_scheduled_task_run(row: &rusqlite::Row<'_>) -> Result<ScheduledTaskRun, rusqlite::Error> {
     Ok(ScheduledTaskRun {
         id: row.get(0)?,
         task_id: row.get(1)?,
@@ -4210,37 +4244,34 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::{
-        attachment_kind, unique_attachment_path,
-        append_chat_message_to_path, build_memory_backend_config_payload,
-        build_sidecar_prompt_payload,
-        create_chat_session_at_path, delete_model_profile_at_path, get_chat_session_from_path,
-        init_chat_history_at_path, insert_character_letter_to_path, insert_character_moment_to_path,
-        add_character_moment_comment_to_path, toggle_character_moment_like_to_path,
+        add_character_moment_comment_to_path, append_chat_message_to_path, attachment_kind,
+        build_memory_backend_config_payload, build_sidecar_prompt_payload,
+        character_skill_required_tools, compute_next_run_millis, create_chat_session_at_path,
+        create_skill_at_dir, delete_model_profile_at_path, delete_skill_at_dir,
+        get_chat_session_from_path, get_scheduled_task_from_path, init_chat_history_at_path,
+        insert_character_letter_to_path, insert_character_moment_to_path, is_valid_skill_name,
         list_character_letters_from_path, list_character_moments_from_path,
-        list_chat_sessions_from_path, sidecar_prompt_command_args,
-        mark_character_letter_read_to_path, set_character_letter_reaction_to_path,
-        memory_status_from_paths, normalize_openai_compatible_settings, parse_sidecar_stream_line,
-        read_character_states_from_path, read_model_settings_from_path, read_stored_model_registry,
-        read_advanced_settings_from_path, read_review_mode_from_path,
-        read_tool_policy_settings_from_path,
-        read_web_access_settings_from_path, read_workspace_dir,
-        save_advanced_settings_to_path, save_review_mode_to_path,
-        AdvancedSettings,
-        recent_memory_messages_from_path, save_character_states_to_path, save_model_settings_to_path,
-        save_tool_policy_settings_to_path, save_web_access_settings_to_path,
-        set_active_model_profile_at_path,
-        AddCharacterLetterRequest, AddCharacterMomentCommentRequest, AddCharacterMomentRequest,
-        AppendChatMessageRequest, CreateChatSessionRequest,
-        SidecarStreamMessage,
-        ModelProfileSnapshot, ModelSettingsSnapshot, SaveModelSettingsRequest, StoredModelProfile,
-        SaveWebAccessSettingsRequest, ToggleCharacterMomentLikeRequest,
-        is_valid_skill_name, parse_skill_md, render_skill_md, list_skills_from_dir,
-        create_skill_at_dir, update_skill_at_dir, delete_skill_at_dir,
-        list_character_skills_from_path, set_character_skill_to_path,
-        list_skill_assignments_from_path, character_skill_required_tools, SaveSkillRequest,
-        read_missed_task_policy_from_path, save_missed_task_policy_to_path,
-        compute_next_run_millis, validate_schedule, upsert_scheduled_task_at_path,
-        get_scheduled_task_from_path, skip_missed_task, now_millis, SaveScheduledTaskRequest,
+        list_character_skills_from_path, list_chat_sessions_from_path,
+        list_skill_assignments_from_path, list_skills_from_dir, mark_character_letter_read_to_path,
+        memory_status_from_paths, normalize_openai_compatible_settings, now_millis,
+        parse_sidecar_stream_line, parse_skill_md, read_advanced_settings_from_path,
+        read_character_states_from_path, read_missed_task_policy_from_path,
+        read_model_settings_from_path, read_review_mode_from_path, read_stored_model_registry,
+        read_tool_policy_settings_from_path, read_web_access_settings_from_path,
+        read_workspace_dir, recent_memory_messages_from_path, render_skill_md,
+        resolve_bundled_node_path, resolve_bundled_sidecar_dir, save_advanced_settings_to_path,
+        save_character_states_to_path, save_missed_task_policy_to_path,
+        save_model_settings_to_path, save_review_mode_to_path, save_tool_policy_settings_to_path,
+        save_web_access_settings_to_path, set_active_model_profile_at_path,
+        set_character_letter_reaction_to_path, set_character_skill_to_path,
+        sidecar_prompt_command_args, skip_missed_task, toggle_character_moment_like_to_path,
+        unique_attachment_path, update_skill_at_dir, upsert_scheduled_task_at_path,
+        validate_schedule, AddCharacterLetterRequest, AddCharacterMomentCommentRequest,
+        AddCharacterMomentRequest, AdvancedSettings, AppendChatMessageRequest,
+        CreateChatSessionRequest, ModelProfileSnapshot, ModelSettingsSnapshot,
+        SaveModelSettingsRequest, SaveScheduledTaskRequest, SaveSkillRequest,
+        SaveWebAccessSettingsRequest, SidecarStreamMessage, StoredModelProfile,
+        ToggleCharacterMomentLikeRequest,
     };
     use chrono::TimeZone;
 
@@ -4271,17 +4302,11 @@ mod tests {
     }
 
     fn temp_settings_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "irori-model-settings-{}.json",
-            temp_path_nonce()
-        ))
+        std::env::temp_dir().join(format!("irori-model-settings-{}.json", temp_path_nonce()))
     }
 
     fn temp_chat_history_path() -> std::path::PathBuf {
-        std::env::temp_dir().join(format!(
-            "irori-chat-history-{}.sqlite3",
-            temp_path_nonce()
-        ))
+        std::env::temp_dir().join(format!("irori-chat-history-{}.sqlite3", temp_path_nonce()))
     }
 
     fn temp_tool_policy_path() -> std::path::PathBuf {
@@ -4294,19 +4319,29 @@ mod tests {
 
     #[test]
     fn review_mode_round_trips_and_sanitizes() {
-        let path = std::env::temp_dir().join(format!("irori-review-mode-{}.json", temp_path_nonce()));
+        let path =
+            std::env::temp_dir().join(format!("irori-review-mode-{}.json", temp_path_nonce()));
 
         // Missing file → safe default.
-        assert_eq!(read_review_mode_from_path(&path).expect("default"), "default");
+        assert_eq!(
+            read_review_mode_from_path(&path).expect("default"),
+            "default"
+        );
 
         // Valid modes persist and read back.
-        assert_eq!(save_review_mode_to_path(&path, "auto").expect("save"), "auto");
+        assert_eq!(
+            save_review_mode_to_path(&path, "auto").expect("save"),
+            "auto"
+        );
         assert_eq!(read_review_mode_from_path(&path).expect("read"), "auto");
         assert_eq!(save_review_mode_to_path(&path, "all").expect("save"), "all");
         assert_eq!(read_review_mode_from_path(&path).expect("read"), "all");
 
         // Bogus input is coerced to the safe default before writing.
-        assert_eq!(save_review_mode_to_path(&path, "bogus").expect("save"), "default");
+        assert_eq!(
+            save_review_mode_to_path(&path, "bogus").expect("save"),
+            "default"
+        );
         assert_eq!(read_review_mode_from_path(&path).expect("read"), "default");
 
         fs::remove_file(&path).ok();
@@ -4338,7 +4373,10 @@ mod tests {
 
         // 无扩展名文件也能让路。
         fs::write(dir.join("LICENSE"), b"x").expect("write");
-        assert_eq!(unique_attachment_path(&dir, "LICENSE"), dir.join("LICENSE (1)"));
+        assert_eq!(
+            unique_attachment_path(&dir, "LICENSE"),
+            dir.join("LICENSE (1)")
+        );
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -4349,14 +4387,29 @@ mod tests {
             std::env::temp_dir().join(format!("irori-missed-policy-{}.json", temp_path_nonce()));
 
         // 缺文件 → 默认补跑。
-        assert_eq!(read_missed_task_policy_from_path(&path).expect("default"), "catchup");
+        assert_eq!(
+            read_missed_task_policy_from_path(&path).expect("default"),
+            "catchup"
+        );
 
-        assert_eq!(save_missed_task_policy_to_path(&path, "skip").expect("save"), "skip");
-        assert_eq!(read_missed_task_policy_from_path(&path).expect("read"), "skip");
+        assert_eq!(
+            save_missed_task_policy_to_path(&path, "skip").expect("save"),
+            "skip"
+        );
+        assert_eq!(
+            read_missed_task_policy_from_path(&path).expect("read"),
+            "skip"
+        );
 
         // 非法值回落到 catchup。
-        assert_eq!(save_missed_task_policy_to_path(&path, "bogus").expect("save"), "catchup");
-        assert_eq!(read_missed_task_policy_from_path(&path).expect("read"), "catchup");
+        assert_eq!(
+            save_missed_task_policy_to_path(&path, "bogus").expect("save"),
+            "catchup"
+        );
+        assert_eq!(
+            read_missed_task_policy_from_path(&path).expect("read"),
+            "catchup"
+        );
 
         fs::remove_file(&path).ok();
     }
@@ -4393,8 +4446,7 @@ mod tests {
 
     #[test]
     fn skip_missed_task_reschedules_recurring_and_disables_once() {
-        let path =
-            std::env::temp_dir().join(format!("irori-skip-{}.sqlite", temp_path_nonce()));
+        let path = std::env::temp_dir().join(format!("irori-skip-{}.sqlite", temp_path_nonce()));
         init_chat_history_at_path(&path).expect("init");
 
         let make = |kind: &str, spec: &str| SaveScheduledTaskRequest {
@@ -4411,16 +4463,21 @@ mod tests {
         let daily = upsert_scheduled_task_at_path(&path, make("daily", "20:00"), "user", "1")
             .expect("create daily");
         skip_missed_task(&path, &daily).expect("skip daily");
-        let after = get_scheduled_task_from_path(&path, &daily.id).expect("read").expect("exists");
+        let after = get_scheduled_task_from_path(&path, &daily.id)
+            .expect("read")
+            .expect("exists");
         assert!(after.enabled);
         let next: i64 = after.next_run_at.expect("next").parse().expect("ms");
         assert!(next > now_millis());
 
         // 一次性任务被跳过 → 停用、清空 next。
-        let once = upsert_scheduled_task_at_path(&path, make("once", "2020-01-01T08:00"), "user", "1")
-            .expect("create once");
+        let once =
+            upsert_scheduled_task_at_path(&path, make("once", "2020-01-01T08:00"), "user", "1")
+                .expect("create once");
         skip_missed_task(&path, &once).expect("skip once");
-        let after_once = get_scheduled_task_from_path(&path, &once.id).expect("read").expect("exists");
+        let after_once = get_scheduled_task_from_path(&path, &once.id)
+            .expect("read")
+            .expect("exists");
         assert!(!after_once.enabled);
         assert!(after_once.next_run_at.is_none());
 
@@ -4429,21 +4486,37 @@ mod tests {
 
     #[test]
     fn advanced_settings_round_trip_defaults_subagents_off() {
-        let path =
-            std::env::temp_dir().join(format!("irori-advanced-{}.json", temp_path_nonce()));
+        let path = std::env::temp_dir().join(format!("irori-advanced-{}.json", temp_path_nonce()));
 
         // Missing file → subagents off.
-        assert!(!read_advanced_settings_from_path(&path).expect("default").enable_subagents);
+        assert!(
+            !read_advanced_settings_from_path(&path)
+                .expect("default")
+                .enable_subagents
+        );
 
         // Persist enabled and read back.
-        let saved = save_advanced_settings_to_path(&path, AdvancedSettings { enable_subagents: true })
-            .expect("save");
+        let saved = save_advanced_settings_to_path(
+            &path,
+            AdvancedSettings {
+                enable_subagents: true,
+            },
+        )
+        .expect("save");
         assert!(saved.enable_subagents);
-        assert!(read_advanced_settings_from_path(&path).expect("read").enable_subagents);
+        assert!(
+            read_advanced_settings_from_path(&path)
+                .expect("read")
+                .enable_subagents
+        );
 
         // Corrupt file → safe default (off) rather than an error.
         fs::write(&path, "{ not json").expect("write garbage");
-        assert!(!read_advanced_settings_from_path(&path).expect("default").enable_subagents);
+        assert!(
+            !read_advanced_settings_from_path(&path)
+                .expect("default")
+                .enable_subagents
+        );
 
         fs::remove_file(&path).ok();
     }
@@ -4622,7 +4695,10 @@ mod tests {
             value["tencentdb"]["rootDataDir"],
             "/tmp/irori-app-data/memory-tdai"
         );
-        assert_eq!(value["tencentdb"]["llm"]["baseUrl"], "https://pi.example/v1");
+        assert_eq!(
+            value["tencentdb"]["llm"]["baseUrl"],
+            "https://pi.example/v1"
+        );
         assert_eq!(value["tencentdb"]["llm"]["model"], "pi-1");
         assert_eq!(value["tencentdb"]["llm"]["apiKey"], "tok-123");
     }
@@ -4757,7 +4833,8 @@ mod tests {
         assert!(lulin[0].likes.is_empty());
         assert!(lulin[0].comments.is_empty());
 
-        let all = list_character_moments_from_path(&path, None, 50).expect("all moments should load");
+        let all =
+            list_character_moments_from_path(&path, None, 50).expect("all moments should load");
         assert_eq!(all.len(), 3);
 
         let limited = list_character_moments_from_path(&path, Some("lulin"), 1)
@@ -4811,7 +4888,8 @@ mod tests {
         assert_eq!(commented.comments[0].actor_id, "shili");
         assert_eq!(commented.comments[0].text, "我也想喝。");
 
-        let listed = list_character_moments_from_path(&path, None, 50).expect("moments should load");
+        let listed =
+            list_character_moments_from_path(&path, None, 50).expect("moments should load");
         assert_eq!(listed[0].likes.len(), 1);
         assert_eq!(listed[0].comments.len(), 1);
 
@@ -4904,7 +4982,8 @@ mod tests {
         assert!(lulin[0].read_at.is_none());
         assert_eq!(lulin[0].sender, "character");
 
-        let all = list_character_letters_from_path(&path, None, 50).expect("all letters should load");
+        let all =
+            list_character_letters_from_path(&path, None, 50).expect("all letters should load");
         assert_eq!(all.len(), 3);
 
         let marked = mark_character_letter_read_to_path(&path, &first.id, "2024-01-01T09:00:00Z")
@@ -5144,11 +5223,61 @@ mod tests {
 
     #[test]
     fn sidecar_prompt_command_uses_node_entrypoint() {
-        let args = sidecar_prompt_command_args(
-            PathBuf::from("/tmp/irori-sidecar").as_path(),
-        );
+        let args = sidecar_prompt_command_args(PathBuf::from("/tmp/irori-sidecar").as_path());
 
         assert_eq!(args, vec!["/tmp/irori-sidecar/bin/pi-prompt.mjs"]);
+    }
+
+    #[test]
+    fn bundled_runtime_resolves_flat_resource_layout() {
+        let resource_dir =
+            std::env::temp_dir().join(format!("irori-flat-resources-{}", temp_path_nonce()));
+        let sidecar_bin = resource_dir.join("sidecar").join("bin");
+        let node_dir = resource_dir.join("node");
+        fs::create_dir_all(&sidecar_bin).expect("sidecar bin should be created");
+        fs::create_dir_all(&node_dir).expect("node dir should be created");
+        fs::write(sidecar_bin.join("pi-prompt.mjs"), "").expect("entrypoint should be written");
+        fs::write(node_dir.join("node"), "").expect("node should be written");
+
+        assert_eq!(
+            resolve_bundled_sidecar_dir(&resource_dir).as_deref(),
+            Some(resource_dir.join("sidecar").as_path())
+        );
+        assert_eq!(
+            resolve_bundled_node_path(&resource_dir, "node").as_deref(),
+            Some(resource_dir.join("node").join("node").as_path())
+        );
+
+        let _ = fs::remove_dir_all(&resource_dir);
+    }
+
+    #[test]
+    fn bundled_runtime_resolves_tauri_prefixed_resource_layout() {
+        let resource_dir =
+            std::env::temp_dir().join(format!("irori-prefixed-resources-{}", temp_path_nonce()));
+        let sidecar_bin = resource_dir.join("resources").join("sidecar").join("bin");
+        let node_dir = resource_dir.join("resources").join("node");
+        fs::create_dir_all(&sidecar_bin).expect("sidecar bin should be created");
+        fs::create_dir_all(&node_dir).expect("node dir should be created");
+        fs::write(sidecar_bin.join("pi-prompt.mjs"), "").expect("entrypoint should be written");
+        fs::write(node_dir.join("node"), "").expect("node should be written");
+
+        assert_eq!(
+            resolve_bundled_sidecar_dir(&resource_dir).as_deref(),
+            Some(resource_dir.join("resources").join("sidecar").as_path())
+        );
+        assert_eq!(
+            resolve_bundled_node_path(&resource_dir, "node").as_deref(),
+            Some(
+                resource_dir
+                    .join("resources")
+                    .join("node")
+                    .join("node")
+                    .as_path()
+            )
+        );
+
+        let _ = fs::remove_dir_all(&resource_dir);
     }
 
     #[test]
@@ -5175,7 +5304,10 @@ mod tests {
         match final_record {
             SidecarStreamMessage::Final(response) => {
                 assert_eq!(response.provider_id, "openai-compatible");
-                assert_eq!(response.model_route, "POST http://localhost:11434/v1/chat/completions · body.model = qwen");
+                assert_eq!(
+                    response.model_route,
+                    "POST http://localhost:11434/v1/chat/completions · body.model = qwen"
+                );
                 assert_eq!(response.text, "你好");
             }
             _ => panic!("expected final record"),
@@ -5382,7 +5514,10 @@ mod tests {
             })),
         );
 
-        assert_eq!(payload["browserSnapshot"]["currentUrl"], "https://example.com/source");
+        assert_eq!(
+            payload["browserSnapshot"]["currentUrl"],
+            "https://example.com/source"
+        );
         assert_eq!(payload["browserSnapshot"]["title"], "Source");
         assert_eq!(payload["browserSnapshot"]["status"], "loading");
     }
@@ -5448,16 +5583,21 @@ mod tests {
             true,
             &["web.search".to_string(), "browser.view".to_string()],
         );
-        let (description, body, disable, allowed_tools) = parse_skill_md(&rendered, "tarot-reading");
+        let (description, body, disable, allowed_tools) =
+            parse_skill_md(&rendered, "tarot-reading");
         assert_eq!(description, "当用户想算塔罗：求\"指引\"时使用");
         assert_eq!(body, "# 塔罗解读\n抽三张牌。");
         assert!(disable);
-        assert_eq!(allowed_tools, vec!["web.search".to_string(), "browser.view".to_string()]);
+        assert_eq!(
+            allowed_tools,
+            vec!["web.search".to_string(), "browser.view".to_string()]
+        );
     }
 
     #[test]
     fn skill_without_frontmatter_falls_back_to_dir_name() {
-        let (description, body, disable, allowed_tools) = parse_skill_md("just a body", "fallback-name");
+        let (description, body, disable, allowed_tools) =
+            parse_skill_md("just a body", "fallback-name");
         assert_eq!(description, "");
         assert_eq!(body, "just a body");
         assert!(!disable);
@@ -5500,8 +5640,8 @@ mod tests {
         // Assigned but disabled — its tools must be excluded.
         set_character_skill_to_path(&chat_history, "lulin", "secret-skill", false, "t2").unwrap();
 
-        let tools = character_skill_required_tools(&root, &chat_history, "lulin")
-            .expect("union tools");
+        let tools =
+            character_skill_required_tools(&root, &chat_history, "lulin").expect("union tools");
 
         // Deduped union of the two enabled skills, no memory.write from the disabled one.
         assert!(tools.contains(&"web.search".to_string()));
@@ -5532,11 +5672,7 @@ mod tests {
         assert_eq!(created.description, "算塔罗时用");
 
         // Duplicate name is rejected.
-        assert!(create_skill_at_dir(
-            &root,
-            save_skill_request("tarot-reading", "x", "y")
-        )
-        .is_err());
+        assert!(create_skill_at_dir(&root, save_skill_request("tarot-reading", "x", "y")).is_err());
 
         // Invalid name is rejected.
         assert!(create_skill_at_dir(&root, save_skill_request("Bad Name", "x", "y")).is_err());
@@ -5565,7 +5701,9 @@ mod tests {
         );
 
         delete_skill_at_dir(&root, &chat_history, "tarot-reading").expect("delete skill");
-        assert!(list_skills_from_dir(&root).expect("list after delete").is_empty());
+        assert!(list_skills_from_dir(&root)
+            .expect("list after delete")
+            .is_empty());
         assert!(list_character_skills_from_path(&chat_history, "lulin")
             .expect("list after delete")
             .is_empty());
@@ -5585,14 +5723,18 @@ mod tests {
         // lulin knows both; mio only tarot.
         let mut lulin = list_character_skills_from_path(&path, "lulin").expect("list lulin");
         lulin.sort();
-        assert_eq!(lulin, vec!["tarot-reading".to_string(), "weather-lookup".to_string()]);
+        assert_eq!(
+            lulin,
+            vec!["tarot-reading".to_string(), "weather-lookup".to_string()]
+        );
         assert_eq!(
             list_character_skills_from_path(&path, "mio").expect("list mio"),
             vec!["tarot-reading".to_string()]
         );
 
         // Disabling drops it from the enabled list but keeps the assignment row.
-        set_character_skill_to_path(&path, "lulin", "weather-lookup", false, "t3").expect("disable");
+        set_character_skill_to_path(&path, "lulin", "weather-lookup", false, "t3")
+            .expect("disable");
         assert_eq!(
             list_character_skills_from_path(&path, "lulin").expect("list after disable"),
             vec!["tarot-reading".to_string()]
