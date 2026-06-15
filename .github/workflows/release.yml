@@ -29,10 +29,6 @@ jobs:
             platform: macos-latest
             args: "--target aarch64-apple-darwin"
             rustTargets: "aarch64-apple-darwin"
-          - name: macOS Intel
-            platform: macos-13
-            args: "--target x86_64-apple-darwin"
-            rustTargets: "x86_64-apple-darwin"
 
     steps:
       - name: Checkout
@@ -75,6 +71,20 @@ jobs:
             cp "$NODE_BIN" apps/desktop/src-tauri/resources/node/node
             chmod +x apps/desktop/src-tauri/resources/node/node
           fi
+
+      - name: Verify bundled sidecar runtime
+        shell: bash
+        run: |
+          test -f apps/desktop/src-tauri/resources/sidecar/bin/pi-prompt.mjs
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            test -f apps/desktop/src-tauri/resources/node/node.exe
+          else
+            test -f apps/desktop/src-tauri/resources/node/node
+          fi
+
+      - name: Test desktop backend
+        working-directory: apps/desktop/src-tauri
+        run: cargo test
 
       - name: Import Apple Developer ID certificate
         if: runner.os == 'macOS'
