@@ -5223,9 +5223,17 @@ mod tests {
 
     #[test]
     fn sidecar_prompt_command_uses_node_entrypoint() {
-        let args = sidecar_prompt_command_args(PathBuf::from("/tmp/irori-sidecar").as_path());
+        let sidecar_dir = PathBuf::from("/tmp/irori-sidecar");
+        let args = sidecar_prompt_command_args(sidecar_dir.as_path());
 
-        assert_eq!(args, vec!["/tmp/irori-sidecar/bin/pi-prompt.mjs"]);
+        assert_eq!(
+            args,
+            vec![sidecar_dir
+                .join("bin")
+                .join("pi-prompt.mjs")
+                .to_string_lossy()
+                .to_string()]
+        );
     }
 
     #[test]
