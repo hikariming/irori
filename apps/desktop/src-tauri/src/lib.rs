@@ -1775,14 +1775,14 @@ fn node_command_path(app: &AppHandle) -> PathBuf {
 
 fn bundled_node_path(app: &AppHandle) -> Option<PathBuf> {
     let file_name = if cfg!(windows) { "node.exe" } else { "node" };
-    let path = app
-        .path()
-        .resource_dir()
-        .ok()?
-        .join("node")
-        .join(file_name);
+    let resource_dir = app.path().resource_dir().ok()?;
 
-    path.exists().then_some(path)
+    [
+        resource_dir.join("node").join(file_name),
+        resource_dir.join("resources").join("node").join(file_name),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
 }
 
 fn sidecar_dir(app: &AppHandle) -> PathBuf {
@@ -1794,8 +1794,11 @@ fn sidecar_dir(app: &AppHandle) -> PathBuf {
 }
 
 fn bundled_sidecar_dir(app: &AppHandle) -> Option<PathBuf> {
-    let path = app.path().resource_dir().ok()?.join("sidecar");
-    path.join("bin").join("pi-prompt.mjs").exists().then_some(path)
+    let resource_dir = app.path().resource_dir().ok()?;
+
+    [resource_dir.join("sidecar"), resource_dir.join("resources").join("sidecar")]
+        .into_iter()
+        .find(|path| path.join("bin").join("pi-prompt.mjs").exists())
 }
 
 // In development the Pi sidecar lives alongside the Tauri crate at
