@@ -14,7 +14,16 @@
 //      rewrite the imports to point at the local copies.
 
 import { execSync } from "node:child_process";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -120,4 +129,92 @@ execSync("npm install --omit=dev --no-audit --no-fund --loglevel=error", {
   stdio: "inherit",
 });
 
+pruneBundle(outDir);
+
 log("done.");
+
+// Trim dead weight from the installed tree. Both prunes are pure size wins with
+// no behavior change for the desktop app; the CI verify step still imports the
+// sidecar module graph afterwards to catch any over-pruning.
+function pruneBundle(root) {
+  const before = dirSize(join(root, "node_modules"));
+  pruneKoffiPlatforms(root);
+  pruneUnusedBm25Dictionaries(root);
+  const after = dirSize(join(root, "node_modules"));
+  log(`pruned node_modules: ${mb(before)} → ${mb(after)} (saved ${mb(before - after)})`);
+}
+
+// koffi ships prebuilt binaries for ~18 platforms inside one package (unlike the
+// other natives, which npm already platform-filters via optionalDependencies).
+// Keep only the directory matching this build; drop the rest.
+function pruneKoffiPlatforms(root) {
+  const target = `${process.platform}_${process.arch}`; // e.g. darwin_arm64, win32_x64
+  for (const koffiRoot of findDirs(join(root, "node_modules"), "koffi")) {
+    const platformsDir = join(koffiRoot, "build", "koffi");
+    if (!existsSync(platformsDir)) {
+      continue;
+    }
+    const platforms = readdirSync(platformsDir);
+    if (!platforms.includes(target)) {
+      // Don't risk removing the only usable binary if naming ever changes.
+      log(`[prune] koffi: target "${target}" not found in ${platformsDir}; leaving as-is`);
+      continue;
+    }
+    for (const platform of platforms) {
+      if (platform !== target) {
+        rmSync(join(platformsDir, platform), { recursive: true, force: true });
+      }
+    }
+    log(`[prune] koffi: kept ${target}, removed ${platforms.length - 1} other platform(s)`);
+  }
+}
+
+// tcvdb-text bundles a 192MB English BM25 dictionary next to the 81MB Chinese
+// one. The desktop never configures bm25.language, so the engine always loads
+// the default "zh" encoder — the English dictionary is never read.
+function pruneUnusedBm25Dictionaries(root) {
+  for (const dataDir of findDirs(join(root, "node_modules"), "tcvdb-text").map((d) => join(d, "data"))) {
+    const en = join(dataDir, "bm25_en_default.json");
+    if (existsSync(en)) {
+      const saved = statSync(en).size;
+      rmSync(en, { force: true });
+      log(`[prune] tcvdb-text: removed unused English BM25 dictionary (${mb(saved)})`);
+    }
+  }
+}
+
+// Recursively find every directory named `name` under `from` (walks into
+// node_modules so nested copies are caught too).
+function findDirs(from, name) {
+  const found = [];
+  if (!existsSync(from)) {
+    return found;
+  }
+  for (const entry of readdirSync(from, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const full = join(from, entry.name);
+    if (entry.name === name) {
+      found.push(full);
+    }
+    found.push(...findDirs(full, name));
+  }
+  return found;
+}
+
+function dirSize(dir) {
+  if (!existsSync(dir)) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    total += entry.isDirectory() ? dirSize(full) : statSync(full).size;
+  }
+  return total;
+}
+
+function mb(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
