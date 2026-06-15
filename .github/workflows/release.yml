@@ -110,6 +110,20 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
+      - name: Sign bundled Node runtime
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          NODE_RUNTIME="apps/desktop/src-tauri/resources/node/node"
+          codesign --force \
+            --options runtime \
+            --timestamp \
+            --keychain "$KEYCHAIN_PATH" \
+            --sign "Developer ID Application: Beiming Liu (MJFP85U8HQ)" \
+            "$NODE_RUNTIME"
+          codesign --verify --strict --verbose=4 "$NODE_RUNTIME"
+
       - name: Build and publish Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -125,3 +139,11 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Verify packaged macOS signature
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          APP_BUNDLE="apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Irori.app"
+          codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE"
+          spctl --assess --type execute --verbose=4 "$APP_BUNDLE"
