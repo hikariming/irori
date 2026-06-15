@@ -1,6 +1,6 @@
 {
   "name": "irori",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "license": "Apache-2.0",
   "description": "Local-first desktop companion client built around the Pi coding-agent SDK.",

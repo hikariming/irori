@@ -118,19 +118,39 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Sign bundled Node runtime
+      - name: Sign bundled native binaries
         if: runner.os == 'macOS'
         shell: bash
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
-          NODE_RUNTIME="apps/desktop/src-tauri/resources/node/node"
-          codesign --force \
-            --options runtime \
-            --timestamp \
-            --keychain "$KEYCHAIN_PATH" \
-            --sign "Developer ID Application: Beiming Liu (MJFP85U8HQ)" \
-            "$NODE_RUNTIME"
-          codesign --verify --strict --verbose=4 "$NODE_RUNTIME"
+          RESOURCES_DIR="apps/desktop/src-tauri/resources"
+          SIGN_IDENTITY="Developer ID Application: Beiming Liu (MJFP85U8HQ)"
+
+          # tauri-action signs the outer .app but does NOT deep-sign native binaries
+          # buried in Resources. The self-contained sidecar bundles many of them
+          # (node runtime, esbuild, and .node/.dylib modules such as clipboard,
+          # jieba, koffi, sqlite-vec), each of which must carry the hardened runtime
+          # or notarization rejects the whole archive. Sign every Mach-O file here.
+          signed=0
+          while IFS= read -r -d '' f; do
+            if file "$f" | grep -q "Mach-O"; then
+              echo "Signing $f"
+              codesign --force \
+                --options runtime \
+                --timestamp \
+                --keychain "$KEYCHAIN_PATH" \
+                --sign "$SIGN_IDENTITY" \
+                "$f"
+              codesign --verify --strict --verbose=4 "$f"
+              signed=$((signed + 1))
+            fi
+          done < <(find "$RESOURCES_DIR" -type f \( -perm -u+x -o -name '*.node' -o -name '*.dylib' \) -print0)
+
+          echo "Signed $signed native binaries"
+          if [[ "$signed" -eq 0 ]]; then
+            echo "::error::No native binaries were signed; expected at least the node runtime" >&2
+            exit 1
+          fi
 
       - name: Build and publish Tauri app
         uses: tauri-apps/tauri-action@v0
