@@ -221,8 +221,12 @@ test("runIroriPiPrompt emits status heartbeats while waiting for first model out
   });
 
   assert.equal(result.text, "你好。");
-  assert.ok(progressEvents.some((event) => event.status === "正在整理上下文"));
-  assert.ok(progressEvents.some((event) => event.status?.startsWith("等待模型首个输出")));
+  assert.ok(progressEvents.some((event) => event.statusCode === "preparingContext"));
+  assert.ok(
+    progressEvents.some(
+      (event) => event.statusCode === "awaitingOutput" && typeof event.statusParams?.seconds === "number"
+    )
+  );
 });
 
 test("runIroriPiPrompt requires a token outside dry run", async () => {

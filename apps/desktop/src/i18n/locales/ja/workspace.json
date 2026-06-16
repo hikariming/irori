@@ -8,6 +8,13 @@
   "detailAria": "ファイルの詳細",
   "fieldType": "種類",
   "folder": "フォルダ",
+  "folderBar": {
+    "aria": "この会話の作業フォルダ",
+    "label": "作業フォルダ",
+    "unset": "未設定",
+    "change": "変更",
+    "picking": "選択中…"
+  },
   "fileOfType": "{{category}} ファイル",
   "fieldSize": "サイズ",
   "fieldSource": "場所",

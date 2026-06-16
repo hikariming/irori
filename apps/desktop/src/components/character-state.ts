@@ -1,5 +1,6 @@
 import type { CharacterCard } from "./character-cards.ts";
 import {
+  currentActivityParts,
   describeNowActivity,
   minutesOfDay,
   sanitizeDayScript,
@@ -146,6 +147,15 @@ export function currentActivityPhrase(state: CharacterState, now: number): strin
     return null;
   }
   return describeNowActivity(state.schedule, minutesOfDay(date));
+}
+
+// 同 currentActivityPhrase 的可见性门控，但返回结构化字段，供侧边栏按界面语言自行组词。
+export function currentActivityFields(state: CharacterState, now: number): { activity: string; location: string } | null {
+  const date = new Date(now);
+  if (!state.schedule || state.schedule.date !== toDateStr(date) || state.schedule.source === "skeleton") {
+    return null;
+  }
+  return currentActivityParts(state.schedule, minutesOfDay(date));
 }
 
 // 同上，但包成第一人称一句话「我此刻在阳台看会儿书。」，供聊天「此刻的我」心声注入。
@@ -304,11 +314,11 @@ const impressionKindLabel: Record<ImpressionKind, string> = {
   grudge: "我介意的事"
 };
 
-// 角色长期记住的一条印象，给「设置-记忆」面板展示用（带中文类别标签）。
+// 角色长期记住的一条印象，给「设置-记忆」面板展示用。类别只给稳定 key，文案由组件按界面
+// 语言翻译（common:characterState.impressionKind.*）。
 export type StoredMemoryView = {
   id: string;
   kind: ImpressionKind;
-  kindLabel: string;
   text: string;
   createdAt: number;
 };
@@ -321,7 +331,6 @@ export function listStoredMemories(state: CharacterState): StoredMemoryView[] {
     .map((impression) => ({
       id: impression.id,
       kind: impression.kind,
-      kindLabel: impressionKindLabel[impression.kind],
       text: impression.text,
       createdAt: impression.createdAt
     }));
@@ -446,46 +455,46 @@ export function describeStateAsDiary(
   return lines.join("");
 }
 
-const moodLabels: Record<Mood, string> = {
-  calm: "平静",
-  warm: "温暖",
-  playful: "俏皮",
-  tired: "疲惫",
-  guarded: "戒备"
-};
+export type AffinityTier = ReturnType<typeof affinityTier>;
+export type EnergyLevel = "high" | "normal" | "low" | "depleted";
 
-const tierLabels: Record<ReturnType<typeof affinityTier>, string> = {
-  stranger: "初识",
-  familiar: "熟悉",
-  close: "亲近",
-  trusted: "信任"
-};
+function energyLevel(energy: number): EnergyLevel {
+  if (energy >= 70) {
+    return "high";
+  }
+  if (energy >= 40) {
+    return "normal";
+  }
+  if (energy >= 20) {
+    return "low";
+  }
+  return "depleted";
+}
 
+// 只读展示用的状态视图。这里只暴露稳定的枚举键 + 原始数值，具体文案由组件按界面语言用
+// i18n 翻译（见 common:characterState.*），避免把中文标签写死、切到英/日/韩界面还是中文。
 export type CharacterStateView = {
   affinity: number;
-  affinityTierLabel: string;
-  moodLabel: string;
+  affinityTier: AffinityTier;
+  mood: Mood;
   energy: number;
-  energyLabel: string;
-  meetLabel: string;
-  impressions: { id: string; kindLabel: string; text: string }[];
+  energyLevel: EnergyLevel;
+  meetCount: number;
+  impressions: { id: string; kind: ImpressionKind; text: string }[];
 };
 
-// 把内部状态翻译成设置页只读展示用的标签（不暴露内部枚举名）。
 export function buildCharacterStateView(state: CharacterState): CharacterStateView {
-  const energyLabel = state.energy >= 70 ? "充沛" : state.energy >= 40 ? "一般" : state.energy >= 20 ? "偏低" : "需要休息";
-
   const impressions = [...state.impressions]
     .sort((a, b) => b.weight - a.weight || b.createdAt - a.createdAt)
-    .map((item) => ({ id: item.id, kindLabel: impressionKindLabel[item.kind], text: item.text }));
+    .map((item) => ({ id: item.id, kind: item.kind, text: item.text }));
 
   return {
     affinity: state.affinity,
-    affinityTierLabel: tierLabels[affinityTier(state.affinity)],
-    moodLabel: moodLabels[state.mood],
+    affinityTier: affinityTier(state.affinity),
+    mood: state.mood,
     energy: state.energy,
-    energyLabel,
-    meetLabel: state.meetCount > 0 ? `见过 ${state.meetCount} 次` : "还没正式聊过",
+    energyLevel: energyLevel(state.energy),
+    meetCount: state.meetCount,
     impressions
   };
 }

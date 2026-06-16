@@ -33,10 +33,26 @@ export type AppendChatMessageRequest = {
   characterId?: string;
 };
 
+// 会话分组的桶标签：默认中文，调用方（App.tsx）传入按界面语言翻译后的文案。
+export type SessionGroupLabels = {
+  today: string;
+  yesterday: string;
+  earlier: string;
+};
+
+const DEFAULT_SESSION_GROUP_LABELS: SessionGroupLabels = {
+  today: "今天",
+  yesterday: "昨天",
+  earlier: "更早"
+};
+
 export type GroupChatSessionsOptions = {
   activeSessionId?: string | null;
   now?: Date;
+  labels?: SessionGroupLabels;
 };
+
+type SessionBucket = "today" | "yesterday" | "earlier";
 
 export type NewDraftSessionState = {
   activeSessionId?: string | null;
@@ -77,53 +93,55 @@ export function parseStoredTimestamp(value: string) {
   return new Date(value);
 }
 
-function sessionBucket(updatedAt: Date, now: Date) {
+function sessionBucket(updatedAt: Date, now: Date): SessionBucket {
   const diffDays = Math.round((dayStart(now) - dayStart(updatedAt)) / 86_400_000);
 
   if (diffDays <= 0) {
-    return "今天";
+    return "today";
   }
 
   if (diffDays === 1) {
-    return "昨天";
+    return "yesterday";
   }
 
-  return "更早";
+  return "earlier";
 }
 
-function formatSessionTime(updatedAt: Date, bucket: string) {
-  if (bucket === "今天") {
+function formatSessionTime(updatedAt: Date, bucket: SessionBucket, labels: SessionGroupLabels) {
+  if (bucket === "today") {
     return formatClockTime(updatedAt);
   }
 
-  if (bucket === "昨天") {
-    return "昨天";
+  if (bucket === "yesterday") {
+    return labels.yesterday;
   }
 
   return formatMonthDayNumeric(updatedAt);
 }
 
+const SESSION_BUCKET_ORDER: SessionBucket[] = ["today", "yesterday", "earlier"];
+
 export function groupChatSessions(
   sessions: ChatSessionSummary[],
-  { activeSessionId = null, now = new Date() }: GroupChatSessionsOptions = {}
+  { activeSessionId = null, now = new Date(), labels = DEFAULT_SESSION_GROUP_LABELS }: GroupChatSessionsOptions = {}
 ): SessionGroup[] {
-  const groups = new Map<string, SessionGroup>();
+  const groups = new Map<SessionBucket, SessionGroup>();
 
   for (const session of sessions) {
     const updatedAt = parseStoredTimestamp(session.updatedAt);
     const bucket = sessionBucket(updatedAt, now);
-    const group = groups.get(bucket) ?? { group: bucket, items: [] };
+    const group = groups.get(bucket) ?? { group: labels[bucket], items: [] };
 
     group.items.push({
       id: session.id,
       title: session.title,
-      time: formatSessionTime(updatedAt, bucket),
+      time: formatSessionTime(updatedAt, bucket, labels),
       active: session.id === activeSessionId
     });
     groups.set(bucket, group);
   }
 
-  return ["今天", "昨天", "更早"]
+  return SESSION_BUCKET_ORDER
     .map((bucket) => groups.get(bucket))
     .filter((group): group is SessionGroup => Boolean(group));
 }

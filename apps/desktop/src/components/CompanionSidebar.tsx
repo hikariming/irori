@@ -1,5 +1,8 @@
 import { Avatar, Button, ScrollShadow } from "@heroui/react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 
+import type { Mood } from "./character-state";
 import type { CompanionCharacter, SessionGroup } from "./sidebar-model";
 import type { Theme } from "./use-theme";
 
@@ -22,36 +25,41 @@ type CompanionSidebarProps = {
   onThemeToggle?: () => void;
 };
 
-function statusLabel(status: CompanionCharacter["status"]) {
-  return status === "online" ? "在线" : "待机";
+function statusLabel(t: TFunction, status: CompanionCharacter["status"]) {
+  return status === "online" ? t("sidebar.status.online") : t("sidebar.status.idle");
+}
+
+function meetLabel(t: TFunction, meetCount: number) {
+  return meetCount > 0 ? t("common:characterState.meet", { count: meetCount }) : t("common:characterState.meetNone");
 }
 
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function moodFillPercent(label: string) {
-  const moodLevels: Record<string, number> = {
-    戒备: 22,
-    疲惫: 34,
-    平静: 56,
-    温暖: 78,
-    俏皮: 92
+function moodFillPercent(mood: Mood) {
+  const moodLevels: Record<Mood, number> = {
+    guarded: 22,
+    tired: 34,
+    calm: 56,
+    warm: 78,
+    playful: 92
   };
-  return moodLevels[label] ?? 50;
+  return moodLevels[mood] ?? 50;
 }
 
 function CharacterAvatar({ character, index }: { character: CompanionCharacter; index: number }) {
+  const { t } = useTranslation("companion");
   const unread = character.unreadCount ?? 0;
   return (
     <span className="avatar-wrap">
-      <Avatar aria-label={`${character.name} ${statusLabel(character.status)}`} className={`character-avatar avatar-${index + 1}`}>
+      <Avatar aria-label={`${character.name} ${statusLabel(t, character.status)}`} className={`character-avatar avatar-${index + 1}`}>
         {character.avatarSrc ? <Avatar.Image alt={character.name} src={character.avatarSrc} /> : null}
         <Avatar.Fallback className="avatar-fallback">{character.name.slice(0, 1)}</Avatar.Fallback>
       </Avatar>
-      <span className={`status-dot ${character.status}`} aria-label={statusLabel(character.status)} />
+      <span className={`status-dot ${character.status}`} aria-label={statusLabel(t, character.status)} />
       {unread > 0 ? (
-        <span className="letter-badge" aria-label={`${unread} 封未读信`}>
+        <span className="letter-badge" aria-label={t("sidebar.unreadLetters", { count: unread })}>
           {unread > 9 ? "9+" : unread}
         </span>
       ) : null}
@@ -60,24 +68,25 @@ function CharacterAvatar({ character, index }: { character: CompanionCharacter; 
 }
 
 function CharacterHoverCard({ character }: { character: CompanionCharacter }) {
+  const { t } = useTranslation("companion");
   const summary = character.stateSummary;
   const themeColor = character.themeColor ?? "#2f6f68";
-  const activity = character.activityStatus ?? "同步今天的作息";
+  const activity = character.activityStatus ?? t("sidebar.defaultActivity");
 
   if (!summary && !character.activityStatus) {
     return null;
   }
 
   return (
-    <aside className="character-hover-card" aria-label={`${character.name}当前状态`}>
+    <aside className="character-hover-card" aria-label={t("sidebar.stateCardAria", { name: character.name })}>
       <header className="character-hover-head">
         <span className={`status-dot ${character.status}`} aria-hidden="true" />
         <strong>{character.name}</strong>
-        {summary ? <small>{summary.meetLabel}</small> : null}
+        {summary ? <small>{meetLabel(t, summary.meetCount)}</small> : null}
       </header>
 
       <div className="character-hover-activity">
-        <span>正在</span>
+        <span>{t("sidebar.doing")}</span>
         <strong>{activity}</strong>
       </div>
 
@@ -85,33 +94,33 @@ function CharacterHoverCard({ character }: { character: CompanionCharacter }) {
         <>
           <div className="character-hover-meter">
             <div className="character-hover-meter-head">
-              <span>心情</span>
-              <strong>{summary.moodLabel}</strong>
+              <span>{t("sidebar.mood")}</span>
+              <strong>{t(`common:characterState.mood.${summary.mood}`)}</strong>
             </div>
             <span
               className="character-hover-track"
               role="meter"
               aria-valuemin={0}
               aria-valuemax={100}
-              aria-valuenow={moodFillPercent(summary.moodLabel)}
-              aria-valuetext={summary.moodLabel}
+              aria-valuenow={moodFillPercent(summary.mood)}
+              aria-valuetext={t(`common:characterState.mood.${summary.mood}`)}
             >
-              <span style={{ width: `${moodFillPercent(summary.moodLabel)}%`, backgroundColor: themeColor }} />
+              <span style={{ width: `${moodFillPercent(summary.mood)}%`, backgroundColor: themeColor }} />
             </span>
           </div>
 
           <dl className="character-hover-metrics">
             <div>
-              <dt>精力</dt>
-              <dd>{summary.energyLabel}</dd>
+              <dt>{t("sidebar.energy")}</dt>
+              <dd>{t(`common:characterState.energy.${summary.energyLevel}`)}</dd>
             </div>
             <div>
-              <dt>好感</dt>
-              <dd>{summary.affinityTierLabel}</dd>
+              <dt>{t("sidebar.affinity")}</dt>
+              <dd>{t(`common:characterState.affinityTier.${summary.affinityTier}`)}</dd>
             </div>
           </dl>
 
-          <span className="character-hover-energy" aria-label={`精力 ${summary.energy}`}>
+          <span className="character-hover-energy" aria-label={t("sidebar.energyAria", { value: summary.energy })}>
             <span style={{ width: `${clampPercent(summary.energy)}%`, backgroundColor: themeColor }} />
           </span>
         </>
@@ -138,9 +147,10 @@ export function CompanionSidebar({
   sessions,
   theme
 }: CompanionSidebarProps) {
+  const { t } = useTranslation("companion");
   return (
-    <aside className="companion-sidebar" aria-label="角色与对话记录">
-      <section className="character-switcher" aria-label="角色切换">
+    <aside className="companion-sidebar" aria-label={t("sidebar.listAria")}>
+      <section className="character-switcher" aria-label={t("sidebar.switcherAria")}>
         {characters.map((character, index) => (
           <div className="character-row-shell" key={character.id}>
             <Button
@@ -152,12 +162,12 @@ export function CompanionSidebar({
               <span className="character-copy">
                 <strong>{character.name}</strong>
                 {character.activityStatus ? (
-                  <small aria-label={`${character.name}此刻${character.activityStatus}`}>
-                    此刻{character.activityStatus}
+                  <small aria-label={t("sidebar.presenceAria", { name: character.name, activity: character.activityStatus })}>
+                    {t("sidebar.presence", { activity: character.activityStatus })}
                   </small>
                 ) : null}
               </span>
-              {character.active ? <span className="status-dot online" aria-label="在线" /> : null}
+              {character.active ? <span className="status-dot online" aria-label={t("sidebar.status.online")} /> : null}
             </Button>
             <CharacterHoverCard character={character} />
           </div>
@@ -166,11 +176,11 @@ export function CompanionSidebar({
       </section>
 
       <ScrollShadow className="session-list" hideScrollBar orientation="vertical">
-        <section aria-label="对话记录">
+        <section aria-label={t("sidebar.sessions.aria")}>
           <header className="session-list-header">
-            <h2>对话记录</h2>
+            <h2>{t("sidebar.sessions.title")}</h2>
             <Button
-              aria-label="新建会话"
+              aria-label={t("sidebar.sessions.newSession")}
               className="new-session-button"
               isDisabled={isNewSessionDisabled}
               onPress={onNewSession}
@@ -198,12 +208,12 @@ export function CompanionSidebar({
         </section>
       </ScrollShadow>
 
-      <footer className="sidebar-footer" aria-label="设置">
+      <footer className="sidebar-footer" aria-label={t("sidebar.footer.aria")}>
         <div className="sidebar-footer__group">
-          <Button aria-label="设置" className="sidebar-icon-button" onPress={onSettingsOpen} type="button">
+          <Button aria-label={t("sidebar.footer.settings")} className="sidebar-icon-button" onPress={onSettingsOpen} type="button">
             ⚙
           </Button>
-          <Button aria-label="我的档案" className="sidebar-icon-button" onPress={onProfileOpen} type="button">
+          <Button aria-label={t("sidebar.footer.profile")} className="sidebar-icon-button" onPress={onProfileOpen} type="button">
             <svg
               className="sidebar-life-icon"
               viewBox="0 0 24 24"
@@ -220,7 +230,7 @@ export function CompanionSidebar({
               <path d="M5 19a7 7 0 0 1 14 0" />
             </svg>
           </Button>
-          <Button aria-label="技能" className="sidebar-icon-button" onPress={onSkillsOpen} type="button">
+          <Button aria-label={t("sidebar.footer.skills")} className="sidebar-icon-button" onPress={onSkillsOpen} type="button">
             <svg
               className="sidebar-life-icon"
               viewBox="0 0 24 24"
@@ -236,7 +246,7 @@ export function CompanionSidebar({
               <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
             </svg>
           </Button>
-          <Button aria-label="定时任务" className="sidebar-icon-button" onPress={onSchedulesOpen} type="button">
+          <Button aria-label={t("sidebar.footer.schedules")} className="sidebar-icon-button" onPress={onSchedulesOpen} type="button">
             <svg
               className="sidebar-life-icon"
               viewBox="0 0 24 24"
@@ -254,13 +264,13 @@ export function CompanionSidebar({
               <path d="M5 4 2.6 6.2M19 4l2.4 2.2" />
             </svg>
             {schedulesUnreadCount > 0 ? (
-              <span className="letter-badge" aria-label={`${schedulesUnreadCount} 条新结果`}>
+              <span className="letter-badge" aria-label={t("sidebar.newResults", { count: schedulesUnreadCount })}>
                 {schedulesUnreadCount > 9 ? "9+" : schedulesUnreadCount}
               </span>
             ) : null}
           </Button>
           <Button
-            aria-label="生活圈"
+            aria-label={t("sidebar.footer.life")}
             className={`sidebar-icon-button sidebar-life-button ${isLifeActive ? "active" : ""}`}
             onPress={onLifeOpen}
             type="button"
@@ -283,14 +293,14 @@ export function CompanionSidebar({
               <path d="M17.5 13.4a5.5 5.5 0 0 1 3 4.9" />
             </svg>
             {lifeUnreadCount > 0 ? (
-              <span className="letter-badge" aria-label={`${lifeUnreadCount} 封未读信`}>
+              <span className="letter-badge" aria-label={t("sidebar.unreadLetters", { count: lifeUnreadCount })}>
                 {lifeUnreadCount > 9 ? "9+" : lifeUnreadCount}
               </span>
             ) : null}
           </Button>
         </div>
         <Button
-          aria-label={theme === "dark" ? "切换亮色模式" : "切换暗色模式"}
+          aria-label={theme === "dark" ? t("sidebar.footer.toLight") : t("sidebar.footer.toDark")}
           className="sidebar-icon-button"
           onPress={onThemeToggle}
           type="button"

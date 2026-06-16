@@ -8,6 +8,13 @@
   "detailAria": "文件详情",
   "fieldType": "类型",
   "folder": "文件夹",
+  "folderBar": {
+    "aria": "当前对话工作文件夹",
+    "label": "工作文件夹",
+    "unset": "未设置",
+    "change": "更改",
+    "picking": "选择中…"
+  },
   "fileOfType": "{{category}} 文件",
   "fieldSize": "大小",
   "fieldSource": "来源",

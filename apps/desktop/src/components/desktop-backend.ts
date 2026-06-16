@@ -265,6 +265,8 @@ export type DesktopBackend = {
   addCharacterMoment: (request: AddCharacterMomentRequest) => Promise<CharacterMoment>;
   appendChatMessage: (request: AppendChatMessageRequest) => Promise<ChatMessage>;
   createChatSession: (request: CreateChatSessionRequest) => Promise<ChatSessionSummary>;
+  clearConfigurationData: () => Promise<void>;
+  clearMemoryData: () => Promise<void>;
   deleteModelProfile: (profileId: string) => Promise<ModelSettingsState>;
   getChatSession: (sessionId: string) => Promise<ChatSessionDetail>;
   listCharacterLetters: (characterId?: string, limit?: number) => Promise<CharacterLetter[]>;
@@ -687,6 +689,25 @@ export function createPreviewBackend(): DesktopBackend {
 
       return session;
     },
+    async clearMemoryData() {
+      characterStates = {};
+      characterMoments = [];
+      characterLetters = [];
+      sessions.splice(0, sessions.length);
+      messagesBySession.clear();
+      scheduledTasks = [];
+    },
+    async clearConfigurationData() {
+      savedSettings = null;
+      state = buildInitialModelSettings();
+      toolPolicySettings = defaultToolPolicySettings;
+      webAccessSettings = buildDefaultWebAccessSettings();
+      reviewMode = "default";
+      advancedSettings = { ...defaultAdvancedSettings };
+      skills = [];
+      skillAssignments.clear();
+      missedPolicy = "catchup";
+    },
     async deleteModelProfile(profileId) {
       state = deleteSavedModelProfile(state, profileId);
       savedSettings = state;
@@ -976,6 +997,12 @@ export function createTauriBackend(): DesktopBackend {
     },
     async createChatSession(request) {
       return invoke<ChatSessionSummary>("create_chat_session", { request });
+    },
+    async clearMemoryData() {
+      await invoke("clear_memory_data");
+    },
+    async clearConfigurationData() {
+      await invoke("clear_configuration_data");
     },
     async deleteModelProfile(profileId) {
       const saved = await invoke<SavedModelSettings>("delete_model_profile", { profileId });

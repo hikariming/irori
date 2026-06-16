@@ -8,6 +8,13 @@
   "detailAria": "File details",
   "fieldType": "Type",
   "folder": "Folder",
+  "folderBar": {
+    "aria": "Working folder for this chat",
+    "label": "Working folder",
+    "unset": "Not set",
+    "change": "Change",
+    "picking": "Choosing…"
+  },
   "fileOfType": "{{category}} file",
   "fieldSize": "Size",
   "fieldSource": "Source",

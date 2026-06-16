@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildCharacterChatPreview,
+  characterPromptName,
+  localizeCharacterCard,
   parseCharacterCard,
   type CharacterCard
 } from "./character-cards.ts";
@@ -27,9 +29,20 @@ test("parseCharacterCard maps identity and resolves asset paths", async () => {
 
   assert.equal(card.id, "shili");
   assert.equal(card.name, "示璃");
+  assert.equal(card.sourceName, "示璃");
+  assert.equal(card.localizedNames.en, "Shili");
   assert.equal(card.assets.avatar, "/characters/shili.card/assets/avatar/avatar-circle.png");
   assert.equal(card.assets.portrait, "/characters/shili.card/assets/portraits/neutral.png");
   assert.equal(card.assets.background, "/characters/shili.card/assets/backgrounds/default.png");
+});
+
+test("localizeCharacterCard uses localized names without changing the prompt name", async () => {
+  const card = await loadFixtureCard("shili");
+  const localized = localizeCharacterCard(card, "en-US");
+
+  assert.equal(localized.name, "Shili");
+  assert.equal(localized.sourceName, "示璃");
+  assert.equal(characterPromptName(localized), "示璃");
 });
 
 test("parseCharacterCard exposes the required nine stickers in order", async () => {

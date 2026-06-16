@@ -1,4 +1,4 @@
-import type { CharacterCard } from "./character-cards.ts";
+import { characterPromptName, type CharacterCard } from "./character-cards.ts";
 import { affinityTier, lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
 import { formatMonthDayLong } from "../i18n/formatters.ts";
 
@@ -183,7 +183,7 @@ const tierHint: Record<AffinityTier, string> = {
 };
 
 function personaHeader(card: CharacterCard): string[] {
-  return [`你是 ${card.name}。`, `人设：${card.persona}`, `说话风格：${card.speakingStyle}`, ""];
+  return [`你是 ${characterPromptName(card)}。`, `人设：${card.persona}`, `说话风格：${card.speakingStyle}`, ""];
 }
 
 function dialogueBlock(recentDialogue?: string): string[] {

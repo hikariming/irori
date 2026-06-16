@@ -6,7 +6,7 @@ import {
   reduceAssistantProgress,
   assistantProgressPrimaryText,
   assistantProgressStatusLabel,
-  assistantReasoningDisplayText,
+  assistantReasoningActive,
   nextTypewriterText,
   removeAssistantStreamMessage,
   replaceAssistantStreamMessage,
@@ -120,56 +120,58 @@ test("reduceAssistantProgress ignores browser side-panel events without resettin
   assert.equal(next.phase, "answering");
 });
 
-test("assistantProgressStatusLabel describes each visible phase", () => {
-  assert.equal(assistantProgressStatusLabel("queued"), "准备中");
-  assert.equal(assistantProgressStatusLabel("thinking"), "推理中");
-  assert.equal(assistantProgressStatusLabel("answering"), "生成回复");
+test("assistantProgressStatusLabel maps each visible phase to an i18n key", () => {
+  assert.equal(assistantProgressStatusLabel("queued").key, "chat.progress.statusLabel.queued");
+  assert.equal(assistantProgressStatusLabel("thinking").key, "chat.progress.statusLabel.thinking");
+  assert.equal(assistantProgressStatusLabel("answering").key, "chat.progress.statusLabel.answering");
 });
 
 test("assistantProgressPrimaryText does not label queued requests as thinking", () => {
-  assert.equal(assistantProgressPrimaryText(createAssistantProgress("run-1")), "准备中");
-  assert.equal(
-    assistantProgressPrimaryText(
-      reduceAssistantProgress(createAssistantProgress("run-1"), {
-        runId: "run-1",
-        phase: "queued",
-        status: "正在整理上下文"
-      })
-    ),
-    "正在整理上下文"
+  assert.equal(assistantProgressPrimaryText(createAssistantProgress("run-1")).key, "chat.progress.primary.queued");
+
+  const withStatus = assistantProgressPrimaryText(
+    reduceAssistantProgress(createAssistantProgress("run-1"), {
+      runId: "run-1",
+      phase: "queued",
+      statusCode: "awaitingOutput",
+      statusParams: { seconds: 3 }
+    })
   );
+  assert.equal(withStatus.key, "chat.progress.status.awaitingOutput");
+  assert.deepEqual(withStatus.params, { seconds: 3 });
+
   assert.equal(
     assistantProgressPrimaryText({
       ...createAssistantProgress("run-1"),
       phase: "thinking"
-    }),
-    "思考中"
+    }).key,
+    "chat.progress.primary.thinking"
   );
   assert.equal(
     assistantProgressPrimaryText({
       ...createAssistantProgress("run-1"),
       phase: "answering"
-    }),
-    "生成中"
+    }).key,
+    "chat.progress.primary.answering"
   );
 });
 
-test("assistantReasoningDisplayText hides reasoning content behind a thinking label", () => {
-  assert.equal(assistantReasoningDisplayText(createAssistantProgress("run-1")), "");
+test("assistantReasoningActive flags when a thinking label should show", () => {
+  assert.equal(assistantReasoningActive(createAssistantProgress("run-1")), false);
   assert.equal(
-    assistantReasoningDisplayText({
+    assistantReasoningActive({
       ...createAssistantProgress("run-1"),
       phase: "thinking"
     }),
-    "思考中"
+    true
   );
   assert.equal(
-    assistantReasoningDisplayText({
+    assistantReasoningActive({
       ...createAssistantProgress("run-1"),
-      phase: "thinking",
+      phase: "answering",
       reasoningText: "先判断语气。"
     }),
-    "思考中"
+    true
   );
 });
 

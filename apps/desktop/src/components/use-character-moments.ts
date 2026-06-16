@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-import type { CharacterCard } from "./character-cards";
+import { characterPromptName, type CharacterCard } from "./character-cards";
 import {
   composeMomentPrompt,
   composePeerCommentPrompt,
@@ -224,7 +224,8 @@ export function useCharacterMoments() {
 
         // 再生成评论（每条一次模型调用，受 PEER_MAX_COMMENTS_PER_RUN 限制）。
         for (const { moment, peer, peerState } of commentPlan.slice(0, PEER_MAX_COMMENTS_PER_RUN)) {
-          const authorName = cards.find((card) => card.id === moment.characterId)?.name ?? "朋友";
+          const author = cards.find((card) => card.id === moment.characterId);
+          const authorName = author ? characterPromptName(author) : "朋友";
           const response = await desktopBackend
             .sendPiPrompt({
               characterId: peer.id,

@@ -41,5 +41,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "现金流会先出问题。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "这次，逻辑站住了。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Shen Yanzhou",
+    "ja": "シェン・イエンジョウ",
+    "ko": "선옌저우"
   }
 }

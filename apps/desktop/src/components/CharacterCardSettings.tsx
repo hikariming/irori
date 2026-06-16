@@ -129,7 +129,7 @@ export function CharacterCardSettings({
             <div className="character-state-affinity">
               <div className="character-state-affinity-head">
                 <span>{t("affinity")}</span>
-                <strong>{stateView.affinityTierLabel}</strong>
+                <strong>{t(`common:characterState.affinityTier.${stateView.affinityTier}`)}</strong>
               </div>
               <div className="character-state-bar" role="presentation">
                 <span style={{ width: `${stateView.affinity}%`, backgroundColor: card.themeColor }} />
@@ -138,15 +138,15 @@ export function CharacterCardSettings({
             <dl className="character-state-metrics">
               <div>
                 <dt>{t("mood")}</dt>
-                <dd>{stateView.moodLabel}</dd>
+                <dd>{t(`common:characterState.mood.${stateView.mood}`)}</dd>
               </div>
               <div>
                 <dt>{t("energy")}</dt>
-                <dd>{stateView.energyLabel}</dd>
+                <dd>{t(`common:characterState.energy.${stateView.energyLevel}`)}</dd>
               </div>
               <div>
                 <dt>{t("meet")}</dt>
-                <dd>{stateView.meetLabel}</dd>
+                <dd>{stateView.meetCount > 0 ? t("common:characterState.meet", { count: stateView.meetCount }) : t("common:characterState.meetNone")}</dd>
               </div>
             </dl>
           </section>
@@ -157,7 +157,7 @@ export function CharacterCardSettings({
               <ul>
                 {stateView.impressions.map((impression) => (
                   <li key={impression.id}>
-                    <span className="character-impression-kind">{impression.kindLabel}</span>
+                    <span className="character-impression-kind">{t(`common:characterState.impressionKind.${impression.kind}`)}</span>
                     <span className="character-impression-text">{impression.text}</span>
                   </li>
                 ))}

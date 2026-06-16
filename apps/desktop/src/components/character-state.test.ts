@@ -84,15 +84,15 @@ test("buildCharacterStateView surfaces readable labels", () => {
     meetCount: 3
   });
   assert.equal(view.affinity, 70);
-  assert.equal(view.affinityTierLabel, "亲近");
-  assert.equal(view.moodLabel, "温暖");
-  assert.equal(view.energyLabel, "偏低");
-  assert.equal(view.meetLabel, "见过 3 次");
+  assert.equal(view.affinityTier, "close");
+  assert.equal(view.mood, "warm");
+  assert.equal(view.energyLevel, "low");
+  assert.equal(view.meetCount, 3);
 });
 
 test("buildCharacterStateView labels a fresh character as not yet talked", () => {
   const view = buildCharacterStateView(defaultCharacterState("lulin"));
-  assert.equal(view.meetLabel, "还没正式聊过");
+  assert.equal(view.meetCount, 0);
 });
 
 test("lifeBeatAt lowers the energy ceiling deep at night", () => {
@@ -139,11 +139,11 @@ test("selectImpressionsForPrompt surfaces grudges first when guarded", () => {
   assert.match(lines[0], /放鸽子/);
 });
 
-test("buildCharacterStateView exposes labelled impressions", () => {
+test("buildCharacterStateView exposes impression kind keys", () => {
   const state = mergeImpressions(defaultCharacterState("lulin"), [{ kind: "like", text: "喜欢猫" }], 1_000);
   const view = buildCharacterStateView(state);
   assert.equal(view.impressions.length, 1);
-  assert.equal(view.impressions[0].kindLabel, "ta 的喜好");
+  assert.equal(view.impressions[0].kind, "like");
   assert.equal(view.impressions[0].text, "喜欢猫");
 });
 

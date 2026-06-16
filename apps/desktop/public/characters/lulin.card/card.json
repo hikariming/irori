@@ -41,5 +41,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "先停，别硬扛。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "漂亮，这次是你赢。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Lulin",
+    "ja": "ルーリン",
+    "ko": "루린"
   }
 }

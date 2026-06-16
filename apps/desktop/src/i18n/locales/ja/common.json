@@ -12,5 +12,13 @@
   "nav": {
     "back": "戻る",
     "backToMain": "メイン画面に戻る"
+  },
+  "characterState": {
+    "mood": { "calm": "穏やか", "warm": "あたたかい", "playful": "おちゃめ", "tired": "疲れ気味", "guarded": "警戒" },
+    "affinityTier": { "stranger": "初対面", "familiar": "顔なじみ", "close": "親しい", "trusted": "信頼" },
+    "energy": { "high": "元気いっぱい", "normal": "ふつう", "low": "やや低い", "depleted": "休息が必要" },
+    "meet": "{{count}} 回会った",
+    "meetNone": "まだちゃんと話していない",
+    "impressionKind": { "like": "好きなもの", "dislike": "苦手なもの", "fact": "その人について", "grudge": "気にしていること" }
   }
 }

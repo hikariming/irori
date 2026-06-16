@@ -1,15 +1,17 @@
 import type { CharacterCard } from "./character-cards.ts";
 import { isCharacterVisibleInSidebar, type CharacterPreferences } from "./character-preferences.ts";
+import type { AffinityTier, EnergyLevel, Mood } from "./character-state.ts";
 
 export type CharacterStatus = "online" | "idle";
 
+// 与 buildCharacterStateView 输出对齐：只携带稳定枚举键 + 数值，文案在组件里翻译。
 export type CompanionCharacterStateSummary = {
   affinity: number;
-  affinityTierLabel: string;
-  moodLabel: string;
+  affinityTier: AffinityTier;
+  mood: Mood;
   energy: number;
-  energyLabel: string;
-  meetLabel: string;
+  energyLevel: EnergyLevel;
+  meetCount: number;
 };
 
 export type CompanionCharacter = {

@@ -58,11 +58,13 @@ type SystemSettingsPanelProps = {
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
   memoryDebugEvents?: MemoryDebugEvent[];
+  onDebugConfigurationCleared?: () => void;
+  onDebugMemoryCleared?: () => void;
   onClose: () => void;
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, isOpen, latestMemoryRun, memoryDebugEvents = [], onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, isOpen, latestMemoryRun, memoryDebugEvents = [], onDebugConfigurationCleared, onDebugMemoryCleared, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const { t: tCommon } = useTranslation("common");
   const { t } = useTranslation("settings");
   const tabs = buildSettingsTabs();
@@ -87,6 +89,12 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedSettings>(defaultAdvancedSettings);
   const [advancedSaveState, setAdvancedSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [advancedError, setAdvancedError] = useState("");
+  const [clearMemoryConfirm, setClearMemoryConfirm] = useState("");
+  const [clearMemoryState, setClearMemoryState] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
+  const [clearMemoryError, setClearMemoryError] = useState("");
+  const [clearConfigConfirm, setClearConfigConfirm] = useState("");
+  const [clearConfigState, setClearConfigState] = useState<"idle" | "clearing" | "cleared" | "error">("idle");
+  const [clearConfigError, setClearConfigError] = useState("");
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [testState, setTestState] = useState<"idle" | "testing" | "passed" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
@@ -269,6 +277,10 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
       || selectedSavedProfile.modelName !== draftProfile.modelName
     : true;
   const canChangeModelProfile = !hasUnsavedModelDraft && !isModelActionBusy;
+  const clearMemoryConfirmText = t("advanced.clearMemoryConfirmText");
+  const clearConfigConfirmText = t("advanced.clearConfigConfirmText");
+  const canClearMemory = clearMemoryConfirm.trim() === clearMemoryConfirmText && clearMemoryState !== "clearing";
+  const canClearConfig = clearConfigConfirm.trim() === clearConfigConfirmText && clearConfigState !== "clearing";
   const detectedPreset = detectPresetProvider(draftProfile);
   const tokenReadyProfiles = getTokenReadyModelProfiles(modelSettings);
   const tokenReadyProfileIds = new Set(tokenReadyProfiles.map((profile) => profile.id));
@@ -514,6 +526,67 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
     }
   }
 
+  async function clearDebugMemoryData() {
+    if (!canClearMemory) {
+      return;
+    }
+
+    setClearMemoryState("clearing");
+    setClearMemoryError("");
+
+    try {
+      await desktopBackend.clearMemoryData();
+      setSelectedMemoryCharacterId(activeCharacterId);
+      setMemoryStatus(await desktopBackend.getMemoryStatus().catch(() => null));
+      setClearMemoryConfirm("");
+      setClearMemoryState("cleared");
+      onDebugMemoryCleared?.();
+    } catch (error) {
+      setClearMemoryState("error");
+      setClearMemoryError(formatUnknownError(error, t("advanced.clearMemoryFailed")));
+    }
+  }
+
+  async function clearDebugConfigurationData() {
+    if (!canClearConfig) {
+      return;
+    }
+
+    setClearConfigState("clearing");
+    setClearConfigError("");
+
+    try {
+      await desktopBackend.clearConfigurationData();
+      const nextModelSettings = buildInitialModelSettings();
+      const nextDraft = getActiveModelProfile(nextModelSettings) ?? buildDraftModelProfile("default");
+      setModelSettings(nextModelSettings);
+      setSelectedProfileId(nextDraft.id);
+      setDraftProfile(nextDraft);
+      syncPresetSelectionForProfile(nextDraft);
+      setToken("");
+      setSaveState("idle");
+      setTestState("idle");
+      setTestMessage("");
+      setToolPolicySettings(defaultToolPolicySettings);
+      setToolPolicySaveState("idle");
+      setToolPolicyError("");
+      setWebAccessSettings(buildDefaultWebAccessSettings());
+      setWebAccessKeys({ exa: "", perplexity: "", gemini: "" });
+      setWebAccessSaveState("idle");
+      setWebAccessError("");
+      setAdvancedSettings(defaultAdvancedSettings);
+      setAdvancedSaveState("idle");
+      setAdvancedError("");
+      setClearConfigConfirm("");
+      setClearConfigState("cleared");
+      onModelSettingsChange?.(nextModelSettings);
+      onDebugConfigurationCleared?.();
+    } catch (error) {
+      setClearConfigState("error");
+      setClearConfigError(formatUnknownError(error, t("advanced.clearConfigFailed")));
+    }
+  }
+
   function updateWebAccessSettings(patch: Partial<Pick<WebAccessSettingsState, "provider" | "workflow" | "noKeyFallback" | "allowBrowserCookies">>) {
     setWebAccessSettings((settings) => ({ ...settings, ...patch }));
     setWebAccessSaveState("idle");
@@ -648,11 +721,6 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
           <h2>{t("title")}</h2>
         </div>
       </div>
-
-      <section className="settings-language-row">
-        <LanguageSelect variant="dropdown" />
-        <p className="settings-language-hint">{tCommon("language.settingsHint")}</p>
-      </section>
 
       <Tabs className="settings-tabs" defaultSelectedKey={modelProviderTab.id}>
         <Tabs.List className="settings-tab-list">
@@ -840,6 +908,22 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
           </section>
         </Tabs.Panel>
 
+        <Tabs.Panel className="settings-tab-panel" id="language">
+          <section>
+            <header className="settings-section-header">
+              <div>
+                <h3>{t("tabs.language.label")}</h3>
+                <p>{t("tabs.language.desc")}</p>
+              </div>
+            </header>
+
+            <div className="settings-language-card">
+              <LanguageSelect variant="dropdown" />
+              <p className="settings-language-hint">{tCommon("language.settingsHint")}</p>
+            </div>
+          </section>
+        </Tabs.Panel>
+
         <Tabs.Panel className="settings-tab-panel" id="character-card">
           <CharacterCardSettings
             activeCharacterId={activeCharacterId}
@@ -909,7 +993,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                   storedMemories.map((memory) => (
                     <article className="memory-recall-item" key={memory.id}>
                       <div>
-                        <span>{memory.kindLabel}</span>
+                        <span>{tCommon(`characterState.impressionKind.${memory.kind}`)}</span>
                       </div>
                       <p>{memory.text}</p>
                     </article>
@@ -1163,6 +1247,78 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
                 {advancedError ? <p className="settings-save-note error">{advancedError}</p> : null}
                 {advancedSaveState === "saved" ? <p className="settings-save-note">{t("advanced.savedNote")}</p> : null}
                 {advancedSaveState === "error" ? <p className="settings-save-note error">{t("advanced.saveFailed")}</p> : null}
+              </article>
+
+              <article className="tool-policy-mode-card debug-danger-zone">
+                <header>
+                  <div>
+                    <h4>{t("advanced.debugDangerTitle")}</h4>
+                    <p>{t("advanced.debugDangerDesc")}</p>
+                  </div>
+                  <Chip className="provider-status danger" size="sm" variant="soft">
+                    {t("advanced.debugOnly")}
+                  </Chip>
+                </header>
+
+                <div className="debug-danger-grid">
+                  <section className="debug-danger-card">
+                    <h5>{t("advanced.clearMemoryTitle")}</h5>
+                    <p>{t("advanced.clearMemoryDesc")}</p>
+                    <p className="debug-danger-warning">{t("advanced.clearMemoryWarning")}</p>
+                    <label className="settings-input">
+                      <span>{t("advanced.confirmInputLabel", { text: clearMemoryConfirmText })}</span>
+                      <input
+                        aria-label={t("advanced.clearMemoryAria")}
+                        disabled={clearMemoryState === "clearing"}
+                        onChange={(event) => {
+                          setClearMemoryConfirm(event.target.value);
+                          setClearMemoryState("idle");
+                          setClearMemoryError("");
+                        }}
+                        value={clearMemoryConfirm}
+                      />
+                    </label>
+                    <Button
+                      className="settings-secondary-action danger"
+                      isDisabled={!canClearMemory}
+                      onPress={clearDebugMemoryData}
+                      type="button"
+                    >
+                      {clearMemoryState === "clearing" ? t("advanced.clearing") : t("advanced.clearMemoryAction")}
+                    </Button>
+                    {clearMemoryState === "cleared" ? <p className="settings-save-note">{t("advanced.clearMemoryDone")}</p> : null}
+                    {clearMemoryState === "error" ? <p className="settings-save-note error">{clearMemoryError}</p> : null}
+                  </section>
+
+                  <section className="debug-danger-card">
+                    <h5>{t("advanced.clearConfigTitle")}</h5>
+                    <p>{t("advanced.clearConfigDesc")}</p>
+                    <p className="debug-danger-warning">{t("advanced.clearConfigWarning")}</p>
+                    <label className="settings-input">
+                      <span>{t("advanced.confirmInputLabel", { text: clearConfigConfirmText })}</span>
+                      <input
+                        aria-label={t("advanced.clearConfigAria")}
+                        disabled={clearConfigState === "clearing"}
+                        onChange={(event) => {
+                          setClearConfigConfirm(event.target.value);
+                          setClearConfigState("idle");
+                          setClearConfigError("");
+                        }}
+                        value={clearConfigConfirm}
+                      />
+                    </label>
+                    <Button
+                      className="settings-secondary-action danger"
+                      isDisabled={!canClearConfig}
+                      onPress={clearDebugConfigurationData}
+                      type="button"
+                    >
+                      {clearConfigState === "clearing" ? t("advanced.clearing") : t("advanced.clearConfigAction")}
+                    </Button>
+                    {clearConfigState === "cleared" ? <p className="settings-save-note">{t("advanced.clearConfigDone")}</p> : null}
+                    {clearConfigState === "error" ? <p className="settings-save-note error">{clearConfigError}</p> : null}
+                  </section>
+                </div>
               </article>
             </section>
           </Tabs.Panel>

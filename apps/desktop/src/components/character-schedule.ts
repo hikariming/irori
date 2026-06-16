@@ -1,4 +1,4 @@
-import type { CharacterCard } from "./character-cards.ts";
+import { characterPromptName, type CharacterCard } from "./character-cards.ts";
 import type { Mood } from "./character-state.ts";
 
 // 一天里一个时间条目的类别，用于上色/统计与默认效果。
@@ -53,8 +53,10 @@ const CATEGORIES: ScheduleCategory[] = [
 
 const MIN_ITEMS = 5;
 const MAX_ITEMS = 16;
-const MAX_ACTIVITY_LENGTH = 40;
-const MAX_LOCATION_LENGTH = 16;
+// 以字符计：CJK 一句话约 40 字，但拉丁语系同样字数只有六七个词，会把活动描述拦腰截断
+// （如「…the new local-」），故放宽到 80 字，让英文/日文的「正在做什么」也能完整显示。
+const MAX_ACTIVITY_LENGTH = 80;
+const MAX_LOCATION_LENGTH = 24;
 
 // 本地日期字符串 YYYY-MM-DD（按运行环境时区）。
 export function toDateStr(date: Date): string {
@@ -129,7 +131,7 @@ export function defaultDaySkeleton(characterId: string, date: string, now: numbe
 // 让 LLM 给某个角色生成一整天作息的一次性 prompt。要求结构化 JSON 数组输出。
 // 把人设的关键信息（身份/背景/核心动机/说话风格）都喂进去，作息才会贴各自的人，而不是千篇一律。
 export function composeDayScriptPrompt(card: CharacterCard, date: string): string {
-  const lines: string[] = [`你是 ${card.name}。`];
+  const lines: string[] = [`你是 ${characterPromptName(card)}。`];
   if (card.persona) {
     lines.push(`人设：${card.persona}`);
   }
@@ -247,6 +249,13 @@ export function scheduleItemPhrase(item: ScheduleItem): string {
 export function describeNowActivity(script: DayScript, atMinutes: number): string | null {
   const item = currentItem(script, atMinutes);
   return item ? scheduleItemPhrase(item) : null;
+}
+
+// 同上，但返回结构化字段而非中文短语：UI 需要按界面语言自己组词，
+// 不能把硬编码的「在」带进非中文界面（否则会出现「在deskReading…」这种混排）。
+export function currentActivityParts(script: DayScript, atMinutes: number): { activity: string; location: string } | null {
+  const item = currentItem(script, atMinutes);
+  return item ? { activity: item.activity, location: item.location } : null;
 }
 
 // 把截至 atMinutes 应该已发生的 pending 条目标记为 executed，返回新 script 与这次新执行的条目。

@@ -87,7 +87,47 @@
     "portraitAlt": "{{name}} 일러스트",
     "stickersAria": "캐릭터 스티커",
     "today": "오늘",
-    "progressAria": "모델 사고 상태"
+    "progressAria": "모델 사고 상태",
+    "progress": {
+      "statusLabel": { "queued": "준비 중", "thinking": "추론 중", "answering": "응답 중" },
+      "primary": { "queued": "준비 중", "thinking": "생각 중", "answering": "생성 중" },
+      "reasoning": "생각 중",
+      "status": {
+        "preparingContext": "컨텍스트 정리 중",
+        "startingSession": "컨텍스트 준비 완료, 로컬 Pi 세션 시작 중",
+        "requestSent": "요청을 보냈습니다. 모델의 첫 출력을 기다리는 중",
+        "awaitingOutput": "모델의 첫 출력을 기다리는 중 ({{seconds}}초)"
+      }
+    }
+  },
+  "sidebar": {
+    "listAria": "캐릭터 및 대화 기록",
+    "switcherAria": "캐릭터 전환",
+    "presence": "지금 {{activity}}",
+    "presenceAria": "{{name}}은(는) 지금 {{activity}}",
+    "activityPhrase": "{{location}}에서 {{activity}}",
+    "status": { "online": "온라인", "idle": "대기 중" },
+    "unreadLetters": "읽지 않은 편지 {{count}}통",
+    "newResults": "새 결과 {{count}}건",
+    "stateCardAria": "{{name}}의 현재 상태",
+    "defaultActivity": "오늘 일정 동기화 중",
+    "doing": "진행 중",
+    "mood": "기분",
+    "energy": "에너지",
+    "affinity": "호감도",
+    "energyAria": "에너지 {{value}}",
+    "sessions": { "title": "대화 기록", "aria": "대화 기록", "newSession": "새 세션" },
+    "groups": { "today": "오늘", "yesterday": "어제", "earlier": "이전" },
+    "footer": {
+      "aria": "설정",
+      "settings": "설정",
+      "profile": "내 프로필",
+      "skills": "스킬",
+      "schedules": "예약 작업",
+      "life": "라이프 피드",
+      "toLight": "라이트 모드로 전환",
+      "toDark": "다크 모드로 전환"
+    }
   },
   "reviewMode": {
     "default": { "label": "수동 검토", "short": "수동 검토", "description": "위험한 작업(파일 수정, 명령 실행 등)은 멈추고 허용 또는 취소를 기다려요." },

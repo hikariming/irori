@@ -30,6 +30,7 @@ import {
   buildCharacterChatPreview,
   findCharacterCard,
   loadCharacterCards,
+  localizeCharacterCards,
   type CharacterCard
 } from "./components/character-cards";
 import {
@@ -70,8 +71,10 @@ import { buildSidebarCharacters } from "./components/sidebar-model";
 import { DEFAULT_REVIEW_MODE, type ReviewMode } from "./components/review-mode-model";
 import {
   buildCharacterStateView,
+  currentActivityFields,
   currentActivityPhrase,
   getCharacterState,
+  STORAGE_KEY as CHARACTER_STATE_STORAGE_KEY,
   type CharacterState
 } from "./components/character-state";
 import { scheduleItemPhrase, type ScheduleItem } from "./components/character-schedule";
@@ -123,7 +126,7 @@ const ONBOARDING_DONE_KEY = "irori-onboarding-done";
 
 export function App() {
   // 角色第一次见到用户时自动「反问」的开场白等文案；语言跟随当前界面语言。
-  const { t } = useTranslation("companion");
+  const { t, i18n } = useTranslation("companion");
   // 记忆调试事件的文案在 settings 命名空间（与设置面板共用）。
   const { t: tMemory } = useTranslation("settings");
   const { theme, toggleTheme } = useTheme();
@@ -135,7 +138,8 @@ export function App() {
     recordCharacterTurn,
     markCharacterIntroduced,
     setCharacterSchedule,
-    advanceCharacterLife
+    advanceCharacterLife,
+    resetCharacterStates
   } = useCharacterState();
   const { ensureDayScript } = useCharacterLife();
   const {
@@ -150,7 +154,7 @@ export function App() {
   } = useCharacterMoments();
   const { letters, writingIds, reactingIds, loadAllLetters, maybeSendKeepsake, reactToKeepsake, markRead } =
     useCharacterLetters();
-  const [cards, setCards] = useState<CharacterCard[]>([]);
+  const [sourceCards, setSourceCards] = useState<CharacterCard[]>([]);
   const [activeCharacterId, setActiveCharacterId] = useState("shili");
   const [viewMode, setViewMode] = useState<"chat" | "feed" | "letters">("chat");
   const [isCharacterOpen, setIsCharacterOpen] = useState(false);
@@ -224,7 +228,18 @@ export function App() {
     setOnboardingDone(true);
     setOnboardingActive(false);
   }
-  const groupedSessions = groupChatSessions(chatSessions, { activeSessionId });
+  const groupedSessions = groupChatSessions(chatSessions, {
+    activeSessionId,
+    labels: {
+      today: t("sidebar.groups.today"),
+      yesterday: t("sidebar.groups.yesterday"),
+      earlier: t("sidebar.groups.earlier")
+    }
+  });
+  const cards = useMemo(
+    () => localizeCharacterCards(sourceCards, i18n.resolvedLanguage ?? i18n.language),
+    [sourceCards, i18n.language, i18n.resolvedLanguage]
+  );
   const effectiveLetterClock = Math.max(letterClock, Date.now());
   const canStartNewSession = canStartNewDraftSession({
     activeSessionId,
@@ -246,13 +261,16 @@ export function App() {
   const activityByCharacter = useMemo(() => {
     const activities: Record<string, string> = {};
     for (const card of cards) {
-      const activity = currentActivityPhrase(getCharacterState(characterStates, card.id), letterClock);
-      if (activity) {
-        activities[card.id] = activity;
+      // 用结构化字段在界面语言下组词，避免硬编码的「在」混进英文/日文界面（如「在deskReading…」）。
+      const parts = currentActivityFields(getCharacterState(characterStates, card.id), letterClock);
+      if (parts) {
+        activities[card.id] = parts.location
+          ? t("sidebar.activityPhrase", { activity: parts.activity, location: parts.location })
+          : parts.activity;
       }
     }
     return activities;
-  }, [cards, characterStates, letterClock]);
+  }, [cards, characterStates, letterClock, t]);
   const stateSummaryByCharacter = useMemo(() => {
     const summaries: Record<string, ReturnType<typeof buildCharacterStateView>> = {};
     for (const card of cards) {
@@ -463,12 +481,12 @@ export function App() {
     loadCharacterCards()
       .then((loaded) => {
         if (isMounted) {
-          setCards(loaded);
+          setSourceCards(loaded);
         }
       })
       .catch(() => {
         if (isMounted) {
-          setCards([]);
+          setSourceCards([]);
         }
       });
 
@@ -980,6 +998,29 @@ export function App() {
     }
   }
 
+  function handleDebugMemoryCleared() {
+    try {
+      localStorage.removeItem(CHARACTER_STATE_STORAGE_KEY);
+    } catch {
+      // localStorage may be unavailable in some environments.
+    }
+    resetCharacterStates();
+    setChatSessions([]);
+    setActiveSessionId(null);
+    setMessages([]);
+    setLatestMemoryRun(null);
+    setMemoryDebugEvents([]);
+    setSchedulesUnread(0);
+    void loadAllMoments();
+    void loadAllLetters();
+  }
+
+  function handleDebugConfigurationCleared() {
+    setModelSettings(buildInitialModelSettings());
+    setReviewMode(DEFAULT_REVIEW_MODE);
+    void desktopBackend.loadWorkspacePath().then(setWorkspacePath).catch(() => setWorkspacePath(""));
+  }
+
   async function loadChatSession(sessionId: string) {
     if (sessionId === activeSessionId || isSending) {
       return;
@@ -1481,6 +1522,8 @@ export function App() {
           memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}
           onClose={() => setIsSettingsOpen(false)}
+          onDebugConfigurationCleared={handleDebugConfigurationCleared}
+          onDebugMemoryCleared={handleDebugMemoryCleared}
           onModelSettingsChange={setModelSettings}
         />
         <UserProfilePanel

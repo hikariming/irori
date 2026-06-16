@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 type WorkspaceFolderBarProps = {
   path: string;
   isPicking?: boolean;
@@ -13,12 +15,14 @@ function FolderIcon() {
 }
 
 export function WorkspaceFolderBar({ path, isPicking = false, onChangeFolder }: WorkspaceFolderBarProps) {
+  const { t } = useTranslation("workspace");
+  const unsetLabel = t("folderBar.unset");
   return (
-    <div className="workspace-folder-bar" aria-label="当前对话工作文件夹">
+    <div className="workspace-folder-bar" aria-label={t("folderBar.aria")}>
       <FolderIcon />
-      <span className="workspace-folder-label">工作文件夹</span>
-      <span className="workspace-folder-path" title={path || "未设置"}>
-        {path || "未设置"}
+      <span className="workspace-folder-label">{t("folderBar.label")}</span>
+      <span className="workspace-folder-path" title={path || unsetLabel}>
+        {path || unsetLabel}
       </span>
       <button
         type="button"
@@ -26,7 +30,7 @@ export function WorkspaceFolderBar({ path, isPicking = false, onChangeFolder }: 
         onClick={onChangeFolder}
         disabled={isPicking}
       >
-        {isPicking ? "选择中…" : "更改"}
+        {isPicking ? t("folderBar.picking") : t("folderBar.change")}
       </button>
     </div>
   );

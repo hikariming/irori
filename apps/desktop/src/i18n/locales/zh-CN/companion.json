@@ -87,7 +87,47 @@
     "portraitAlt": "{{name}} 立绘",
     "stickersAria": "角色表情",
     "today": "今天",
-    "progressAria": "模型思考状态"
+    "progressAria": "模型思考状态",
+    "progress": {
+      "statusLabel": { "queued": "准备中", "thinking": "推理中", "answering": "生成回复" },
+      "primary": { "queued": "准备中", "thinking": "思考中", "answering": "生成中" },
+      "reasoning": "思考中",
+      "status": {
+        "preparingContext": "正在整理上下文",
+        "startingSession": "上下文已整理，正在启动本地 Pi 会话",
+        "requestSent": "请求已发送，等待模型首个输出",
+        "awaitingOutput": "等待模型首个输出（{{seconds}}s）"
+      }
+    }
+  },
+  "sidebar": {
+    "listAria": "角色与对话记录",
+    "switcherAria": "角色切换",
+    "presence": "此刻{{activity}}",
+    "presenceAria": "{{name}}此刻{{activity}}",
+    "activityPhrase": "在{{location}}{{activity}}",
+    "status": { "online": "在线", "idle": "待机" },
+    "unreadLetters": "{{count}} 封未读信",
+    "newResults": "{{count}} 条新结果",
+    "stateCardAria": "{{name}}当前状态",
+    "defaultActivity": "同步今天的作息",
+    "doing": "正在",
+    "mood": "心情",
+    "energy": "精力",
+    "affinity": "好感",
+    "energyAria": "精力 {{value}}",
+    "sessions": { "title": "对话记录", "aria": "对话记录", "newSession": "新建会话" },
+    "groups": { "today": "今天", "yesterday": "昨天", "earlier": "更早" },
+    "footer": {
+      "aria": "设置",
+      "settings": "设置",
+      "profile": "我的档案",
+      "skills": "技能",
+      "schedules": "定时任务",
+      "life": "生活圈",
+      "toLight": "切换亮色模式",
+      "toDark": "切换暗色模式"
+    }
   },
   "reviewMode": {
     "default": { "label": "手动审核", "short": "手动审核", "description": "危险操作（改文件、跑命令等）会暂停，等你点允许或取消。" },

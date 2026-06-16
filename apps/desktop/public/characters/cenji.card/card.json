@@ -41,5 +41,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "这里逻辑崩了。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "无懈可击。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Cenji",
+    "ja": "ツェンジー",
+    "ko": "천지"
   }
 }

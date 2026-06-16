@@ -1,4 +1,4 @@
-import type { CharacterCard, CharacterExample } from "./character-cards.ts";
+import { characterPromptName, type CharacterCard, type CharacterExample } from "./character-cards.ts";
 import type { ChatMessage, ChatSticker } from "./chat-model.ts";
 import type { ImpressionKind, ParsedImpression } from "./character-state.ts";
 import type { AppLanguage } from "../i18n/languages.ts";
@@ -89,13 +89,14 @@ export function composeCharacterSessionPrompt({
   userProfile,
   replyLanguage
 }: ComposeCharacterSessionPromptInput) {
+  const promptName = characterPromptName(card);
   return [
     "# Irori Chat",
     "你正在 Irori 本地桌面客户端中扮演角色，与用户进行陪伴式协作。",
     "",
     ...(replyLanguage ? ["## 回复语言", replyLanguageDirective(replyLanguage), ""] : []),
     "## 角色卡",
-    `名字：${card.name}`,
+    `名字：${promptName}`,
     `人设：${card.persona}`,
     `背景：${card.storyBackground}`,
     `核心动机：${card.coreMotivation}`,
@@ -124,7 +125,7 @@ export function composeCharacterSessionPrompt({
     memoryProtocol(),
     "",
     ...(card.examples.length > 0
-      ? ["## 对话示例", "下面是角色语气和处理方式的参考示例，模仿其风格，但不要照抄内容：", formatExamples(card.name, card.examples), ""]
+      ? ["## 对话示例", "下面是角色语气和处理方式的参考示例，模仿其风格，但不要照抄内容：", formatExamples(promptName, card.examples), ""]
       : []),
     "## 最近对话上下文",
     formatHistory(history),

@@ -12,5 +12,13 @@
   "nav": {
     "back": "返回",
     "backToMain": "返回主界面"
+  },
+  "characterState": {
+    "mood": { "calm": "平静", "warm": "温暖", "playful": "俏皮", "tired": "疲惫", "guarded": "戒备" },
+    "affinityTier": { "stranger": "初识", "familiar": "熟悉", "close": "亲近", "trusted": "信任" },
+    "energy": { "high": "充沛", "normal": "一般", "low": "偏低", "depleted": "需要休息" },
+    "meet": "见过 {{count}} 次",
+    "meetNone": "还没正式聊过",
+    "impressionKind": { "like": "ta 的喜好", "dislike": "ta 不喜欢", "fact": "关于 ta", "grudge": "我介意的事" }
   }
 }

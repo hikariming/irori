@@ -12,5 +12,13 @@
   "nav": {
     "back": "Back",
     "backToMain": "Back to main view"
+  },
+  "characterState": {
+    "mood": { "calm": "Calm", "warm": "Warm", "playful": "Playful", "tired": "Tired", "guarded": "Guarded" },
+    "affinityTier": { "stranger": "New", "familiar": "Familiar", "close": "Close", "trusted": "Trusted" },
+    "energy": { "high": "Energized", "normal": "Steady", "low": "Low", "depleted": "Needs rest" },
+    "meet": "Met {{count}} times",
+    "meetNone": "Haven't really talked yet",
+    "impressionKind": { "like": "Their likes", "dislike": "Their dislikes", "fact": "About them", "grudge": "What I mind" }
   }
 }

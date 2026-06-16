@@ -40,5 +40,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "先别急，我陪你一起看。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "这一步做得很稳。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Shili",
+    "ja": "シーリー",
+    "ko": "시리"
   }
 }

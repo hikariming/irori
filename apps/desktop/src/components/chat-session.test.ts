@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { parseCharacterCard, type CharacterCard } from "./character-cards.ts";
+import { localizeCharacterCard, parseCharacterCard, type CharacterCard } from "./character-cards.ts";
 import { composeCharacterSessionPrompt, parseCharacterReply } from "./chat-session.ts";
 import type { ChatMessage } from "./chat-model.ts";
 
@@ -60,6 +60,19 @@ test("composeCharacterSessionPrompt includes character persona, context, and sti
   assert.match(prompt, /用户：我有点卡住/);
   assert.match(prompt, /示璃：先稳住/);
   assert.match(prompt, /用户：帮我把下一步拆出来/);
+});
+
+test("composeCharacterSessionPrompt keeps source character name when UI name is localized", () => {
+  const localizedCard = localizeCharacterCard(card, "en");
+  const prompt = composeCharacterSessionPrompt({
+    card: localizedCard,
+    history: [],
+    userPrompt: "hello"
+  });
+
+  assert.equal(localizedCard.name, "Shili");
+  assert.match(prompt, /名字：示璃/);
+  assert.doesNotMatch(prompt, /名字：Shili/);
 });
 
 test("composeCharacterSessionPrompt uses the selected character card", async () => {

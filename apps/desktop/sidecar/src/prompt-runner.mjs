@@ -201,22 +201,23 @@ function toolGateStatusText(toolEvent = {}) {
   }
 }
 
-function emitRunStatus(onProgressEvent, runId, status) {
-  if (!runId || !status) {
+// 进度状态只发「状态码 + 参数」，由前端按界面语言翻译；sidecar 不再内嵌中文文案，
+// 避免界面切到英/日/韩时这条状态还是中文。statusParams 里是给 i18n 插值的值（如秒数）。
+function emitRunStatus(onProgressEvent, runId, statusCode, statusParams) {
+  if (!runId || !statusCode) {
     return;
   }
 
   onProgressEvent?.({
     runId,
     phase: "queued",
-    status
+    statusCode,
+    ...(statusParams ? { statusParams } : {})
   });
 }
 
-function modelWaitHeartbeatStatus(startedAt) {
-  const elapsedSeconds = Math.max(1, Math.ceil((Date.now() - startedAt) / 1000));
-
-  return `等待模型首个输出（${elapsedSeconds}s）`;
+function modelWaitElapsedSeconds(startedAt) {
+  return Math.max(1, Math.ceil((Date.now() - startedAt) / 1000));
 }
 
 // Each run writes its OWN gate file derived from the caller's base path, so
@@ -283,7 +284,7 @@ export async function runIroriPiPrompt({
     throw new Error("OpenAI-compatible token is required before sending a Pi prompt.");
   }
 
-  emitRunStatus(onProgressEvent, runId, "正在整理上下文");
+  emitRunStatus(onProgressEvent, runId, "preparingContext");
 
   const configuredMemoryBackend = memoryBackend
     ? null
@@ -351,7 +352,7 @@ export async function runIroriPiPrompt({
     scheduleNow: new Date().toString()
   });
 
-  emitRunStatus(onProgressEvent, runId, "上下文已整理，正在启动本地 Pi 会话");
+  emitRunStatus(onProgressEvent, runId, "startingSession");
   if (webAccessSettings !== undefined) {
     await writeWebAccessConfig({ settings: webAccessSettings });
   }
@@ -450,12 +451,12 @@ export async function runIroriPiPrompt({
   });
 
   try {
-    emitRunStatus(onProgressEvent, runId, "请求已发送，等待模型首个输出");
+    emitRunStatus(onProgressEvent, runId, "requestSent");
     if (runId && onProgressEvent && Number.isFinite(modelWaitHeartbeatMs) && modelWaitHeartbeatMs > 0) {
       const waitStartedAt = Date.now();
       heartbeatTimer = setInterval(() => {
         if (!sawModelOutput) {
-          emitRunStatus(onProgressEvent, runId, modelWaitHeartbeatStatus(waitStartedAt));
+          emitRunStatus(onProgressEvent, runId, "awaitingOutput", { seconds: modelWaitElapsedSeconds(waitStartedAt) });
         }
       }, modelWaitHeartbeatMs);
     }

@@ -87,7 +87,47 @@
     "portraitAlt": "{{name}} の立ち絵",
     "stickersAria": "キャラクターのスタンプ",
     "today": "今日",
-    "progressAria": "モデルの思考状態"
+    "progressAria": "モデルの思考状態",
+    "progress": {
+      "statusLabel": { "queued": "準備中", "thinking": "推論中", "answering": "返信中" },
+      "primary": { "queued": "準備中", "thinking": "思考中", "answering": "生成中" },
+      "reasoning": "思考中",
+      "status": {
+        "preparingContext": "コンテキストを整理中",
+        "startingSession": "コンテキストの準備完了、ローカル Pi セッションを起動中",
+        "requestSent": "リクエストを送信しました。モデルの最初の出力を待っています",
+        "awaitingOutput": "モデルの最初の出力を待っています（{{seconds}}秒）"
+      }
+    }
+  },
+  "sidebar": {
+    "listAria": "キャラクターと会話履歴",
+    "switcherAria": "キャラクター切り替え",
+    "presence": "いま{{activity}}",
+    "presenceAria": "{{name}}はいま{{activity}}",
+    "activityPhrase": "{{location}}で{{activity}}",
+    "status": { "online": "オンライン", "idle": "待機中" },
+    "unreadLetters": "未読の手紙 {{count}} 通",
+    "newResults": "新しい結果 {{count}} 件",
+    "stateCardAria": "{{name}}の現在の状態",
+    "defaultActivity": "今日のスケジュールを同期中",
+    "doing": "実行中",
+    "mood": "気分",
+    "energy": "エネルギー",
+    "affinity": "好感度",
+    "energyAria": "エネルギー {{value}}",
+    "sessions": { "title": "会話履歴", "aria": "会話履歴", "newSession": "新規セッション" },
+    "groups": { "today": "今日", "yesterday": "昨日", "earlier": "それ以前" },
+    "footer": {
+      "aria": "設定",
+      "settings": "設定",
+      "profile": "マイプロフィール",
+      "skills": "スキル",
+      "schedules": "定期タスク",
+      "life": "ライフフィード",
+      "toLight": "ライトモードに切り替え",
+      "toDark": "ダークモードに切り替え"
+    }
   },
   "reviewMode": {
     "default": { "label": "手動で確認", "short": "手動で確認", "description": "危険な操作（ファイル変更、コマンド実行など）は一時停止し、許可かキャンセルを待ちます。" },

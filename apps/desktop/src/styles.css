@@ -787,11 +787,8 @@ button {
 }
 
 .settings-page-inner {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   max-width: 1080px;
-  min-height: 0;
   padding: 0 40px;
 }
 
@@ -850,9 +847,7 @@ button {
 }
 
 .settings-tabs {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  min-height: 0;
+  display: block;
   padding: 0 0 28px;
 }
 
@@ -887,8 +882,6 @@ button {
 }
 
 .settings-tab-panel {
-  min-height: 0;
-  overflow: auto;
   padding-top: 22px;
 }
 
@@ -1268,13 +1261,17 @@ button {
   color: #2f6f68;
 }
 
-/* 设置页顶部的语言下拉行。 */
-.settings-language-row {
+/* 设置页语言标签页。 */
+.settings-language-card {
   display: flex;
   align-items: flex-end;
   flex-wrap: wrap;
   gap: 8px 16px;
-  margin: 0 0 12px;
+  max-width: 640px;
+  padding: 16px;
+  border: 1px solid rgba(42, 47, 58, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
 }
 
 .settings-language-hint {
@@ -1678,6 +1675,12 @@ button {
 }
 
 .settings-save-note.error {
+  color: #a04f41;
+}
+
+.provider-status.danger {
+  border-color: rgba(171, 78, 60, 0.2);
+  background: rgba(171, 78, 60, 0.08);
   color: #a04f41;
 }
 
@@ -4422,6 +4425,51 @@ button {
   background: rgba(171, 78, 60, 0.06);
 }
 
+.debug-danger-zone {
+  margin-top: 14px;
+  border-color: rgba(171, 78, 60, 0.2);
+  background: rgba(255, 247, 244, 0.72);
+}
+
+.debug-danger-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.debug-danger-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(171, 78, 60, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.debug-danger-card h5 {
+  margin: 0;
+  color: #763c32;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.debug-danger-card p {
+  margin: 0;
+  color: rgba(76, 80, 91, 0.72);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.debug-danger-warning {
+  padding: 9px 10px;
+  border: 1px solid rgba(171, 78, 60, 0.16);
+  border-radius: 8px;
+  background: rgba(171, 78, 60, 0.07);
+  color: #8e4538 !important;
+}
+
 .provider-actions.secondary {
   justify-content: flex-start;
 }
@@ -4610,6 +4658,10 @@ button {
   }
 
   .web-access-main {
+    grid-template-columns: 1fr;
+  }
+
+  .debug-danger-grid {
     grid-template-columns: 1fr;
   }
 
@@ -5032,10 +5084,40 @@ button {
   color: #e07a6a;
 }
 
+[data-theme="dark"] .provider-status.danger {
+  border-color: rgba(224, 122, 106, 0.22);
+  background: rgba(224, 122, 106, 0.1);
+  color: #e07a6a;
+}
+
 [data-theme="dark"] .settings-secondary-action {
   border-color: rgba(60, 196, 164, 0.18);
   background: rgba(38, 40, 50, 0.72);
   color: var(--teal-text);
+}
+
+[data-theme="dark"] .debug-danger-zone {
+  border-color: rgba(224, 122, 106, 0.22);
+  background: rgba(64, 38, 36, 0.48);
+}
+
+[data-theme="dark"] .debug-danger-card {
+  border-color: rgba(224, 122, 106, 0.18);
+  background: rgba(34, 36, 44, 0.68);
+}
+
+[data-theme="dark"] .debug-danger-card h5 {
+  color: #f0b1a6;
+}
+
+[data-theme="dark"] .debug-danger-card p {
+  color: rgba(194, 196, 207, 0.72);
+}
+
+[data-theme="dark"] .debug-danger-warning {
+  border-color: rgba(224, 122, 106, 0.2);
+  background: rgba(224, 122, 106, 0.1);
+  color: #f0b1a6 !important;
 }
 
 [data-theme="dark"] .provider-card {

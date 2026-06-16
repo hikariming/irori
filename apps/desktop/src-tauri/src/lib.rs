@@ -873,6 +873,12 @@ fn get_memory_status(app: AppHandle) -> Result<MemoryStatus, String> {
 }
 
 #[tauri::command]
+fn clear_memory_data(app: AppHandle) -> Result<(), String> {
+    clear_memory_data_at_paths(&chat_history_path(&app)?, &memory_backend_dir(&app)?)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn get_tool_policy_settings(app: AppHandle) -> Result<serde_json::Value, String> {
     read_tool_policy_settings_from_path(&tool_policy_settings_path(&app)?)
         .map_err(|error| error.to_string())
@@ -922,6 +928,22 @@ fn set_advanced_settings(
 ) -> Result<AdvancedSettings, String> {
     save_advanced_settings_to_path(&advanced_settings_path(&app)?, settings)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn clear_configuration_data(app: AppHandle) -> Result<(), String> {
+    clear_configuration_data_at_paths(
+        &settings_path(&app)?,
+        &tool_policy_settings_path(&app)?,
+        &web_access_settings_path(&app)?,
+        &review_mode_path(&app)?,
+        &missed_task_policy_path(&app)?,
+        &advanced_settings_path(&app)?,
+        &workspace_path_path(&app)?,
+        &tool_gate_config_path(&app)?,
+        &skills_root_dir(&app)?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1711,6 +1733,59 @@ fn tool_gate_config_path(app: &AppHandle) -> Result<PathBuf, String> {
         .app_data_dir()
         .map_err(|error| error.to_string())?
         .join("irori-tool-gate.json"))
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn remove_dir_if_exists(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    match fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn clear_memory_data_at_paths(
+    chat_history: &Path,
+    memory_dir: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    remove_file_if_exists(chat_history)?;
+    remove_dir_if_exists(memory_dir)?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn clear_configuration_data_at_paths(
+    model_settings: &Path,
+    tool_policy_settings: &Path,
+    web_access_settings: &Path,
+    review_mode: &Path,
+    missed_task_policy: &Path,
+    advanced_settings: &Path,
+    workspace_path: &Path,
+    tool_gate_config: &Path,
+    skills_root: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    for file in [
+        model_settings,
+        tool_policy_settings,
+        web_access_settings,
+        review_mode,
+        missed_task_policy,
+        advanced_settings,
+        workspace_path,
+        tool_gate_config,
+    ] {
+        remove_file_if_exists(file)?;
+    }
+    remove_dir_if_exists(skills_root)?;
+    Ok(())
 }
 
 fn build_memory_backend_config_payload(
@@ -4180,6 +4255,8 @@ pub fn run() {
             add_character_moment,
             add_character_moment_comment,
             append_chat_message,
+            clear_configuration_data,
+            clear_memory_data,
             companion_status,
             create_chat_session,
             create_scheduled_task,
@@ -4246,7 +4323,8 @@ mod tests {
     use super::{
         add_character_moment_comment_to_path, append_chat_message_to_path, attachment_kind,
         build_memory_backend_config_payload, build_sidecar_prompt_payload,
-        character_skill_required_tools, compute_next_run_millis, create_chat_session_at_path,
+        character_skill_required_tools, clear_configuration_data_at_paths,
+        clear_memory_data_at_paths, compute_next_run_millis, create_chat_session_at_path,
         create_skill_at_dir, delete_model_profile_at_path, delete_skill_at_dir,
         get_chat_session_from_path, get_scheduled_task_from_path, init_chat_history_at_path,
         insert_character_letter_to_path, insert_character_moment_to_path, is_valid_skill_name,
@@ -5469,6 +5547,144 @@ mod tests {
         assert_eq!(snapshot.profiles.len(), 1);
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn debug_clear_memory_removes_chat_history_and_memory_backend_dir() {
+        let chat_path = temp_chat_history_path();
+        let memory_dir = std::env::temp_dir().join(format!("irori-memory-{}", temp_path_nonce()));
+        create_chat_session_at_path(
+            &chat_path,
+            CreateChatSessionRequest {
+                character_id: "shili".to_string(),
+                title: "debug".to_string(),
+            },
+            "1000",
+        )
+        .expect("session should save");
+        fs::create_dir_all(&memory_dir).expect("memory dir should create");
+        fs::write(memory_dir.join("vectors.db"), "debug vectors").expect("vectors should save");
+
+        clear_memory_data_at_paths(&chat_path, &memory_dir).expect("memory should clear");
+
+        assert!(!chat_path.exists());
+        assert!(!memory_dir.exists());
+        assert!(list_chat_sessions_from_path(&chat_path)
+            .expect("history should reinitialize")
+            .is_empty());
+    }
+
+    #[test]
+    fn debug_clear_configuration_removes_saved_settings_and_skill_dir() {
+        let settings_path = temp_settings_path();
+        let tool_policy_path =
+            std::env::temp_dir().join(format!("irori-tool-policy-{}.json", temp_path_nonce()));
+        let web_access_path =
+            std::env::temp_dir().join(format!("irori-web-access-{}.json", temp_path_nonce()));
+        let review_mode_path =
+            std::env::temp_dir().join(format!("irori-review-mode-{}.json", temp_path_nonce()));
+        let missed_task_policy_path =
+            std::env::temp_dir().join(format!("irori-missed-policy-{}.json", temp_path_nonce()));
+        let advanced_settings_path =
+            std::env::temp_dir().join(format!("irori-advanced-{}.json", temp_path_nonce()));
+        let workspace_path =
+            std::env::temp_dir().join(format!("irori-workspace-path-{}.json", temp_path_nonce()));
+        let tool_gate_path =
+            std::env::temp_dir().join(format!("irori-tool-gate-{}.json", temp_path_nonce()));
+        let skills_root = temp_skills_root();
+
+        save_model_settings_to_path(
+            &settings_path,
+            SaveModelSettingsRequest {
+                profile_id: "local".to_string(),
+                name: "Local".to_string(),
+                base_url: "http://localhost:11434/v1".to_string(),
+                model_name: "qwen3-coder".to_string(),
+                token: Some("sk-local-abcdef".to_string()),
+                make_active: Some(true),
+            },
+        )
+        .expect("model settings should save");
+        save_tool_policy_settings_to_path(
+            &tool_policy_path,
+            serde_json::json!({ "builtinTools": { "bash": false } }),
+        )
+        .expect("tool policy should save");
+        save_web_access_settings_to_path(
+            &web_access_path,
+            SaveWebAccessSettingsRequest {
+                provider: "perplexity".to_string(),
+                workflow: "summary-review".to_string(),
+                no_key_fallback: false,
+                allow_browser_cookies: true,
+                exa_api_key: None,
+                perplexity_api_key: Some("pplx-secret".to_string()),
+                gemini_api_key: None,
+            },
+        )
+        .expect("web access should save");
+        save_review_mode_to_path(&review_mode_path, "all").expect("review mode should save");
+        save_missed_task_policy_to_path(&missed_task_policy_path, "skip")
+            .expect("missed task policy should save");
+        save_advanced_settings_to_path(
+            &advanced_settings_path,
+            AdvancedSettings {
+                enable_subagents: true,
+            },
+        )
+        .expect("advanced should save");
+        fs::write(&workspace_path, "{}").expect("workspace path should save");
+        fs::write(&tool_gate_path, "{}").expect("tool gate should save");
+        create_skill_at_dir(
+            &skills_root,
+            SaveSkillRequest {
+                name: "debug-skill".to_string(),
+                description: "debug".to_string(),
+                body: "# debug".to_string(),
+                disable_model_invocation: false,
+                allowed_tools: vec!["memory.read".to_string()],
+            },
+        )
+        .expect("skill should save");
+
+        clear_configuration_data_at_paths(
+            &settings_path,
+            &tool_policy_path,
+            &web_access_path,
+            &review_mode_path,
+            &missed_task_policy_path,
+            &advanced_settings_path,
+            &workspace_path,
+            &tool_gate_path,
+            &skills_root,
+        )
+        .expect("configuration should clear");
+
+        assert!(!settings_path.exists());
+        assert!(!tool_policy_path.exists());
+        assert!(!web_access_path.exists());
+        assert!(!review_mode_path.exists());
+        assert!(!missed_task_policy_path.exists());
+        assert!(!advanced_settings_path.exists());
+        assert!(!workspace_path.exists());
+        assert!(!tool_gate_path.exists());
+        assert!(!skills_root.exists());
+        assert_eq!(
+            read_model_settings_from_path(&settings_path)
+                .expect("default settings should load")
+                .profiles[0]
+                .has_token,
+            false
+        );
+        assert_eq!(
+            read_review_mode_from_path(&review_mode_path).expect("default review should load"),
+            "default"
+        );
+        assert!(
+            list_skills_from_dir(&skills_root)
+                .expect("missing skill dir should read empty")
+                .is_empty()
+        );
     }
 
     #[test]

@@ -57,6 +57,11 @@ export function useCharacterState() {
     desktopBackend.saveCharacterStates(next).catch(() => {});
   }, []);
 
+  const resetCharacterStates = useCallback(() => {
+    statesRef.current = {};
+    setStates({});
+  }, []);
+
   // 在发送 prompt 前调用：推进「见面/精力」状态，返回要注入的内心心声和记得的事。
   const beginCharacterTurn = useCallback(
     (card: CharacterCard): { selfState: string; memories: string[] } => {
@@ -132,6 +137,7 @@ export function useCharacterState() {
     recordCharacterTurn,
     markCharacterIntroduced,
     setCharacterSchedule,
-    advanceCharacterLife
+    advanceCharacterLife,
+    resetCharacterStates
   } as const;
 }

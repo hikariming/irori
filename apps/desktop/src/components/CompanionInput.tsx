@@ -180,7 +180,6 @@ export function CompanionInput({
           aria-label={t("input.messageAria")}
           className="composer-textarea"
           disabled={disabled}
-          maxLength={1200}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={
             disabled
@@ -198,7 +197,7 @@ export function CompanionInput({
           </div>
 
           <div className="composer-send-area">
-            <span>{draft.trim().length}/1200</span>
+            <span>{draft.trim().length}</span>
             <Button
               className="composer-send-button"
               isDisabled={!isSendable}

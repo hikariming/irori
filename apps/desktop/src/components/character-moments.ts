@@ -1,4 +1,4 @@
-import type { CharacterCard } from "./character-cards.ts";
+import { characterPromptName, type CharacterCard } from "./character-cards.ts";
 import { lifeBeatAt, type CharacterState, type Mood } from "./character-state.ts";
 import { formatMonthDayLong } from "../i18n/formatters.ts";
 
@@ -123,7 +123,7 @@ export function composeMomentPrompt(
   const { activity, angle, recentMoments = [], dayEvents = [] } = options;
   const situation = activity?.trim() || lifeBeatAt(new Date(now)).activity;
 
-  const lines: string[] = [`你是 ${card.name}。`];
+  const lines: string[] = [`你是 ${characterPromptName(card)}。`];
   if (card.persona) {
     lines.push(`人设：${card.persona}`);
   }
@@ -195,7 +195,7 @@ export function composePeerCommentPrompt(
   momentText: string,
   now: number
 ): string {
-  const lines: string[] = [`你是 ${peer.name}，和 ${authorName} 是彼此认识的朋友（你们各自生活，并不住在一起）。`];
+  const lines: string[] = [`你是 ${characterPromptName(peer)}，和 ${authorName} 是彼此认识的朋友（你们各自生活，并不住在一起）。`];
   if (peer.speakingStyle) {
     lines.push(`你平时说话的味儿：${peer.speakingStyle}`);
   }

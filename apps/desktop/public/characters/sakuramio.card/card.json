@@ -41,5 +41,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "先别硬撑。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "满分不是偶然。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Sakura Mio",
+    "ja": "桜庭 澪",
+    "ko": "사쿠라바 미오"
   }
 }

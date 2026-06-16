@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import {
   assistantProgressPrimaryText,
   assistantProgressStatusLabel,
-  assistantReasoningDisplayText,
+  assistantReasoningActive,
   type AssistantProgress
 } from "./assistant-progress-model";
 import type { CharacterChatPreview, ChatMessage } from "./chat-model";
@@ -71,9 +71,11 @@ export function CompanionChat({
   sessionKey
 }: CompanionChatProps) {
   const { t } = useTranslation("companion");
-  const statusLabel = assistantProgressStatusLabel(assistantProgress?.phase ?? "queued");
-  const primaryProgressText = assistantProgressPrimaryText(assistantProgress);
-  const reasoningDisplayText = assistantReasoningDisplayText(assistantProgress);
+  const statusLabelDescriptor = assistantProgressStatusLabel(assistantProgress?.phase ?? "queued");
+  const primaryProgressDescriptor = assistantProgressPrimaryText(assistantProgress);
+  const statusLabel = t(statusLabelDescriptor.key, statusLabelDescriptor.params);
+  const primaryProgressText = t(primaryProgressDescriptor.key, primaryProgressDescriptor.params);
+  const isReasoningActive = assistantReasoningActive(assistantProgress);
 
   const streamRef = useRef<HTMLDivElement | null>(null);
   const isPinnedToBottomRef = useRef(true);
@@ -113,7 +115,7 @@ export function CompanionChat({
       // 同一会话内只有贴着底部时才跟随；用户往上翻历史就不强行拽回。
       element.scrollTop = element.scrollHeight;
     }
-  }, [sessionKey, streamSignature, isSending, primaryProgressText, reasoningDisplayText]);
+  }, [sessionKey, streamSignature, isSending, primaryProgressText, isReasoningActive]);
 
   return (
     <section className="chat-layout" aria-label={t("chat.companionAria", { name: preview.character.name })}>
@@ -177,9 +179,9 @@ export function CompanionChat({
                 <span className="chat-progress-pulse" aria-hidden="true" />
                 <p>{primaryProgressText}</p>
               </div>
-              {reasoningDisplayText ? (
+              {isReasoningActive ? (
                 <section className="chat-progress-section" aria-label={t("chat.progressAria")}>
-                  <span>{reasoningDisplayText}</span>
+                  <span>{t("chat.progress.reasoning")}</span>
                 </section>
               ) : null}
             </div>

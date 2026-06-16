@@ -12,5 +12,13 @@
   "nav": {
     "back": "뒤로",
     "backToMain": "메인 화면으로"
+  },
+  "characterState": {
+    "mood": { "calm": "차분함", "warm": "따뜻함", "playful": "장난기", "tired": "지침", "guarded": "경계" },
+    "affinityTier": { "stranger": "처음", "familiar": "친숙함", "close": "가까움", "trusted": "신뢰" },
+    "energy": { "high": "활기참", "normal": "보통", "low": "다소 낮음", "depleted": "휴식 필요" },
+    "meet": "{{count}}번 만남",
+    "meetNone": "아직 제대로 이야기하지 않음",
+    "impressionKind": { "like": "그 사람의 취향", "dislike": "싫어하는 것", "fact": "그 사람에 대해", "grudge": "신경 쓰이는 일" }
   }
 }

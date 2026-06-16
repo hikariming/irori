@@ -13,7 +13,9 @@ export type CharacterExample = {
 
 export type CharacterCard = {
   id: string;
+  sourceName: string;
   name: string;
+  localizedNames: Record<string, string>;
   persona: string;
   storyBackground: string;
   coreMotivation: string;
@@ -43,6 +45,26 @@ function asString(value: unknown, fallback = "") {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const record: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === "string" && item.trim().length > 0) {
+      record[key] = item;
+    }
+  }
+  return record;
+}
+
+function languageLookupChain(language: string): string[] {
+  const normalized = language.trim();
+  const base = normalized.split("-")[0] ?? normalized;
+  return [normalized, base].filter((item, index, list) => item && list.indexOf(item) === index);
 }
 
 function parseExamples(value: unknown): CharacterExample[] {
@@ -86,10 +108,13 @@ export function parseCharacterCard(characterId: string, raw: Record<string, unkn
   const rawStickers = Array.isArray(assets.stickers)
     ? (assets.stickers as Array<Record<string, unknown>>)
     : [];
+  const sourceName = asString(raw.name, characterId);
 
   return {
     id: characterId,
-    name: asString(raw.name, characterId),
+    sourceName,
+    name: sourceName,
+    localizedNames: asStringRecord(raw.localizedNames),
     persona: asString(identity.persona),
     storyBackground: asString(identity.background),
     coreMotivation: asString(identity.coreMotivation),
@@ -104,6 +129,24 @@ export function parseCharacterCard(characterId: string, raw: Record<string, unkn
     },
     stickers: buildStickers(basePath, rawStickers)
   };
+}
+
+export function localizeCharacterCard(card: CharacterCard, language: string): CharacterCard {
+  for (const key of languageLookupChain(language)) {
+    const name = card.localizedNames[key];
+    if (name) {
+      return { ...card, name };
+    }
+  }
+  return { ...card, name: card.sourceName };
+}
+
+export function localizeCharacterCards(cards: CharacterCard[], language: string): CharacterCard[] {
+  return cards.map((card) => localizeCharacterCard(card, language));
+}
+
+export function characterPromptName(card: CharacterCard): string {
+  return card.sourceName || card.name;
 }
 
 export function buildCharacterChatPreview(card: CharacterCard): CharacterChatPreview {
@@ -132,6 +175,11 @@ export function buildCharacterAuthors(cards: CharacterCard[]): Record<string, Fe
 
 const fallbackCharacterCard: CharacterCard = parseCharacterCard("shili", {
   name: "示璃",
+  localizedNames: {
+    en: "Shili",
+    ja: "シーリー",
+    ko: "시리"
+  },
   identity: {
     persona: "冷静、细致、带一点柔和距离感的本地 AI 陪伴角色。"
   }

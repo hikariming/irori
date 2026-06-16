@@ -87,7 +87,47 @@
     "portraitAlt": "{{name}} portrait",
     "stickersAria": "Character stickers",
     "today": "Today",
-    "progressAria": "Model thinking status"
+    "progressAria": "Model thinking status",
+    "progress": {
+      "statusLabel": { "queued": "Preparing", "thinking": "Reasoning", "answering": "Replying" },
+      "primary": { "queued": "Preparing", "thinking": "Thinking", "answering": "Generating" },
+      "reasoning": "Thinking",
+      "status": {
+        "preparingContext": "Organizing context",
+        "startingSession": "Context ready, starting the local Pi session",
+        "requestSent": "Request sent, waiting for the model's first output",
+        "awaitingOutput": "Waiting for the model's first output ({{seconds}}s)"
+      }
+    }
+  },
+  "sidebar": {
+    "listAria": "Characters and chat history",
+    "switcherAria": "Switch character",
+    "presence": "Now {{activity}}",
+    "presenceAria": "{{name}} is now {{activity}}",
+    "activityPhrase": "{{activity}} · {{location}}",
+    "status": { "online": "Online", "idle": "Idle" },
+    "unreadLetters": "{{count}} unread letters",
+    "newResults": "{{count}} new results",
+    "stateCardAria": "{{name}}'s current state",
+    "defaultActivity": "Syncing today's schedule",
+    "doing": "Doing",
+    "mood": "Mood",
+    "energy": "Energy",
+    "affinity": "Affinity",
+    "energyAria": "Energy {{value}}",
+    "sessions": { "title": "Chat history", "aria": "Chat history", "newSession": "New session" },
+    "groups": { "today": "Today", "yesterday": "Yesterday", "earlier": "Earlier" },
+    "footer": {
+      "aria": "Settings",
+      "settings": "Settings",
+      "profile": "My profile",
+      "skills": "Skills",
+      "schedules": "Scheduled tasks",
+      "life": "Life feed",
+      "toLight": "Switch to light mode",
+      "toDark": "Switch to dark mode"
+    }
   },
   "reviewMode": {
     "default": { "label": "Manual review", "short": "Manual review", "description": "Risky actions (editing files, running commands, etc.) pause and wait for you to allow or cancel." },

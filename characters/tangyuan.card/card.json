@@ -41,5 +41,10 @@
       { "id": "worried", "src": "assets/stickers/worried.png", "textFallback": "先停一下，别硬撑。" },
       { "id": "proud", "src": "assets/stickers/proud.png", "textFallback": "做到了，真的很漂亮。" }
     ]
+  },
+  "localizedNames": {
+    "en": "Tangyuan",
+    "ja": "タンユエン",
+    "ko": "탕위안"
   }
 }

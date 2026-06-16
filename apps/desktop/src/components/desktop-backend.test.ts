@@ -34,6 +34,100 @@ test("preview backend round-trips advanced settings and defaults subagents off",
   assert.equal((await backend.loadAdvancedSettings()).enableSubagents, true);
 });
 
+test("preview backend clears all debug memory data", async () => {
+  const backend = createPreviewBackend();
+  const session = await backend.createChatSession({ characterId: "shili", title: "debug" });
+  await backend.appendChatMessage({
+    sessionId: session.id,
+    speaker: "user",
+    author: "你",
+    text: "remember this"
+  });
+  await backend.saveCharacterStates({
+    shili: {
+      affinity: 80,
+      trust: 75,
+      mood: "focused",
+      energy: 42,
+      lastInteractionAt: 123,
+      introducedAt: 123,
+      impressions: [{ id: "m1", text: "用户喜欢调试", weight: 1, createdAt: 123, updatedAt: 123 }]
+    }
+  });
+  await backend.addCharacterMoment({ characterId: "shili", text: "调试动态" });
+  await backend.addCharacterLetter({
+    characterId: "shili",
+    subject: "调试信",
+    body: "调试内容",
+    deliverAt: new Date().toISOString()
+  });
+  await backend.createScheduledTask({
+    characterId: "shili",
+    title: "调试任务",
+    prompt: "run",
+    scheduleKind: "daily",
+    scheduleSpec: "20:00",
+    enabled: true
+  });
+
+  await backend.clearMemoryData();
+
+  assert.deepEqual(await backend.loadCharacterStates(), {});
+  assert.deepEqual(await backend.listChatSessions(), []);
+  assert.deepEqual(await backend.listCharacterMoments(), []);
+  assert.deepEqual(await backend.listCharacterLetters(), []);
+  assert.deepEqual(await backend.listScheduledTasks(), []);
+});
+
+test("preview backend clears all debug configuration data", async () => {
+  const backend = createPreviewBackend();
+  await backend.saveModelSettings({
+    profileId: "local",
+    name: "Local",
+    baseUrl: "http://localhost:11434/v1",
+    modelName: "qwen3-coder",
+    token: "sk-local-abcdef",
+    makeActive: true
+  });
+  await backend.saveWebAccessSettings({
+    provider: "perplexity",
+    workflow: "summary-review",
+    noKeyFallback: false,
+    allowBrowserCookies: true,
+    perplexityApiKey: "pplx-secret-abcdef"
+  });
+  await backend.saveToolPolicySettings({
+    builtinTools: { read: true, grep: false, find: false, ls: true, bash: false, edit: false, write: false },
+    customTools: { "memory.read": false, "memory.write": false, "web.fetch": false, "web.search": false, "browser.view": false, "browser.action": false },
+    confirmTools: { bash: false, edit: false, write: false, "memory.write": false, "browser.action": false },
+    protectedPaths: ["secret"]
+  });
+  await backend.saveAdvancedSettings({ enableSubagents: true });
+  await backend.saveReviewMode("all");
+  await backend.saveMissedTaskPolicy("skip");
+  await backend.createSkill({
+    name: "debug-skill",
+    description: "debug",
+    body: "# debug",
+    disableModelInvocation: false,
+    allowedTools: ["memory.read"]
+  });
+
+  await backend.clearConfigurationData();
+
+  const model = await backend.loadModelSettings();
+  assert.equal(model.activeModelId, "default");
+  assert.equal(model.profiles.length, 1);
+  assert.equal(model.profiles[0].hasToken, false);
+  assert.equal((await backend.getWebAccessSettings()).provider, "auto");
+  assert.equal((await backend.getWebAccessSettings()).perplexityHasKey, false);
+  assert.equal((await backend.getToolPolicySettings()).builtinTools.bash, true);
+  assert.equal((await backend.loadAdvancedSettings()).enableSubagents, false);
+  assert.equal(await backend.loadReviewMode(), "default");
+  assert.equal(await backend.loadMissedTaskPolicy(), "catchup");
+  assert.deepEqual(await backend.listSkills(), []);
+});
+
 test("preview backend saves web access settings without returning raw keys", async () => {
   const backend = createPreviewBackend();
 
