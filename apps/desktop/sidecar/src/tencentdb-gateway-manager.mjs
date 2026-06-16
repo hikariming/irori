@@ -214,6 +214,9 @@ export function createGatewayManager(options = {}) {
       cwd: pkgDir,
       env: gatewayEnv({ dataDir, port, host, llm, extraEnv }),
       detached: true,
+      // The desktop app is a GUI process with no console, so a console-subsystem
+      // child (node) would flash its own black cmd window on Windows. Hide it.
+      windowsHide: true,
       stdio: ["ignore", out, err]
     });
 

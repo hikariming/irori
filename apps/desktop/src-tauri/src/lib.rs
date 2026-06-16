@@ -1228,12 +1228,29 @@ fn run_sidecar_prompt(
     execute_sidecar_prompt(sidecar_runtime, payload)
 }
 
+/// On Windows a GUI app has no console, so each console-subsystem child (node)
+/// would pop its own black cmd window. CREATE_NO_WINDOW suppresses it. No-op
+/// elsewhere.
+fn hide_console_window(command: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = command;
+    }
+}
+
 fn execute_sidecar_prompt(
     runtime: SidecarRuntime,
     payload: serde_json::Value,
 ) -> Result<PiPromptResponse, String> {
     let mut command = Command::new(&runtime.node_path);
     command.current_dir(&runtime.sidecar_dir);
+    hide_console_window(&mut command);
     for arg in sidecar_prompt_command_args(&runtime.sidecar_dir) {
         command.arg(arg);
     }
@@ -1369,6 +1386,7 @@ fn execute_sidecar_prompt_streaming(
 ) -> Result<PiPromptResponse, String> {
     let mut command = Command::new(&runtime.node_path);
     command.current_dir(&runtime.sidecar_dir);
+    hide_console_window(&mut command);
     for arg in sidecar_prompt_command_args(&runtime.sidecar_dir) {
         command.arg(arg);
     }
@@ -1866,7 +1884,7 @@ fn node_command_path(app: &AppHandle) -> PathBuf {
 
 fn bundled_node_path(app: &AppHandle) -> Option<PathBuf> {
     let file_name = if cfg!(windows) { "node.exe" } else { "node" };
-    let resource_dir = app.path().resource_dir().ok()?;
+    let resource_dir = resource_dir_simplified(app)?;
 
     resolve_bundled_node_path(&resource_dir, file_name)
 }
@@ -1893,9 +1911,20 @@ fn sidecar_dir(app: &AppHandle) -> PathBuf {
 }
 
 fn bundled_sidecar_dir(app: &AppHandle) -> Option<PathBuf> {
-    let resource_dir = app.path().resource_dir().ok()?;
+    let resource_dir = resource_dir_simplified(app)?;
 
     resolve_bundled_sidecar_dir(&resource_dir)
+}
+
+/// tauri's `resource_dir()` canonicalizes the exe path, so on Windows it returns
+/// a verbatim `\\?\C:\...` path. That prefix is fine for Rust I/O but breaks
+/// node.exe: when such a path is passed as the script argument, node's
+/// `realpathSync` main-module resolver collapses it and crashes with
+/// `EISDIR: lstat 'C:'`. `dunce::simplified` drops the prefix when it is safe,
+/// yielding a plain path node can resolve. No-op on non-Windows.
+fn resource_dir_simplified(app: &AppHandle) -> Option<PathBuf> {
+    let resource_dir = app.path().resource_dir().ok()?;
+    Some(dunce::simplified(&resource_dir).to_path_buf())
 }
 
 fn resolve_bundled_sidecar_dir(resource_dir: &Path) -> Option<PathBuf> {

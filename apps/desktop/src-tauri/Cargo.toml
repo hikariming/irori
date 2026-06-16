@@ -1,6 +1,6 @@
 [package]
 name = "irori"
-version = "0.2.0"
+version = "0.2.1"
 description = "Irori desktop shell"
 authors = ["Irori"]
 edition = "2021"
@@ -16,6 +16,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 chrono = { version = "0.4", features = ["clock"] }
 cron = "0.12"
+# Strips the Windows verbatim `\\?\` prefix that tauri's canonicalized
+# resource_dir() carries; node.exe's main-module resolver chokes on it.
+dunce = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
