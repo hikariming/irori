@@ -10,7 +10,6 @@ Prototype checked: `http://127.0.0.1:1430/`
 
 - Site runs as a Next.js App Router app under `apps/site/app`.
 - Hero uses a character-led anime background and the real Irori logo from `apps/desktop/src-tauri/icons/icon.png`.
-- Hero includes the requested real system screenshot captured from the desktop React app preview.
 - Language switcher works for Chinese, English, Japanese, and Korean.
 - Feature, overview, character, and open-source CTA sections are present.
 - Desktop viewport checked at 1280x720.

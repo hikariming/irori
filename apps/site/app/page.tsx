@@ -13,9 +13,6 @@ type Copy = {
   primaryCta: string;
   secondaryCta: string;
   githubBadge: string;
-  screenshotKicker: string;
-  screenshotTitle: string;
-  screenshotBody: string;
   badges: string[];
   featuresTitle: string;
   featuresLead: string;
@@ -41,10 +38,6 @@ const copy: Record<Locale, Copy> = {
     primaryCta: "下载 Irori",
     secondaryCta: "查看 GitHub",
     githubBadge: "Apache-2.0 开源",
-    screenshotKicker: "真实系统截图",
-    screenshotTitle: "不是聊天皮肤，而是一个角色驱动的工作台。",
-    screenshotBody:
-      "Irori 把 Tauri 桌面端、Pi agent runtime、角色卡、本地记忆和工具确认流程放在同一个空间里。每个角色都有独立语气、状态和协作方式。",
     badges: ["角色卡", "本地记忆", "模型预设", "工具安全"],
     featuresTitle: "为长期陪伴和认真协作而做",
     featuresLead: "Irori 的重点不是让模型换个头像，而是让角色、上下文和工作流都能稳定沉淀在你的本地设备上。",
@@ -95,10 +88,6 @@ const copy: Record<Locale, Copy> = {
     primaryCta: "Download Irori",
     secondaryCta: "View on GitHub",
     githubBadge: "Apache-2.0 open source",
-    screenshotKicker: "Real app screenshot",
-    screenshotTitle: "Not a chat skin. A character-driven workspace.",
-    screenshotBody:
-      "Irori brings a Tauri desktop shell, Pi agent runtime, character cards, local memory, and confirmation flows into one companion workspace.",
     badges: ["Character Cards", "Local Memory", "Model Presets", "Tool Safety"],
     featuresTitle: "Built for long-term companionship and serious work",
     featuresLead:
@@ -152,10 +141,6 @@ const copy: Record<Locale, Copy> = {
     primaryCta: "Irori をダウンロード",
     secondaryCta: "GitHub を見る",
     githubBadge: "Apache-2.0 オープンソース",
-    screenshotKicker: "実際のアプリ画面",
-    screenshotTitle: "ただのチャット外観ではなく、キャラクター中心の作業空間。",
-    screenshotBody:
-      "Irori は Tauri デスクトップ、Pi agent runtime、キャラクターカード、ローカル記憶、確認フローを一つの空間にまとめます。",
     badges: ["キャラクターカード", "ローカル記憶", "モデルプリセット", "ツール安全性"],
     featuresTitle: "長く寄り添い、真面目に協作するために",
     featuresLead:
@@ -208,10 +193,6 @@ const copy: Record<Locale, Copy> = {
     primaryCta: "Irori 다운로드",
     secondaryCta: "GitHub 보기",
     githubBadge: "Apache-2.0 오픈소스",
-    screenshotKicker: "실제 앱 스크린샷",
-    screenshotTitle: "채팅 스킨이 아니라 캐릭터가 이끄는 작업 공간입니다.",
-    screenshotBody:
-      "Irori는 Tauri 데스크톱, Pi agent runtime, 캐릭터 카드, 로컬 기억, 도구 확인 흐름을 하나의 companion workspace로 묶습니다.",
     badges: ["캐릭터 카드", "로컬 기억", "모델 프리셋", "도구 안전"],
     featuresTitle: "오래 함께하고 진지하게 협업하기 위해",
     featuresLead:
@@ -334,33 +315,12 @@ export default function App() {
               </div>
               <p className="open-source-badge">{t.githubBadge}</p>
             </div>
-            <div className="product-stage" aria-label={t.screenshotKicker}>
-              <div className="window-bar">
-                <span />
-                <span />
-                <span />
-                <strong>Irori Desktop</strong>
-              </div>
-              <img
-                className="system-shot"
-                src="/assets/irori-system-screenshot.png"
-                alt={t.screenshotKicker}
-              />
-            </div>
           </div>
           <div className="fold-peek">
             {t.badges.map((badge) => (
               <span key={badge}>{badge}</span>
             ))}
           </div>
-        </section>
-
-        <section className="screenshot-story">
-          <div>
-            <p className="section-kicker">{t.screenshotKicker}</p>
-            <h2>{t.screenshotTitle}</h2>
-          </div>
-          <p>{t.screenshotBody}</p>
         </section>
 
         <section className="features" id="features">

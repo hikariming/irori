@@ -143,9 +143,8 @@ a {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(280px, 460px) minmax(520px, 1fr);
+  grid-template-columns: minmax(280px, 620px);
   align-items: center;
-  gap: 52px;
   width: min(1180px, 100%);
   margin: 0 auto;
 }
@@ -222,59 +221,6 @@ a {
   letter-spacing: 0;
 }
 
-.product-stage {
-  overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.74);
-  border-radius: 28px;
-  background: rgba(37, 29, 26, 0.72);
-  box-shadow:
-    0 34px 80px rgba(47, 41, 35, 0.28),
-    0 0 0 1px rgba(67, 42, 31, 0.16);
-  transform: translateY(78px);
-}
-
-.window-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 42px;
-  padding: 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.78rem;
-}
-
-.window-bar span {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-}
-
-.window-bar span:nth-child(1) {
-  background: #f27768;
-}
-
-.window-bar span:nth-child(2) {
-  background: #f5bf52;
-}
-
-.window-bar span:nth-child(3) {
-  background: #63c37b;
-}
-
-.window-bar strong {
-  margin-left: 8px;
-  font-weight: 760;
-}
-
-.system-shot {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  object-position: center top;
-}
-
 .fold-peek {
   position: absolute;
   z-index: 2;
@@ -300,7 +246,6 @@ a {
   backdrop-filter: blur(18px);
 }
 
-.screenshot-story,
 .features,
 .overview,
 .characters,
@@ -309,15 +254,6 @@ a {
   margin: 0 auto;
 }
 
-.screenshot-story {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.85fr) 1fr;
-  gap: 64px;
-  padding: 72px 0 44px;
-  border-top: 1px solid rgba(80, 54, 40, 0.12);
-}
-
-.screenshot-story h2,
 .section-heading h2,
 .character-copy h2,
 .download h2 {
@@ -328,7 +264,6 @@ a {
   letter-spacing: 0;
 }
 
-.screenshot-story p:not(.section-kicker),
 .section-heading p,
 .character-copy p,
 .download p {
@@ -549,10 +484,6 @@ footer {
     padding-top: 360px;
   }
 
-  .product-stage {
-    transform: none;
-  }
-
   .fold-peek {
     position: relative;
     bottom: auto;
@@ -560,7 +491,6 @@ footer {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .screenshot-story,
   .section-heading,
   .characters {
     grid-template-columns: 1fr;
@@ -623,18 +553,6 @@ footer {
     flex: 1 1 180px;
   }
 
-  .product-stage {
-    border-radius: 18px;
-  }
-
-  .window-bar {
-    height: 34px;
-  }
-
-  .window-bar strong {
-    font-size: 0.72rem;
-  }
-
   .fold-peek {
     width: 100%;
     grid-template-columns: 1fr 1fr;
@@ -647,7 +565,6 @@ footer {
     font-size: 0.8rem;
   }
 
-  .screenshot-story,
   .features,
   .overview,
   .characters,
