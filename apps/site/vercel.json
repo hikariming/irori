@@ -1,5 +1,4 @@
 {
   "buildCommand": "pnpm --dir apps/site build",
-  "outputDirectory": "apps/site/dist",
   "installCommand": "pnpm install"
 }

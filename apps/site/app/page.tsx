@@ -1,6 +1,6 @@
-import { StrictMode, useMemo, useState } from "react";
-import { createRoot } from "react-dom/client";
-import "./styles.css";
+"use client";
+
+import { useMemo, useState } from "react";
 
 type Locale = "zh" | "en" | "ja" | "ko";
 
@@ -276,7 +276,7 @@ function initialLocale(): Locale {
   return "zh";
 }
 
-function App() {
+export default function App() {
   const [locale, setLocale] = useState<Locale>(() => initialLocale());
   const t = copy[locale];
   const documentLang = useMemo(() => {
@@ -436,9 +436,3 @@ function App() {
     </div>
   );
 }
-
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-);

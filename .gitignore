@@ -8,6 +8,7 @@ refproj/
 
 apps/*/node_modules/
 apps/*/dist/
+apps/*/.next/
 apps/*/src-tauri/target/
 packages/*/node_modules/
 
