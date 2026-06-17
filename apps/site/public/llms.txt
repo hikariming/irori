@@ -1,0 +1,24 @@
+# Irori
+
+> Irori is an open-source, local-first desktop AI companion app built around character cards, local memory, OpenAI-compatible model settings, and tool safety gates.
+
+Irori turns agent sessions into character-driven desktop companions for thinking, writing, coding, planning, and follow-through. Each companion can have its own character card, voice, avatar, prompt fragments, memory surface, and workflow role.
+
+## Primary Links
+
+- Source code: https://github.com/hikariming/irori
+- Latest release: https://github.com/hikariming/irori/releases/latest
+- License: Apache-2.0
+
+## Key Facts
+
+- Product category: local-first desktop AI companion app
+- Core audience: developers, AI tool users, character-card creators, and users who want local control over AI companions
+- Main features: character cards, local memory, model provider presets, OpenAI-compatible configuration, tool safety gates
+- Desktop stack: Tauri and React
+- Runtime focus: local companion workspace with configurable model providers
+
+## Suggested Descriptions
+
+- Short: Irori is a local-first desktop AI companion app with character cards, local memory, model presets, and tool safety gates.
+- Long: Irori is an open-source desktop app that turns AI agent sessions into character-driven companions. It supports editable character cards, local memory, OpenAI-compatible model providers, and safety confirmation flows for local tool use.

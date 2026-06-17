@@ -245,6 +245,40 @@ const locales: Array<{ id: Locale; label: string }> = [
 ];
 
 const githubUrl = "https://github.com/hikariming/irori";
+const releaseUrl = "https://github.com/hikariming/irori/releases/latest";
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? githubUrl).replace(/\/$/, "");
+
+const softwareApplicationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Irori",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "macOS, Windows, Linux",
+  description:
+    "Irori is an open-source, local-first desktop AI companion app with character cards, local memory, OpenAI-compatible model settings, and tool safety gates.",
+  url: siteUrl,
+  image: `${siteUrl}/assets/irori-character-hero.png`,
+  codeRepository: githubUrl,
+  downloadUrl: releaseUrl,
+  softwareVersion: "0.2.1",
+  license: "https://www.apache.org/licenses/LICENSE-2.0",
+  isAccessibleForFree: true,
+  inLanguage: ["zh-CN", "en", "ja", "ko"],
+  featureList: [
+    "Character cards",
+    "Local-first memory",
+    "OpenAI-compatible model provider settings",
+    "Tool safety gates",
+    "Tauri desktop shell"
+  ],
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+    url: releaseUrl
+  },
+  sameAs: [githubUrl]
+};
 
 function initialLocale(): Locale {
   if (typeof navigator === "undefined") {
@@ -270,6 +304,10 @@ export default function App() {
 
   return (
     <div className="site-shell">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationJsonLd) }}
+      />
       <header className="topbar" aria-label="Primary navigation">
         <a className="brand" href="#top" aria-label="Irori home">
           <img src="/assets/irori-logo.png" alt="" />
@@ -281,7 +319,9 @@ export default function App() {
           <a href={githubUrl} target="_blank" rel="noreferrer">
             {t.nav[2]}
           </a>
-          <a href="#download">{t.nav[3]}</a>
+          <a href={releaseUrl} target="_blank" rel="noreferrer">
+            {t.nav[3]}
+          </a>
         </nav>
         <div className="language-switcher" aria-label={t.langLabel}>
           {locales.map((item) => (
@@ -306,7 +346,7 @@ export default function App() {
               <h1>{t.title}</h1>
               <p className="subtitle">{t.subtitle}</p>
               <div className="hero-actions">
-                <a className="button primary" href="#download">
+                <a className="button primary" href={releaseUrl} target="_blank" rel="noreferrer">
                   {t.primaryCta}
                 </a>
                 <a className="button secondary" href={githubUrl} target="_blank" rel="noreferrer">
@@ -380,11 +420,11 @@ export default function App() {
           <h2>{t.ctaTitle}</h2>
           <p>{t.ctaBody}</p>
           <div className="hero-actions">
-            <a className="button primary" href={githubUrl} target="_blank" rel="noreferrer">
-              {t.secondaryCta}
-            </a>
-            <a className="button secondary" href="#top">
+            <a className="button primary" href={releaseUrl} target="_blank" rel="noreferrer">
               {t.primaryCta}
+            </a>
+            <a className="button secondary" href={githubUrl} target="_blank" rel="noreferrer">
+              {t.secondaryCta}
             </a>
           </div>
         </section>
