@@ -2,6 +2,8 @@
 
 ![Irori hero banner](apps/desktop/public/assets/readme-hero.png)
 
+> **Your local-first anime AI companion that actually gets work done.**
+
 **Irori** is a local-first desktop companion app built around the [Pi coding-agent SDK](https://www.npmjs.com/package/@earendil-works/pi-coding-agent). It turns agent sessions into character-driven companions: each character has a card, personality, memory surface, model settings, and a workflow role that can help you think, write, code, plan, and follow through.
 
 [中文说明](README.zh-CN.md)
@@ -14,6 +16,32 @@
 - **Model provider presets.** The desktop app includes preset provider/model options and OpenAI-compatible configuration fields for common model services.
 - **Desktop-first experience.** Irori is a Tauri + React app with a native desktop shell, local sidecar runtime, safety confirmation gate, and multilingual onboarding.
 - **Customizable role cards.** Swap, edit, or create character cards with your favorite original characters, personas, or working partners.
+
+## How Irori Compares
+
+There are great tools for chatting with characters and for talking to a desktop waifu. Irori's difference is that the companion **gets work done** — it runs on an agent runtime, keeps local memory, and ships as a native desktop app.
+
+| | **Irori** | **SillyTavern** | **Open-LLM-VTuber** | **OpenClaw** |
+|---|---|---|---|---|
+| Primary focus | Anime companion that does real work | Roleplay & chat frontend | Voice-interactive VTuber companion | General AI agent / automation |
+| Native local-first desktop app | ✅ Tauri shell | ⚠️ Self-hosted web UI | ⚠️ Self-hosted web/desktop | ⚠️ Mostly terminal / web |
+| Agentic work (write · code · plan · follow-through) | ✅ Stronger code & task execution on the Pi agent SDK | ❌ Chat only | ❌ Chat only | ✅ General agent |
+| Anime character companion | ✅ Core experience | ⚠️ Roleplay-oriented | ✅ | ❌ |
+| Character cards | ✅ Editable schema + prompt composition | ✅ | ⚠️ Limited | ❌ |
+| Local memory & context | ✅ Built-in, local-first | ⚠️ Via extensions | ⚠️ Session-based | ⚠️ Varies |
+| Tool use & safety gate | ✅ Confirmation policy + protected paths | ❌ | ❌ | ⚠️ Varies |
+| Voice / Live2D avatar | 🔜 On the roadmap | ⚠️ Via extensions | ✅ Core feature | ❌ |
+| Multi-channel integrations (Discord, etc.) | 🔜 On the roadmap | ⚠️ Via extensions | ⚠️ | ⚠️ Varies |
+| Companion mobile app | 🔜 On the roadmap | ❌ | ❌ | ❌ |
+| Best for | A companion that helps you think, write, and ship | Immersive roleplay | Talking to a desktop waifu | Headless task automation |
+
+If you want immersive roleplay, SillyTavern is excellent. If you want a talking Live2D avatar, Open-LLM-VTuber is excellent. If you want raw headless automation, OpenClaw fits. Irori is the one that pairs a real **anime character companion** with **stronger coding and task-execution ability** in a native, local-first desktop app — and channel integrations and a mobile app are on the roadmap.
+
+### Roadmap
+
+- **Multi-channel access** — bring your companion into channels like Discord and other chat surfaces.
+- **Companion mobile app** — keep the same character, memory, and workflow on your phone.
+- **Voice & Live2D** — give companions a face and a voice.
 
 ## Screens and Flow
 
