@@ -23,19 +23,19 @@ There are great tools for chatting with characters and for talking to a desktop 
 
 | | **Irori** | **SillyTavern** | **Open-LLM-VTuber** | **OpenClaw** |
 |---|---|---|---|---|
-| Primary focus | Anime companion that does real work | Roleplay & chat frontend | Voice-interactive VTuber companion | General AI agent / automation |
-| Native local-first desktop app | ✅ Tauri shell | ⚠️ Self-hosted web UI | ⚠️ Self-hosted web/desktop | ⚠️ Mostly terminal / web |
-| Agentic work (write · code · plan · follow-through) | ✅ Stronger code & task execution on the Pi agent SDK | ❌ Chat only | ❌ Chat only | ✅ General agent |
-| Anime character companion | ✅ Core experience | ⚠️ Roleplay-oriented | ✅ | ❌ |
-| Character cards | ✅ Editable schema + prompt composition | ✅ | ⚠️ Limited | ❌ |
-| Local memory & context | ✅ Built-in, local-first | ⚠️ Via extensions | ⚠️ Session-based | ⚠️ Varies |
-| Tool use & safety gate | ✅ Confirmation policy + protected paths | ❌ | ❌ | ⚠️ Varies |
+| Primary focus | Anime companion that does real work | Roleplay & chat frontend | Voice-interactive VTuber companion | General coding / automation agent |
+| Native desktop app | ✅ Tauri shell | ⚠️ Local web UI | ⚠️ Web / desktop | ⚠️ Terminal / CLI-first |
+| Agentic work (write · code · plan · follow-through) | ✅ Tuned for code & complex tasks | ❌ Chat only | ❌ Chat only | ✅ General agent |
+| Anime character companion | ✅ Core experience | ✅ | ✅ | ❌ |
+| Character cards | ✅ Editable schema + prompt composition | ✅ | ✅ | ❌ |
+| Local memory & context | ✅ Built-in, local-first | ✅ Lorebook / world info | ✅ | ✅ |
+| Tool use & safety gate | ✅ Confirmation policy + protected paths | ❌ | ❌ | ✅ Tool use |
 | Voice / Live2D avatar | 🔜 On the roadmap | ⚠️ Via extensions | ✅ Core feature | ❌ |
-| Multi-channel integrations (Discord, etc.) | 🔜 On the roadmap | ⚠️ Via extensions | ⚠️ | ⚠️ Varies |
-| Companion mobile app | 🔜 On the roadmap | ❌ | ❌ | ❌ |
+| Multi-channel integrations (Discord, etc.) | 🔜 On the roadmap | ⚠️ Via extensions | ⚠️ | ⚠️ |
+| Companion mobile app | 🔜 On the roadmap | ⚠️ Mobile browser | ⚠️ Mobile browser | ❌ |
 | Best for | A companion that helps you think, write, and ship | Immersive roleplay | Talking to a desktop waifu | Headless task automation |
 
-If you want immersive roleplay, SillyTavern is excellent. If you want a talking Live2D avatar, Open-LLM-VTuber is excellent. If you want raw headless automation, OpenClaw fits. Irori is the one that pairs a real **anime character companion** with **stronger coding and task-execution ability** in a native, local-first desktop app — and channel integrations and a mobile app are on the roadmap.
+These are all good tools in their own lanes: SillyTavern for immersive roleplay, Open-LLM-VTuber for a talking Live2D avatar, OpenClaw for headless automation. Irori's niche is pairing a real **anime character companion** with an agent **tuned for code and complex tasks** in a native desktop app — with channel integrations and a mobile app on the roadmap.
 
 ### Roadmap
 
