@@ -55,6 +55,7 @@ type SystemSettingsPanelProps = {
   characterPreferences?: CharacterPreferences;
   characterStates?: CharacterStates;
   onCharacterPreferenceChange?: (characterId: string, patch: Partial<CharacterPreference>) => void;
+  onCharacterCardsChanged?: () => void | Promise<void>;
   isOpen: boolean;
   latestMemoryRun?: MemoryRunSnapshot | null;
   memoryDebugEvents?: MemoryDebugEvent[];
@@ -64,7 +65,7 @@ type SystemSettingsPanelProps = {
   onModelSettingsChange?: (settings: ModelSettingsState) => void;
 };
 
-export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, isOpen, latestMemoryRun, memoryDebugEvents = [], onDebugConfigurationCleared, onDebugMemoryCleared, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
+export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], characterPreferences = {}, characterStates = {}, onCharacterPreferenceChange, onCharacterCardsChanged, isOpen, latestMemoryRun, memoryDebugEvents = [], onDebugConfigurationCleared, onDebugMemoryCleared, onClose, onModelSettingsChange }: SystemSettingsPanelProps) {
   const { t: tCommon } = useTranslation("common");
   const { t } = useTranslation("settings");
   const tabs = buildSettingsTabs();
@@ -931,6 +932,7 @@ export function SystemSettingsPanel({ activeCharacterId = "shili", cards = [], c
             preferences={characterPreferences}
             states={characterStates}
             onPreferenceChange={onCharacterPreferenceChange}
+            onCardsChanged={onCharacterCardsChanged}
           />
         </Tabs.Panel>
 

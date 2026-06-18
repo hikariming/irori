@@ -1,3 +1,5 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
+
 import {
   requiredStickerIds,
   stickerMeta,
@@ -11,6 +13,9 @@ export type CharacterExample = {
   reply: string;
 };
 
+// 角色卡来源：内置（打包进 public/characters，只读）或用户（app_data_dir/user-characters，可增删改）。
+export type CharacterCardOrigin = "bundled" | "user";
+
 export type CharacterCard = {
   id: string;
   sourceName: string;
@@ -23,6 +28,7 @@ export type CharacterCard = {
   interactionPrinciples: string[];
   examples: CharacterExample[];
   themeColor: string;
+  origin: CharacterCardOrigin;
   assets: {
     avatar: string;
     portrait: string;
@@ -30,6 +36,20 @@ export type CharacterCard = {
   };
   stickers: ChatSticker[];
 };
+
+// 解析时把卡内相对资源路径转成可加载的 URL。内置卡用 fetch 路径，用户卡用 asset 协议。
+type AssetResolver = (src: string) => string;
+
+// 用户卡的资源解析器：把相对路径 join 到磁盘目录后过 convertFileSrc（asset://）；
+// 已经是 data:/http:/绝对路径的（预览态或外链）原样返回。
+function makeUserAssetResolver(dir: string): AssetResolver {
+  return (src: string) => {
+    if (!src || src.startsWith("data:") || src.startsWith("http") || src.startsWith("/")) {
+      return src;
+    }
+    return convertFileSrc(`${dir}/${src}`);
+  };
+}
 
 function cardBasePath(characterId: string) {
   return `/characters/${characterId}.card`;
@@ -81,7 +101,7 @@ function parseExamples(value: unknown): CharacterExample[] {
 }
 
 function buildStickers(
-  basePath: string,
+  resolve: AssetResolver,
   rawStickers: Array<Record<string, unknown>>
 ): ChatSticker[] {
   const byId = new Map(rawStickers.map((sticker) => [asString(sticker.id), sticker] as const));
@@ -95,14 +115,25 @@ function buildStickers(
       emotion: id,
       intent: meta.intent,
       label: meta.label,
-      src: resolveAsset(basePath, asString(raw.src, `assets/stickers/${id}.png`)),
+      src: resolve(asString(raw.src, `assets/stickers/${id}.png`)),
       textFallback: asString(raw.textFallback)
     };
   });
 }
 
-export function parseCharacterCard(characterId: string, raw: Record<string, unknown>): CharacterCard {
+export type ParseCharacterCardOptions = {
+  origin?: CharacterCardOrigin;
+  // 自定义资源解析器；缺省时按内置卡的 /characters/<id>.card 路径解析。
+  resolveAssetPath?: AssetResolver;
+};
+
+export function parseCharacterCard(
+  characterId: string,
+  raw: Record<string, unknown>,
+  options: ParseCharacterCardOptions = {}
+): CharacterCard {
   const basePath = cardBasePath(characterId);
+  const resolve = options.resolveAssetPath ?? ((src: string) => resolveAsset(basePath, src));
   const identity = (raw.identity ?? {}) as Record<string, unknown>;
   const assets = (raw.assets ?? {}) as Record<string, unknown>;
   const rawStickers = Array.isArray(assets.stickers)
@@ -122,12 +153,13 @@ export function parseCharacterCard(characterId: string, raw: Record<string, unkn
     interactionPrinciples: asStringArray(identity.interactionPrinciples),
     examples: parseExamples(identity.examples),
     themeColor: asString(assets.themeColor, "#2f6f68"),
+    origin: options.origin ?? "bundled",
     assets: {
-      avatar: resolveAsset(basePath, asString(assets.avatar, "assets/avatar/avatar-circle.png")),
-      portrait: resolveAsset(basePath, asString(assets.portrait, "assets/portraits/neutral.png")),
-      background: resolveAsset(basePath, asString(assets.background, "assets/backgrounds/default.png"))
+      avatar: resolve(asString(assets.avatar, "assets/avatar/avatar-circle.png")),
+      portrait: resolve(asString(assets.portrait, "assets/portraits/neutral.png")),
+      background: resolve(asString(assets.background, "assets/backgrounds/default.png"))
     },
-    stickers: buildStickers(basePath, rawStickers)
+    stickers: buildStickers(resolve, rawStickers)
   };
 }
 
@@ -210,14 +242,44 @@ export async function loadCharacterCard(
   return parseCharacterCard(characterId, raw);
 }
 
-export async function loadCharacterCards(fetchImpl: typeof fetch = fetch): Promise<CharacterCard[]> {
+async function loadBundledCards(fetchImpl: typeof fetch = fetch): Promise<CharacterCard[]> {
+  const ids = await loadCharacterManifest(fetchImpl);
+  const cards = await Promise.all(
+    ids.map((id) => loadCharacterCard(id, fetchImpl).catch(() => null))
+  );
+  return cards.filter((card): card is CharacterCard => card !== null);
+}
+
+// 用户卡来源：只依赖 listUserCharacters，避免与 desktop-backend 形成模块环。
+export type UserCardSource = {
+  listUserCharacters: () => Promise<Array<{ id: string; dir: string; card: Record<string, unknown> }>>;
+};
+
+async function loadUserCards(source: UserCardSource): Promise<CharacterCard[]> {
   try {
-    const ids = await loadCharacterManifest(fetchImpl);
-    const cards = await Promise.all(
-      ids.map((id) => loadCharacterCard(id, fetchImpl).catch(() => null))
+    const records = await source.listUserCharacters();
+    return records.map((record) =>
+      parseCharacterCard(record.id, record.card, {
+        origin: "user",
+        resolveAssetPath: makeUserAssetResolver(record.dir)
+      })
     );
-    const loaded = cards.filter((card): card is CharacterCard => card !== null);
-    return loaded.length > 0 ? loaded : [fallbackCharacterCard];
+  } catch {
+    return [];
+  }
+}
+
+// 合并内置卡与用户卡：内置优先，用户卡里 id 已被内置占用的丢弃（与 Rust 侧的去重一致）。
+export async function loadCharacterCards(
+  source?: UserCardSource | null,
+  fetchImpl: typeof fetch = fetch
+): Promise<CharacterCard[]> {
+  try {
+    const bundled = await loadBundledCards(fetchImpl);
+    const user = source ? await loadUserCards(source) : [];
+    const seen = new Set(bundled.map((card) => card.id));
+    const merged = [...bundled, ...user.filter((card) => !seen.has(card.id))];
+    return merged.length > 0 ? merged : [fallbackCharacterCard];
   } catch {
     return [fallbackCharacterCard];
   }

@@ -4259,6 +4259,531 @@ fn start_scheduler(app: AppHandle) {
     });
 }
 
+// ----- User character cards ----------------------------------------------------
+//
+// 用户自建/导入的角色卡放在 app_data_dir/user-characters/<id>.card/，目录形态与打包
+// 进 public/characters 的内置卡一致（card.json + assets/）。运行时人设由前端从内存中
+// 的 CharacterCard 拼进 sessionPrompt，sidecar 不读盘；这里只负责盘上的增删改查与
+// 导入导出，图片经 asset 协议（convertFileSrc）喂给 webview。
+
+const REQUIRED_STICKER_IDS: [&str; 9] = [
+    "neutral", "happy", "thinking", "comfort", "shy", "focused", "surprised", "worried", "proud",
+];
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveUserCharacterRequest {
+    id: String,
+    card: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserCharacterRecord {
+    id: String,
+    dir: String,
+    card: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SaveUserCharacterAssetRequest {
+    id: String,
+    /// "avatar" | "portrait" | "background" | "sticker:<id>"
+    slot: String,
+    bytes: Vec<u8>,
+    ext: String,
+}
+
+/// 用户卡根目录。与 `skills_root_dir` 同构，启动时确保存在。
+fn user_characters_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("user-characters"))
+}
+
+/// 角色 id 约束与 skill 名一致（小写 `a-z0-9-`、不首尾/连续连字符），保证
+/// `<id>.card` 目录名安全、不越界。
+fn is_valid_character_id(id: &str) -> bool {
+    is_valid_skill_name(id)
+}
+
+/// 把任意文本压成合法 id：小写化、非 `a-z0-9` 折成单个连字符、去首尾连字符、截到 64。
+fn slugify_character_id(raw: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for c in raw.trim().to_lowercase().chars() {
+        if c.is_ascii_lowercase() || c.is_ascii_digit() {
+            out.push(c);
+            prev_dash = false;
+        } else if !out.is_empty() && !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    while out.ends_with('-') {
+        out.pop();
+    }
+    out.chars().take(64).collect()
+}
+
+/// 在用户卡目录里给 base 找一个未占用的 id（冲突时追加 -2 / -3 …）。
+fn unique_user_card_id(root: &Path, base: &str) -> String {
+    if !root.join(format!("{base}.card")).exists() {
+        return base.to_string();
+    }
+    let mut n = 2;
+    loop {
+        let candidate = format!("{base}-{n}");
+        if !root.join(format!("{candidate}.card")).exists() {
+            return candidate;
+        }
+        n += 1;
+    }
+}
+
+fn json_str_non_empty(value: &serde_json::Value, key: &str) -> bool {
+    value
+        .get(key)
+        .and_then(|item| item.as_str())
+        .map(|text| !text.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// card.json 结构校验（最小移植 packages/character-card 的 validateCharacterCard）：
+/// id/name/identity.persona/identity.speakingStyle 非空、assets 三图非空、stickers 含
+/// 全部 9 个必需表情 id。只校验 JSON 结构，不要求图片文件已落盘。
+fn validate_character_card(card: &serde_json::Value) -> Result<(), String> {
+    if !card.is_object() {
+        return Err("角色卡必须是一个 JSON 对象。".into());
+    }
+    if !json_str_non_empty(card, "id") {
+        return Err("角色卡缺少 id。".into());
+    }
+    if !json_str_non_empty(card, "name") {
+        return Err("角色卡缺少 name。".into());
+    }
+    let identity = card.get("identity").ok_or("角色卡缺少 identity。")?;
+    if !identity.is_object() {
+        return Err("identity 必须是对象。".into());
+    }
+    if !json_str_non_empty(identity, "persona") {
+        return Err("identity.persona 不能为空。".into());
+    }
+    if !json_str_non_empty(identity, "speakingStyle") {
+        return Err("identity.speakingStyle 不能为空。".into());
+    }
+    let assets = card.get("assets").ok_or("角色卡缺少 assets。")?;
+    if !assets.is_object() {
+        return Err("assets 必须是对象。".into());
+    }
+    for key in ["avatar", "portrait", "background"] {
+        if !json_str_non_empty(assets, key) {
+            return Err(format!("assets.{key} 不能为空。"));
+        }
+    }
+    let stickers = assets
+        .get("stickers")
+        .and_then(|item| item.as_array())
+        .ok_or("assets.stickers 必须是数组。")?;
+    let ids: Vec<&str> = stickers
+        .iter()
+        .filter_map(|sticker| sticker.get("id").and_then(|value| value.as_str()))
+        .collect();
+    for required in REQUIRED_STICKER_IDS {
+        if !ids.contains(&required) {
+            return Err(format!("角色卡缺少必需表情贴纸：{required}。"));
+        }
+    }
+    Ok(())
+}
+
+fn read_user_card_json(dir: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let source = fs::read_to_string(dir.join("card.json"))?;
+    Ok(serde_json::from_str(&source)?)
+}
+
+fn write_card_json(dir: &Path, card: &serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("card.json"), serde_json::to_string_pretty(card)?)?;
+    Ok(())
+}
+
+fn user_character_record(
+    dir: &Path,
+    id: &str,
+) -> Result<UserCharacterRecord, Box<dyn std::error::Error>> {
+    Ok(UserCharacterRecord {
+        id: id.to_string(),
+        dir: dir.to_string_lossy().to_string(),
+        card: read_user_card_json(dir)?,
+    })
+}
+
+fn list_user_characters_from_dir(
+    root: &Path,
+) -> Result<Vec<UserCharacterRecord>, Box<dyn std::error::Error>> {
+    let mut out = Vec::new();
+    if !root.exists() {
+        return Ok(out);
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() || !path.join("card.json").exists() {
+            continue;
+        }
+        let Some(dir_name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        let id = dir_name.strip_suffix(".card").unwrap_or(dir_name).to_string();
+        if let Ok(record) = user_character_record(&path, &id) {
+            out.push(record);
+        }
+    }
+    out.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(out)
+}
+
+/// 写入 card.json 前把 id 字段统一成磁盘上的 id，避免内容里的 id 与目录名漂移。
+fn enforce_card_id(card: &mut serde_json::Value, id: &str) {
+    if let Some(object) = card.as_object_mut() {
+        object.insert("id".to_string(), serde_json::Value::String(id.to_string()));
+    }
+}
+
+fn create_user_character_at_dir(
+    root: &Path,
+    request: SaveUserCharacterRequest,
+) -> Result<UserCharacterRecord, Box<dyn std::error::Error>> {
+    let id = request.id.trim().to_string();
+    if !is_valid_character_id(&id) {
+        return Err("角色 id 只能用小写字母、数字和连字符，且不能以连字符开头/结尾。".into());
+    }
+    let dir = root.join(format!("{id}.card"));
+    if dir.exists() {
+        return Err("已存在同名角色卡。".into());
+    }
+    let mut card = request.card;
+    enforce_card_id(&mut card, &id);
+    validate_character_card(&card)?;
+    fs::create_dir_all(dir.join("assets"))?;
+    write_card_json(&dir, &card)?;
+    user_character_record(&dir, &id)
+}
+
+fn update_user_character_at_dir(
+    root: &Path,
+    request: SaveUserCharacterRequest,
+) -> Result<UserCharacterRecord, Box<dyn std::error::Error>> {
+    let id = request.id.trim().to_string();
+    if !is_valid_character_id(&id) {
+        return Err("角色 id 不合法。".into());
+    }
+    let dir = root.join(format!("{id}.card"));
+    if !dir.exists() {
+        return Err("角色卡不存在。".into());
+    }
+    let mut card = request.card;
+    enforce_card_id(&mut card, &id);
+    validate_character_card(&card)?;
+    write_card_json(&dir, &card)?;
+    user_character_record(&dir, &id)
+}
+
+fn delete_user_character_at_dir(
+    root: &Path,
+    id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !is_valid_character_id(id) {
+        return Err("角色 id 不合法。".into());
+    }
+    let dir = root.join(format!("{id}.card"));
+    if dir.exists() {
+        fs::remove_dir_all(&dir)?;
+    }
+    Ok(())
+}
+
+/// 把资源槽映射到固定相对路径（白名单，杜绝自由路径写入）；扩展名限定图片类型。
+fn asset_rel_path_for_slot(slot: &str, ext: &str) -> Result<String, String> {
+    let safe_ext = match ext.trim().to_lowercase().as_str() {
+        "png" => "png",
+        "jpg" => "jpg",
+        "jpeg" => "jpeg",
+        "webp" => "webp",
+        _ => return Err("图片格式必须是 png/jpg/jpeg/webp。".into()),
+    };
+    if let Some(sticker_id) = slot.strip_prefix("sticker:") {
+        if !REQUIRED_STICKER_IDS.contains(&sticker_id) {
+            return Err(format!("未知贴纸槽：{sticker_id}。"));
+        }
+        return Ok(format!("assets/stickers/{sticker_id}.{safe_ext}"));
+    }
+    match slot {
+        "avatar" => Ok(format!("assets/avatar/avatar-circle.{safe_ext}")),
+        "portrait" => Ok(format!("assets/portraits/neutral.{safe_ext}")),
+        "background" => Ok(format!("assets/backgrounds/default.{safe_ext}")),
+        _ => Err(format!("未知资源槽：{slot}。")),
+    }
+}
+
+/// 资源落盘后把 card.json 里对应槽的路径指向真实文件，使内容与磁盘扩展名一致、
+/// 与上传顺序无关。
+fn patch_card_asset_path(card: &mut serde_json::Value, slot: &str, rel: &str) {
+    let Some(assets) = card.get_mut("assets").and_then(|value| value.as_object_mut()) else {
+        return;
+    };
+    if let Some(sticker_id) = slot.strip_prefix("sticker:") {
+        if let Some(stickers) = assets.get_mut("stickers").and_then(|value| value.as_array_mut()) {
+            for sticker in stickers.iter_mut() {
+                if sticker.get("id").and_then(|value| value.as_str()) == Some(sticker_id) {
+                    if let Some(object) = sticker.as_object_mut() {
+                        object.insert("src".to_string(), serde_json::Value::String(rel.to_string()));
+                    }
+                }
+            }
+        }
+        return;
+    }
+    let key = match slot {
+        "avatar" => "avatar",
+        "portrait" => "portrait",
+        "background" => "background",
+        _ => return,
+    };
+    assets.insert(key.to_string(), serde_json::Value::String(rel.to_string()));
+}
+
+fn save_user_character_asset_at_dir(
+    root: &Path,
+    request: SaveUserCharacterAssetRequest,
+) -> Result<UserCharacterRecord, Box<dyn std::error::Error>> {
+    let id = request.id.trim().to_string();
+    if !is_valid_character_id(&id) {
+        return Err("角色 id 不合法。".into());
+    }
+    let dir = root.join(format!("{id}.card"));
+    if !dir.exists() {
+        return Err("角色卡不存在。".into());
+    }
+    let rel = asset_rel_path_for_slot(&request.slot, &request.ext)?;
+    let abs = dir.join(&rel);
+    if let Some(parent) = abs.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&abs, &request.bytes)?;
+    let mut card = read_user_card_json(&dir)?;
+    patch_card_asset_path(&mut card, &request.slot, &rel);
+    write_card_json(&dir, &card)?;
+    user_character_record(&dir, &id)
+}
+
+fn export_card_zip(card_dir: &Path, dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let file = fs::File::create(dest)?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated);
+    for entry in walkdir::WalkDir::new(card_dir) {
+        let entry = entry?;
+        let path = entry.path();
+        let rel = path.strip_prefix(card_dir)?;
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if path.is_dir() {
+            zip.add_directory(format!("{rel_str}/"), options)?;
+        } else {
+            zip.start_file(rel_str, options)?;
+            zip.write_all(&fs::read(path)?)?;
+        }
+    }
+    zip.finish()?;
+    Ok(())
+}
+
+fn import_card_zip(
+    root: &Path,
+    zip_path: &Path,
+) -> Result<UserCharacterRecord, Box<dyn std::error::Error>> {
+    let file = fs::File::open(zip_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
+
+    // 第一遍：定位 card.json（取路径最短者，兼容顶层或 `<id>.card/` 包裹两种结构），
+    // 同时对每个条目做 zip-slip 检查（enclosed_name 为 None 即非法路径）。
+    let mut card_entry: Option<String> = None;
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index)?;
+        let Some(name) = entry.enclosed_name() else {
+            return Err("压缩包包含非法路径。".into());
+        };
+        let name_str = name.to_string_lossy().replace('\\', "/");
+        if name_str == "card.json" || name_str.ends_with("/card.json") {
+            let shorter = card_entry
+                .as_ref()
+                .map(|existing| name_str.len() < existing.len())
+                .unwrap_or(true);
+            if shorter {
+                card_entry = Some(name_str);
+            }
+        }
+    }
+    let card_path = card_entry.ok_or("压缩包里找不到 card.json。")?;
+    let prefix = card_path
+        .strip_suffix("card.json")
+        .unwrap_or("")
+        .to_string();
+
+    let card: serde_json::Value = {
+        let mut entry = archive.by_name(&card_path)?;
+        let mut buf = String::new();
+        entry.read_to_string(&mut buf)?;
+        serde_json::from_str(&buf)?
+    };
+    validate_character_card(&card)?;
+
+    let raw_id = card.get("id").and_then(|value| value.as_str()).unwrap_or("");
+    let base_id = {
+        let slug = slugify_character_id(raw_id);
+        if slug.is_empty() {
+            "character".to_string()
+        } else {
+            slug
+        }
+    };
+    let id = unique_user_card_id(root, &base_id);
+    let dir = root.join(format!("{id}.card"));
+    fs::create_dir_all(&dir)?;
+
+    // 第二遍：把 prefix 下的条目解压进目标目录，逐条 zip-slip 双保险。
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index)?;
+        let Some(name) = entry.enclosed_name() else {
+            return Err("压缩包包含非法路径。".into());
+        };
+        let name_str = name.to_string_lossy().replace('\\', "/");
+        let Some(rel) = name_str.strip_prefix(&prefix) else {
+            continue;
+        };
+        if rel.is_empty() {
+            continue;
+        }
+        let out_path = dir.join(rel);
+        if !out_path.starts_with(&dir) {
+            return Err("压缩包包含越界路径。".into());
+        }
+        if entry.is_dir() || rel.ends_with('/') {
+            fs::create_dir_all(&out_path)?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut out = fs::File::create(&out_path)?;
+        std::io::copy(&mut entry, &mut out)?;
+    }
+
+    // 内容里的 id 改写成最终（可能改名后的）id，与目录名对齐。
+    let mut card = read_user_card_json(&dir)?;
+    enforce_card_id(&mut card, &id);
+    write_card_json(&dir, &card)?;
+    user_character_record(&dir, &id)
+}
+
+#[tauri::command]
+fn list_user_characters(app: AppHandle) -> Result<Vec<UserCharacterRecord>, String> {
+    list_user_characters_from_dir(&user_characters_dir(&app)?).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn create_user_character(
+    app: AppHandle,
+    request: SaveUserCharacterRequest,
+) -> Result<UserCharacterRecord, String> {
+    create_user_character_at_dir(&user_characters_dir(&app)?, request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn update_user_character(
+    app: AppHandle,
+    request: SaveUserCharacterRequest,
+) -> Result<UserCharacterRecord, String> {
+    update_user_character_at_dir(&user_characters_dir(&app)?, request)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn delete_user_character(app: AppHandle, id: String) -> Result<(), String> {
+    delete_user_character_at_dir(&user_characters_dir(&app)?, &id)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn save_user_character_asset(
+    app: AppHandle,
+    request: SaveUserCharacterAssetRequest,
+) -> Result<UserCharacterRecord, String> {
+    save_user_character_asset_at_dir(&user_characters_dir(&app)?, request)
+        .map_err(|error| error.to_string())
+}
+
+/// 弹原生文件框选 `.zip`，解压校验后落进用户卡目录；取消返回 None。异步以免阻塞
+/// 事件循环（与 pick_workspace_path 同模式）。
+#[tauri::command]
+async fn import_character_card(app: AppHandle) -> Result<Option<UserCharacterRecord>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("角色卡", &["zip"])
+        .pick_file(move |picked| {
+            let _ = sender.send(picked);
+        });
+    let picked = receiver.recv().map_err(|error| error.to_string())?;
+    let Some(file) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+    let root = user_characters_dir(&app)?;
+    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    import_card_zip(&root, &file)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+/// 弹原生保存框，把某张用户卡打包成 `<id>.card.zip`；取消返回 None。
+#[tauri::command]
+async fn export_character_card(app: AppHandle, id: String) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let id = id.trim().to_string();
+    if !is_valid_character_id(&id) {
+        return Err("角色 id 不合法。".into());
+    }
+    let dir = user_characters_dir(&app)?.join(format!("{id}.card"));
+    if !dir.exists() {
+        return Err("角色卡不存在。".into());
+    }
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("角色卡", &["zip"])
+        .set_file_name(format!("{id}.card.zip"))
+        .save_file(move |picked| {
+            let _ = sender.send(picked);
+        });
+    let picked = receiver.recv().map_err(|error| error.to_string())?;
+    let Some(dest) = picked.and_then(|path| path.into_path().ok()) else {
+        return Ok(None);
+    };
+    export_card_zip(&dir, &dest).map_err(|error| error.to_string())?;
+    Ok(Some(dest.to_string_lossy().to_string()))
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -4276,6 +4801,13 @@ pub fn run() {
             ) {
                 let _ = handle.notification().request_permission();
             }
+            // 用户卡目录建好，并把它加进 asset 协议允许域，让 convertFileSrc 能在
+            // webview 里加载这些图片（静态 scope 用 $APPDATA 做兜底，运行时再按真实
+            // 路径精确放开一次，避免路径变量语义歧义导致图片 403）。
+            if let Ok(dir) = user_characters_dir(handle) {
+                let _ = fs::create_dir_all(&dir);
+                let _ = app.asset_protocol_scope().allow_directory(&dir, true);
+            }
             start_scheduler(handle.clone());
             Ok(())
         })
@@ -4290,9 +4822,16 @@ pub fn run() {
             create_chat_session,
             create_scheduled_task,
             create_skill,
+            create_user_character,
             delete_model_profile,
             delete_scheduled_task,
             delete_skill,
+            delete_user_character,
+            export_character_card,
+            import_character_card,
+            list_user_characters,
+            save_user_character_asset,
+            update_user_character,
             get_character_states,
             get_chat_session,
             get_advanced_settings,
@@ -4345,6 +4884,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::io::Write;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -4373,7 +4913,11 @@ mod tests {
         set_character_letter_reaction_to_path, set_character_skill_to_path,
         sidecar_prompt_command_args, skip_missed_task, toggle_character_moment_like_to_path,
         unique_attachment_path, update_skill_at_dir, upsert_scheduled_task_at_path,
-        validate_schedule, AddCharacterLetterRequest, AddCharacterMomentCommentRequest,
+        validate_schedule, asset_rel_path_for_slot, create_user_character_at_dir,
+        delete_user_character_at_dir, export_card_zip, import_card_zip, is_valid_character_id,
+        list_user_characters_from_dir, save_user_character_asset_at_dir, slugify_character_id,
+        update_user_character_at_dir, validate_character_card, SaveUserCharacterAssetRequest,
+        SaveUserCharacterRequest, AddCharacterLetterRequest, AddCharacterMomentCommentRequest,
         AddCharacterMomentRequest, AdvancedSettings, AppendChatMessageRequest,
         CreateChatSessionRequest, ModelProfileSnapshot, ModelSettingsSnapshot,
         SaveModelSettingsRequest, SaveScheduledTaskRequest, SaveSkillRequest,
@@ -5999,5 +6543,227 @@ mod tests {
         assert_eq!(assignments.len(), 2);
 
         let _ = fs::remove_file(&path);
+    }
+
+    // ----- User character cards -----------------------------------------------
+
+    fn temp_user_characters_root() -> PathBuf {
+        std::env::temp_dir().join(format!("irori-user-cards-{}", temp_path_nonce()))
+    }
+
+    fn sample_card_json(id: &str, name: &str) -> serde_json::Value {
+        let stickers: Vec<serde_json::Value> = [
+            "neutral", "happy", "thinking", "comfort", "shy", "focused", "surprised", "worried",
+            "proud",
+        ]
+        .iter()
+        .map(|sticker| serde_json::json!({ "id": sticker, "src": format!("assets/stickers/{sticker}.png") }))
+        .collect();
+        serde_json::json!({
+            "id": id,
+            "name": name,
+            "identity": { "persona": "安静的研究者", "speakingStyle": "短句、克制" },
+            "assets": {
+                "avatar": "assets/avatar/avatar-circle.png",
+                "portrait": "assets/portraits/neutral.png",
+                "background": "assets/backgrounds/default.png",
+                "stickers": stickers
+            }
+        })
+    }
+
+    #[test]
+    fn validate_character_card_accepts_full_card_and_rejects_missing_sticker() {
+        let card = sample_card_json("shiyan", "试岩");
+        assert!(validate_character_card(&card).is_ok());
+
+        let mut broken = card.clone();
+        // Drop one required sticker → must fail.
+        let stickers = broken["assets"]["stickers"].as_array_mut().unwrap();
+        stickers.pop();
+        assert!(validate_character_card(&broken).is_err());
+
+        let mut no_persona = card.clone();
+        no_persona["identity"]["persona"] = serde_json::json!("   ");
+        assert!(validate_character_card(&no_persona).is_err());
+    }
+
+    #[test]
+    fn user_character_crud_roundtrip() {
+        let root = temp_user_characters_root();
+        fs::create_dir_all(&root).expect("root");
+
+        let created = create_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest {
+                id: "shiyan".to_string(),
+                card: sample_card_json("ignored-id", "试岩"),
+            },
+        )
+        .expect("create");
+        // create enforces the on-disk id onto the card body.
+        assert_eq!(created.id, "shiyan");
+        assert_eq!(created.card["id"], serde_json::json!("shiyan"));
+        assert!(root.join("shiyan.card/card.json").exists());
+
+        // Duplicate id is rejected.
+        assert!(create_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest { id: "shiyan".to_string(), card: sample_card_json("shiyan", "x") }
+        )
+        .is_err());
+
+        // Invalid id is rejected.
+        assert!(create_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest { id: "Bad Id".to_string(), card: sample_card_json("bad", "x") }
+        )
+        .is_err());
+
+        let listed = list_user_characters_from_dir(&root).expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "shiyan");
+
+        let mut updated_card = sample_card_json("shiyan", "试岩二号");
+        updated_card["identity"]["persona"] = serde_json::json!("更新后的人设");
+        let updated = update_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest { id: "shiyan".to_string(), card: updated_card },
+        )
+        .expect("update");
+        assert_eq!(updated.card["name"], serde_json::json!("试岩二号"));
+
+        delete_user_character_at_dir(&root, "shiyan").expect("delete");
+        assert!(!root.join("shiyan.card").exists());
+        assert_eq!(list_user_characters_from_dir(&root).expect("list").len(), 0);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn save_asset_writes_file_and_patches_card_path() {
+        let root = temp_user_characters_root();
+        fs::create_dir_all(&root).expect("root");
+        create_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest { id: "shiyan".to_string(), card: sample_card_json("shiyan", "试岩") },
+        )
+        .expect("create");
+
+        let record = save_user_character_asset_at_dir(
+            &root,
+            SaveUserCharacterAssetRequest {
+                id: "shiyan".to_string(),
+                slot: "avatar".to_string(),
+                bytes: vec![1, 2, 3, 4],
+                ext: "jpg".to_string(),
+            },
+        )
+        .expect("save avatar");
+        // The written file exists and card.json now points at the jpg.
+        assert!(root.join("shiyan.card/assets/avatar/avatar-circle.jpg").exists());
+        assert_eq!(record.card["assets"]["avatar"], serde_json::json!("assets/avatar/avatar-circle.jpg"));
+
+        let sticker = save_user_character_asset_at_dir(
+            &root,
+            SaveUserCharacterAssetRequest {
+                id: "shiyan".to_string(),
+                slot: "sticker:happy".to_string(),
+                bytes: vec![9, 9],
+                ext: "webp".to_string(),
+            },
+        )
+        .expect("save sticker");
+        let happy = sticker.card["assets"]["stickers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == serde_json::json!("happy"))
+            .unwrap();
+        assert_eq!(happy["src"], serde_json::json!("assets/stickers/happy.webp"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn asset_rel_path_for_slot_maps_and_validates() {
+        assert_eq!(
+            asset_rel_path_for_slot("background", "png").unwrap(),
+            "assets/backgrounds/default.png"
+        );
+        assert_eq!(
+            asset_rel_path_for_slot("sticker:proud", "png").unwrap(),
+            "assets/stickers/proud.png"
+        );
+        assert!(asset_rel_path_for_slot("sticker:unknown", "png").is_err());
+        assert!(asset_rel_path_for_slot("avatar", "gif").is_err());
+        assert!(asset_rel_path_for_slot("nope", "png").is_err());
+    }
+
+    #[test]
+    fn slugify_character_id_produces_valid_ids() {
+        assert_eq!(slugify_character_id("Hello World"), "hello-world");
+        assert_eq!(slugify_character_id("  __试岩__  "), "");
+        assert_eq!(slugify_character_id("a--b__c"), "a-b-c");
+        assert!(is_valid_character_id(&slugify_character_id("My Bot 2")));
+    }
+
+    #[test]
+    fn export_then_import_roundtrip() {
+        let root = temp_user_characters_root();
+        fs::create_dir_all(&root).expect("root");
+        create_user_character_at_dir(
+            &root,
+            SaveUserCharacterRequest { id: "shiyan".to_string(), card: sample_card_json("shiyan", "试岩") },
+        )
+        .expect("create");
+        save_user_character_asset_at_dir(
+            &root,
+            SaveUserCharacterAssetRequest {
+                id: "shiyan".to_string(),
+                slot: "avatar".to_string(),
+                bytes: vec![7, 7, 7],
+                ext: "png".to_string(),
+            },
+        )
+        .expect("avatar");
+
+        let zip_path = std::env::temp_dir().join(format!("irori-card-{}.zip", temp_path_nonce()));
+        export_card_zip(&root.join("shiyan.card"), &zip_path).expect("export");
+        assert!(zip_path.exists());
+
+        // Re-import into the same root → id collision resolved to shiyan-2.
+        let imported = import_card_zip(&root, &zip_path).expect("import");
+        assert_eq!(imported.id, "shiyan-2");
+        assert!(root.join("shiyan-2.card/card.json").exists());
+        assert!(root.join("shiyan-2.card/assets/avatar/avatar-circle.png").exists());
+        assert_eq!(imported.card["id"], serde_json::json!("shiyan-2"));
+
+        let _ = fs::remove_file(&zip_path);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn import_rejects_zip_slip_entry() {
+        let root = temp_user_characters_root();
+        fs::create_dir_all(&root).expect("root");
+        let zip_path = std::env::temp_dir().join(format!("irori-evil-{}.zip", temp_path_nonce()));
+        {
+            let file = fs::File::create(&zip_path).expect("create zip");
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            // A valid card.json plus a path-traversal entry.
+            zip.start_file("card.json", options).expect("start card");
+            zip.write_all(sample_card_json("evil", "邪").to_string().as_bytes())
+                .expect("write card");
+            zip.start_file("../escape.txt", options).expect("start evil");
+            zip.write_all(b"pwned").expect("write evil");
+            zip.finish().expect("finish");
+        }
+        assert!(import_card_zip(&root, &zip_path).is_err());
+        assert!(!std::env::temp_dir().join("escape.txt").exists());
+
+        let _ = fs::remove_file(&zip_path);
+        let _ = fs::remove_dir_all(&root);
     }
 }

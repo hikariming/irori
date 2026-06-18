@@ -257,6 +257,80 @@ function sanitizeMissedTaskPolicy(value: unknown): MissedTaskPolicy {
   return value === "skip" ? "skip" : "catchup";
 }
 
+export type UserCharacterRecord = {
+  id: string;
+  /** 卡所在磁盘目录的绝对路径（用户卡资源经 convertFileSrc 加载时用）。 */
+  dir: string;
+  card: Record<string, unknown>;
+};
+
+export type SaveUserCharacterRequest = {
+  id: string;
+  card: Record<string, unknown>;
+};
+
+export type SaveUserCharacterAssetRequest = {
+  id: string;
+  /** "avatar" | "portrait" | "background" | "sticker:<stickerId>" */
+  slot: string;
+  /** 图片原始字节，用 number[] 以便过 IPC 反序列化成 Rust 的 Vec<u8>。 */
+  bytes: number[];
+  ext: string;
+};
+
+// ----- 预览态（浏览器/Vite）用户卡：内存 + localStorage，资源存成 data URL ----------
+const PREVIEW_USER_CARDS_KEY = "irori-preview-user-characters";
+
+function loadPreviewUserCards(): UserCharacterRecord[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(PREVIEW_USER_CARDS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? (parsed as UserCharacterRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePreviewUserCards(records: UserCharacterRecord[]): void {
+  try {
+    globalThis.localStorage?.setItem(PREVIEW_USER_CARDS_KEY, JSON.stringify(records));
+  } catch {
+    // 预览态存储失败无伤大雅，忽略即可。
+  }
+}
+
+function previewBytesToDataUrl(bytes: number[], ext: string): string {
+  let binary = "";
+  for (const value of bytes) {
+    binary += String.fromCharCode(value & 0xff);
+  }
+  const mime =
+    ext === "jpg" || ext === "jpeg" ? "image/jpeg" : ext === "webp" ? "image/webp" : "image/png";
+  return `data:${mime};base64,${globalThis.btoa(binary)}`;
+}
+
+// 预览态把资源 data URL 写回 card 的对应槽，镜像 Rust 的 patch_card_asset_path。
+function applyPreviewAsset(card: Record<string, unknown>, slot: string, url: string): void {
+  const assets = (card.assets ?? {}) as Record<string, unknown>;
+  card.assets = assets;
+  if (slot.startsWith("sticker:")) {
+    const stickerId = slot.slice("sticker:".length);
+    const stickers = Array.isArray(assets.stickers)
+      ? (assets.stickers as Array<Record<string, unknown>>)
+      : [];
+    for (const sticker of stickers) {
+      if (sticker.id === stickerId) {
+        sticker.src = url;
+      }
+    }
+    assets.stickers = stickers;
+    return;
+  }
+  if (slot === "avatar" || slot === "portrait" || slot === "background") {
+    assets[slot] = url;
+  }
+}
+
 const previewRuntimeMessage = "浏览器预览不会调用真实 LLM。请在 Tauri 桌面客户端里运行并发送消息，那里会通过 Rust command 调用 sidecar / Pi。";
 
 export type DesktopBackend = {
@@ -275,6 +349,13 @@ export type DesktopBackend = {
   setCharacterLetterReaction: (letterId: string, reaction: KeepsakeReaction | null) => Promise<CharacterLetter>;
   loadCharacterStates: () => Promise<CharacterStates>;
   saveCharacterStates: (states: CharacterStates) => Promise<void>;
+  listUserCharacters: () => Promise<UserCharacterRecord[]>;
+  createUserCharacter: (request: SaveUserCharacterRequest) => Promise<UserCharacterRecord>;
+  updateUserCharacter: (request: SaveUserCharacterRequest) => Promise<UserCharacterRecord>;
+  deleteUserCharacter: (id: string) => Promise<void>;
+  saveUserCharacterAsset: (request: SaveUserCharacterAssetRequest) => Promise<UserCharacterRecord>;
+  importCharacterCard: () => Promise<UserCharacterRecord | null>;
+  exportCharacterCard: (id: string) => Promise<string | null>;
   getMemoryStatus: () => Promise<MemoryStatus>;
   getToolPolicySettings: () => Promise<ToolPolicySettings>;
   getWebAccessSettings: () => Promise<WebAccessSettingsState>;
@@ -524,6 +605,7 @@ export function createPreviewBackend(): DesktopBackend {
   let toolPolicySettings = defaultToolPolicySettings;
   let webAccessSettings = buildDefaultWebAccessSettings();
   let characterStates: CharacterStates = {};
+  let userCharacters: UserCharacterRecord[] = loadPreviewUserCards();
   let characterMoments: CharacterMoment[] = [];
   let characterLetters: CharacterLetter[] = [];
   let reviewMode: ReviewMode = "default";
@@ -544,6 +626,58 @@ export function createPreviewBackend(): DesktopBackend {
     },
     async saveCharacterStates(states) {
       characterStates = states;
+    },
+    async listUserCharacters() {
+      return userCharacters.map((record) => ({ ...record, card: { ...record.card } }));
+    },
+    async createUserCharacter(request) {
+      const id = request.id.trim();
+      if (!id) {
+        throw new Error("角色 id 不能为空。");
+      }
+      if (userCharacters.some((record) => record.id === id)) {
+        throw new Error("已存在同名角色卡。");
+      }
+      const card = { ...request.card, id };
+      const record: UserCharacterRecord = { id, dir: `preview://${id}.card`, card };
+      userCharacters = [...userCharacters, record].sort((left, right) => left.id.localeCompare(right.id));
+      savePreviewUserCards(userCharacters);
+      return { ...record, card: { ...card } };
+    },
+    async updateUserCharacter(request) {
+      const id = request.id.trim();
+      const index = userCharacters.findIndex((record) => record.id === id);
+      if (index < 0) {
+        throw new Error("角色卡不存在。");
+      }
+      const card = { ...request.card, id };
+      const record: UserCharacterRecord = { ...userCharacters[index], card };
+      userCharacters = userCharacters.map((item, position) => (position === index ? record : item));
+      savePreviewUserCards(userCharacters);
+      return { ...record, card: { ...card } };
+    },
+    async deleteUserCharacter(id) {
+      userCharacters = userCharacters.filter((record) => record.id !== id);
+      savePreviewUserCards(userCharacters);
+    },
+    async saveUserCharacterAsset(request) {
+      const index = userCharacters.findIndex((record) => record.id === request.id);
+      if (index < 0) {
+        throw new Error("角色卡不存在。");
+      }
+      const card = { ...userCharacters[index].card };
+      applyPreviewAsset(card, request.slot, previewBytesToDataUrl(request.bytes, request.ext));
+      const record: UserCharacterRecord = { ...userCharacters[index], card };
+      userCharacters = userCharacters.map((item, position) => (position === index ? record : item));
+      savePreviewUserCards(userCharacters);
+      return { ...record, card: { ...card } };
+    },
+    async importCharacterCard() {
+      // 浏览器预览没有原生文件框，导入仅在桌面端可用。
+      return null;
+    },
+    async exportCharacterCard() {
+      return null;
     },
     async addCharacterMoment(request) {
       const moment: CharacterMoment = {
@@ -1023,6 +1157,27 @@ export function createTauriBackend(): DesktopBackend {
     async saveCharacterStates(states) {
       await invoke("save_character_states", { states });
     },
+    async listUserCharacters() {
+      return invoke<UserCharacterRecord[]>("list_user_characters");
+    },
+    async createUserCharacter(request) {
+      return invoke<UserCharacterRecord>("create_user_character", { request });
+    },
+    async updateUserCharacter(request) {
+      return invoke<UserCharacterRecord>("update_user_character", { request });
+    },
+    async deleteUserCharacter(id) {
+      await invoke("delete_user_character", { id });
+    },
+    async saveUserCharacterAsset(request) {
+      return invoke<UserCharacterRecord>("save_user_character_asset", { request });
+    },
+    async importCharacterCard() {
+      return invoke<UserCharacterRecord | null>("import_character_card");
+    },
+    async exportCharacterCard(id) {
+      return invoke<string | null>("export_character_card", { id });
+    },
     async getMemoryStatus() {
       return invoke<MemoryStatus>("get_memory_status");
     },
@@ -1184,3 +1339,6 @@ export function createTauriBackend(): DesktopBackend {
 }
 
 export const desktopBackend = isTauriRuntime() ? createTauriBackend() : createPreviewBackend();
+
+// 用户卡的导入/导出与原生文件框只在桌面端可用；UI 用它来禁用预览态不支持的操作。
+export const isDesktopRuntime = isTauriRuntime();

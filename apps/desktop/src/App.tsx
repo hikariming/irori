@@ -475,10 +475,20 @@ export function App() {
     clearAssistantTypewriterTimer();
   }, []);
 
+  // 重新加载角色卡（内置 + 用户卡）。角色卡设置里增删改/导入后调用，使聊天立即用上
+  // 新人设——人设是前端从内存 CharacterCard 拼进 sessionPrompt 的，无需后端改动。
+  const reloadCharacterCards = useCallback(async () => {
+    try {
+      setSourceCards(await loadCharacterCards(desktopBackend));
+    } catch {
+      setSourceCards([]);
+    }
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
 
-    loadCharacterCards()
+    loadCharacterCards(desktopBackend)
       .then((loaded) => {
         if (isMounted) {
           setSourceCards(loaded);
@@ -1518,6 +1528,7 @@ export function App() {
           characterPreferences={characterPreferences}
           characterStates={characterStates}
           onCharacterPreferenceChange={updateCharacterPreference}
+          onCharacterCardsChanged={reloadCharacterCards}
           isOpen={isSettingsOpen}
           memoryDebugEvents={memoryDebugEvents}
           latestMemoryRun={latestMemoryRun}
